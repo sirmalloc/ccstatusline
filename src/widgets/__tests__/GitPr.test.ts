@@ -24,7 +24,7 @@ const SAMPLE_PR = {
 
 function createDeps(overrides: Partial<GitPrWidgetDeps> = {}): GitPrWidgetDeps {
     return {
-        fetchGitReviewData: () => SAMPLE_PR,
+        getCachedGitReviewData: () => SAMPLE_PR,
         getProcessCwd: () => '/tmp/process-cwd',
         getRemoteInfo: () => null,
         isInsideGitWorkTree: () => true,
@@ -36,10 +36,9 @@ function createDeps(overrides: Partial<GitPrWidgetDeps> = {}): GitPrWidgetDeps {
 function render(
     options: {
         cwd?: string;
-        hideNoGit?: boolean;
-        hideStatus?: boolean;
-        hideTitle?: boolean;
+        hide?: string;
         isPreview?: boolean;
+        needsChecks?: boolean;
         rawValue?: boolean;
     } = {},
     depOverrides: Partial<GitPrWidgetDeps> = {}
@@ -47,15 +46,12 @@ function render(
     const widget = new GitPrWidget(createDeps(depOverrides));
     const context: RenderContext = {
         data: options.cwd ? { cwd: options.cwd } : undefined,
+        gitReviewNeedsChecks: options.needsChecks,
         isPreview: options.isPreview
     };
     const metadata: Record<string, string> = {};
-    if (options.hideNoGit)
-        metadata.hideNoGit = 'true';
-    if (options.hideStatus)
-        metadata.hideStatus = 'true';
-    if (options.hideTitle)
-        metadata.hideTitle = 'true';
+    if (options.hide !== undefined)
+        metadata.hide = options.hide;
 
     const item: WidgetItem = {
         id: 'git-review',
@@ -82,15 +78,15 @@ describe('GitPrWidget', () => {
         );
     });
 
-    it('should render preview without status when hideStatus enabled', () => {
-        const result = render({ isPreview: true, hideStatus: true });
+    it('should render preview without status when the status state is hidden', () => {
+        const result = render({ isPreview: true, hide: 'status' });
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')} Example PR title`
         );
     });
 
-    it('should render preview without title when hideTitle enabled', () => {
-        const result = render({ isPreview: true, hideTitle: true });
+    it('should render preview without title when the title state is hidden', () => {
+        const result = render({ isPreview: true, hide: 'title' });
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')} OPEN`
         );
@@ -107,22 +103,44 @@ describe('GitPrWidget', () => {
         expect(render({ cwd: '/tmp/not-a-repo' }, { isInsideGitWorkTree: () => false })).toBe('(no PR)');
     });
 
-    it('should return null when hideNoGit and not in git repo', () => {
-        expect(render({ cwd: '/tmp/not-a-repo', hideNoGit: true }, { isInsideGitWorkTree: () => false })).toBeNull();
+    it('should return null when no-git is hidden and not in git repo', () => {
+        expect(render({ cwd: '/tmp/not-a-repo', hide: 'no-git' }, { isInsideGitWorkTree: () => false })).toBeNull();
     });
 
     it('should return (no PR) when PR lookup returns null', () => {
         expect(render({}, {
-            fetchGitReviewData: () => null,
+            getCachedGitReviewData: () => null,
             resolveGitCwd: () => undefined
         })).toBe('(no PR)');
     });
 
+    it('should declare no-git, no-data, status, and title hideable states', () => {
+        expect(new GitPrWidget(createDeps()).getHideableStates().map(state => state.key)).toEqual([
+            'no-git',
+            'no-data',
+            'status',
+            'title'
+        ]);
+    });
+
+    it('should hide segments via the unified hide metadata', () => {
+        expect(render({ isPreview: true, hide: 'status,title' })).toBe(
+            renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')
+        );
+    });
+
+    it('should hide a missing PR via the no-data state', () => {
+        expect(render({ hide: 'no-data' }, {
+            getCachedGitReviewData: () => null,
+            resolveGitCwd: () => undefined
+        })).toBeNull();
+    });
+
     it('should use process cwd when repo paths are omitted', () => {
-        const fetchGitReviewData = vi.fn(() => SAMPLE_PR);
+        const getCachedGitReviewData = vi.fn(() => SAMPLE_PR);
 
         const result = render({}, {
-            fetchGitReviewData,
+            getCachedGitReviewData,
             getProcessCwd: () => '/tmp/process-cwd',
             resolveGitCwd: () => undefined
         });
@@ -130,7 +148,21 @@ describe('GitPrWidget', () => {
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
         );
-        expect(fetchGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd');
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', {
+            includeChecks: false,
+            context: expect.objectContaining({}) as unknown
+        });
+    });
+
+    it('should request checks when a CI widget shares the render context', () => {
+        const getCachedGitReviewData = vi.fn(() => SAMPLE_PR);
+
+        render({ cwd: '/tmp/repo', needsChecks: true }, { getCachedGitReviewData });
+
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/repo', {
+            includeChecks: true,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 
     it('should truncate long titles', () => {
@@ -139,17 +171,38 @@ describe('GitPrWidget', () => {
             title: 'This is a very long pull request title that exceeds the default limit'
         };
 
-        const result = render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => longPr });
+        const result = render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => longPr });
         expect(result).toContain('This is a very long pull requ\u2026');
     });
 
+    it.each([
+        {
+            name: 'without splitting an emoji',
+            title: 'Update the release workflow 🚀 for tagged builds',
+            expected: 'Update the release workflow \u2026'
+        },
+        {
+            name: 'by display width for wide characters',
+            title: '修复状态栏在窄终端下的显示问题并且添加更多的测试用例以及文档说明',
+            expected: '修复状态栏在窄终端下的显示问\u2026'
+        },
+        {
+            name: 'not at all when wide characters fit the width',
+            title: '修复状态栏在窄终端下的显示问题',
+            expected: '修复状态栏在窄终端下的显示问题'
+        }
+    ])('should truncate long titles $name', ({ title, expected }) => {
+        const result = render({ cwd: '/tmp/repo', hide: 'status' }, { getCachedGitReviewData: () => ({ ...SAMPLE_PR, title }) });
+        expect(result).toBe(`${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} ${expected}`);
+    });
+
     it('should render MERGED status', () => {
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => ({ ...SAMPLE_PR, state: 'MERGED' }) })).toContain('MERGED');
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => ({ ...SAMPLE_PR, state: 'MERGED' }) })).toContain('MERGED');
     });
 
     it('should render APPROVED status', () => {
         expect(render({ cwd: '/tmp/repo' }, {
-            fetchGitReviewData: () => ({
+            getCachedGitReviewData: () => ({
                 ...SAMPLE_PR,
                 reviewDecision: 'APPROVED',
                 state: 'OPEN'
@@ -159,7 +212,7 @@ describe('GitPrWidget', () => {
 
     it('should render CHANGES_REQ status', () => {
         expect(render({ cwd: '/tmp/repo' }, {
-            fetchGitReviewData: () => ({
+            getCachedGitReviewData: () => ({
                 ...SAMPLE_PR,
                 reviewDecision: 'CHANGES_REQUESTED',
                 state: 'OPEN'
@@ -172,7 +225,7 @@ describe('GitPrWidget', () => {
             ...SAMPLE_PR,
             url: 'https://gitlab.com/owner/repo/-/merge_requests/123'
         };
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => gitlabPr })).toBe(
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => gitlabPr })).toBe(
             `${renderOsc8Link('https://gitlab.com/owner/repo/-/merge_requests/123', 'MR #123')} OPEN Fix authentication bug`
         );
     });
@@ -182,14 +235,14 @@ describe('GitPrWidget', () => {
             ...SAMPLE_PR,
             url: 'https://gitlab.com/owner/repo/-/merge_requests/123'
         };
-        expect(render({ cwd: '/tmp/repo', rawValue: true }, { fetchGitReviewData: () => gitlabPr })).toBe(
+        expect(render({ cwd: '/tmp/repo', rawValue: true }, { getCachedGitReviewData: () => gitlabPr })).toBe(
             `${renderOsc8Link('https://gitlab.com/owner/repo/-/merge_requests/123', '#123')} OPEN Fix authentication bug`
         );
     });
 
     it('should return (no MR) when origin is GitLab and no MR exists', () => {
         expect(render({ cwd: '/tmp/repo' }, {
-            fetchGitReviewData: () => null,
+            getCachedGitReviewData: () => null,
             getRemoteInfo: () => ({
                 name: 'origin',
                 url: 'git@gitlab.com:owner/repo.git',
@@ -214,7 +267,7 @@ describe('GitPrWidget', () => {
             title: 'Add optional wallet type field',
             url: 'https://git.example.com/group/project/-/merge_requests/1626'
         };
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => legacyCacheEntry })).toBe(
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => legacyCacheEntry })).toBe(
             `${renderOsc8Link('https://git.example.com/group/project/-/merge_requests/1626', 'MR #1626')} OPEN Add optional wallet type field`
         );
     });
@@ -226,14 +279,14 @@ describe('GitPrWidget', () => {
             url: 'https://git.example.com/team/repo/-/merge_requests/7',
             provider: 'glab' as const
         };
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => selfHostedMr })).toBe(
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => selfHostedMr })).toBe(
             `${renderOsc8Link('https://git.example.com/team/repo/-/merge_requests/7', 'MR #7')} OPEN Fix authentication bug`
         );
     });
 
     it('should fall back to (no PR) when the origin host name does not identify the forge', () => {
         expect(render({ cwd: '/tmp/repo' }, {
-            fetchGitReviewData: () => null,
+            getCachedGitReviewData: () => null,
             getRemoteInfo: () => ({
                 name: 'origin',
                 url: 'git@git.example.com:team/repo.git',

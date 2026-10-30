@@ -1,5 +1,5 @@
-import * as os from 'os';
-import * as path from 'path';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
     beforeEach,
     describe,
@@ -28,7 +28,7 @@ describe('initConfigPath / getConfigPath', () => {
 
     it('should return a custom settings path when a file path is provided', () => {
         initConfigPath('/tmp/my-ccsl/settings.json');
-        expect(getConfigPath()).toBe('/tmp/my-ccsl/settings.json');
+        expect(getConfigPath()).toBe(path.resolve('/tmp/my-ccsl/settings.json'));
         expect(isCustomConfigPath()).toBe(true);
     });
 

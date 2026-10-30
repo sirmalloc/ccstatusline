@@ -8,59 +8,29 @@ interface ModelIdentifier {
     display_name?: string;
 }
 
-const DEFAULT_CONTEXT_WINDOW_SIZE = 200000;
-const DEFAULT_USABLE_CONTEXT_RATIO = 0.8;
-
-/**
- * Gets the usable context ratio from environment variable or settings.
- * Priority: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE env var > autoCompactWindow setting > default 0.8
- * The ratio is expressed as a percentage (e.g., 80 = 80% = 0.8)
- */
-function getUsableContextRatio(): number {
-    // First check environment variable override
-    const envValue = process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
-    if (envValue !== undefined) {
-        const parsed = Number.parseFloat(envValue);
-        if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) {
-            return parsed / 100;
-        }
-    }
-
-    // Settings are loaded lazily to avoid circular dependencies
-    // The autoCompactWindow setting stores the percentage directly
-    try {
-        const settingsPath = require('path').join(
-            require('os').homedir(),
-            '.config',
-            'ccstatusline',
-            'settings.json'
-        );
-        const fs = require('fs');
-        if (fs.existsSync(settingsPath)) {
-            const content = fs.readFileSync(settingsPath, 'utf-8');
-            const settings = JSON.parse(content);
-            if (settings.autoCompactWindow !== undefined) {
-                const parsed = Number.parseFloat(String(settings.autoCompactWindow));
-                if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) {
-                    return parsed / 100;
-                }
-            }
-        }
-    } catch {
-        // Ignore errors loading settings, fall back to default
-    }
-
-    return DEFAULT_USABLE_CONTEXT_RATIO;
+export interface AutoCompactConfig {
+    enabled?: boolean;
+    windowSize?: number;
 }
 
-// Cache the ratio so we don't re-read settings on every call
-let cachedUsableContextRatio: number | null = null;
+const DEFAULT_CONTEXT_WINDOW_SIZE = 200000;
+const USABLE_CONTEXT_RATIO = 0.8;
+const CONTEXT_WINDOW_ENV_VAR = 'CCSTATUSLINE_CONTEXT_WINDOW_SIZE';
+const CONTEXT_SIZE_FALLBACK_ENV_VAR = 'CCSTATUSLINE_CONTEXT_SIZE_FALLBACK';
 
-function getCachedUsableContextRatio(): number {
-    if (cachedUsableContextRatio === null) {
-        cachedUsableContextRatio = getUsableContextRatio();
+// User-configurable last-resort fallback window size. Mirrors CCSTATUSLINE_WIDTH:
+// a positive integer read from the environment, ignored when unset or invalid.
+// Defaults to 200k so behavior is unchanged unless the user opts in.
+function getFallbackContextWindowSize(): number {
+    const raw = process.env[CONTEXT_SIZE_FALLBACK_ENV_VAR];
+    if (raw) {
+        const parsed = Number.parseInt(raw, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
     }
-    return cachedUsableContextRatio;
+
+    return DEFAULT_CONTEXT_WINDOW_SIZE;
 }
 
 function toValidWindowSize(value: number | null | undefined): number | null {
@@ -69,6 +39,53 @@ function toValidWindowSize(value: number | null | undefined): number | null {
     }
 
     return value;
+}
+
+const CONTEXT_WINDOW_ENV_REGEX = /^(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])?$/i;
+
+let cachedEnvRaw: string | undefined;
+let cachedEnvResult: number | null = null;
+let hasCachedEnv = false;
+
+function parseContextWindowEnvValue(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const suffixMatch = CONTEXT_WINDOW_ENV_REGEX.exec(trimmed);
+    const numericPart = suffixMatch?.[1];
+    if (!numericPart) {
+        return null;
+    }
+
+    const numeric = Number.parseFloat(numericPart.replace(/[,_]/g, ''));
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+        return null;
+    }
+
+    const unit = suffixMatch[2]?.toLowerCase();
+    const multiplier = unit === 'm' ? 1000000 : unit === 'k' ? 1000 : 1;
+    const result = Math.round(numeric * multiplier);
+
+    // Reject nonsensical tiny windows (e.g. "1.5" without a unit rounds to 2).
+    if (result < 1000) {
+        return null;
+    }
+
+    return result;
+}
+
+export function getContextWindowEnvOverride(): number | null {
+    const raw = process.env[CONTEXT_WINDOW_ENV_VAR];
+    if (hasCachedEnv && raw === cachedEnvRaw) {
+        return cachedEnvResult;
+    }
+
+    cachedEnvRaw = raw;
+    cachedEnvResult = raw === undefined ? null : parseContextWindowEnvValue(raw);
+    hasCachedEnv = true;
+    return cachedEnvResult;
 }
 
 function parseContextWindowSize(modelIdentifier: string): number | null {
@@ -125,33 +142,44 @@ export function getModelContextIdentifier(model?: string | ModelIdentifier): str
     return id ?? displayName;
 }
 
-export function getContextConfig(modelIdentifier?: string, contextWindowSize?: number | null): ModelContextConfig {
-    const usableRatio = getCachedUsableContextRatio();
-    const statusWindowSize = toValidWindowSize(contextWindowSize);
-    if (statusWindowSize !== null) {
-        return {
-            maxTokens: statusWindowSize,
-            usableTokens: Math.floor(statusWindowSize * usableRatio)
-        };
+function isEnabledEnv(value: string | undefined): boolean {
+    return /^(1|true|yes|on)$/i.test(value?.trim() ?? '');
+}
+
+function getUsableTokens(maxTokens: number, autoCompact: AutoCompactConfig): number {
+    if (autoCompact.enabled === false
+        || isEnabledEnv(process.env.DISABLE_AUTO_COMPACT)
+        || isEnabledEnv(process.env.DISABLE_COMPACT)) {
+        return maxTokens;
     }
 
-    // Default to 200k for older models
-    const defaultConfig = {
-        maxTokens: DEFAULT_CONTEXT_WINDOW_SIZE,
-        usableTokens: Math.floor(DEFAULT_CONTEXT_WINDOW_SIZE * usableRatio)
-    };
+    const rawWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+    const envWindow = rawWindow === undefined ? null : parseContextWindowEnvValue(rawWindow);
+    // Claude Code bounds its compaction window to 100k–1M and the model window.
+    const configuredWindow = envWindow === null
+        ? toValidWindowSize(autoCompact.windowSize)
+        : Math.max(100000, Math.min(1000000, envWindow));
+    const windowSize = Math.min(maxTokens, configuredWindow ?? maxTokens);
 
-    if (!modelIdentifier) {
-        return defaultConfig;
-    }
+    const rawPercent = process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
+    const percent = rawPercent === undefined ? NaN : Number(rawPercent.replace(/_/g, ''));
+    // The live trigger isn't in the status payload. Retain the existing 80%
+    // estimate; an explicit percentage can lower it, never raise it.
+    const ratio = Number.isFinite(percent) && percent >= 1 && percent <= 100
+        ? Math.min(USABLE_CONTEXT_RATIO, percent / 100)
+        : USABLE_CONTEXT_RATIO;
+    return Math.max(1, Math.floor(windowSize * ratio));
+}
 
-    const inferredWindowSize = parseContextWindowSize(modelIdentifier);
-    if (inferredWindowSize !== null) {
-        return {
-            maxTokens: inferredWindowSize,
-            usableTokens: Math.floor(inferredWindowSize * usableRatio)
-        };
-    }
+export function getContextConfig(
+    modelIdentifier?: string,
+    contextWindowSize?: number | null,
+    autoCompact: AutoCompactConfig = {}
+): ModelContextConfig {
+    const maxTokens = getContextWindowEnvOverride()
+        ?? toValidWindowSize(contextWindowSize)
+        ?? (modelIdentifier ? parseContextWindowSize(modelIdentifier) : null)
+        ?? getFallbackContextWindowSize();
 
-    return defaultConfig;
+    return { maxTokens, usableTokens: getUsableTokens(maxTokens, autoCompact) };
 }

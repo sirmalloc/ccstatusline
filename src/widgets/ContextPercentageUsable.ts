@@ -6,11 +6,19 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    getAutoCompactConfig,
+    resolveClaudeConfigCwd
+} from '../utils/claude-settings';
 import { getContextWindowMetrics } from '../utils/context-window';
 import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getContextInverseModifierText,
@@ -28,9 +36,10 @@ import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
+    getDescription(): string { return 'Shows used or remaining context against an estimated compaction budget.\nHonors Claude Code compaction settings and environment overrides; defaults to an 80% estimate.'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(item: WidgetItem): string { return isContextInverse(item) ? 'Ctx(u) Left: ' : 'Ctx(u) Used: '; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers = [
             getContextInverseModifierText(item),
@@ -51,20 +60,22 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
-        const label = isInverse ? 'Ctx(u) Left: ' : 'Ctx(u) Used: ';
         const sliderMode = getContextSliderMode(item);
-        const modelIdentifier = getModelContextIdentifier(context.data?.model);
-        const contextWindowMetrics = getContextWindowMetrics(context.data);
-        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+        const format = resolveNumberFormat('percent', item, settings);
 
         const formatContextPercentage = (displayPercentage: number): string => {
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
-            return formatRawOrLabeledValue(item, label, sliderResult ?? `${displayPercentage.toFixed(1)}%`);
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderResult ?? formatPercent(displayPercentage, format));
         };
 
         if (context.isPreview) {
             return formatContextPercentage(isInverse ? 88.4 : 11.6);
         }
+
+        const modelIdentifier = getModelContextIdentifier(context.data?.model);
+        const contextWindowMetrics = getContextWindowMetrics(context.data);
+        const autoCompact = getAutoCompactConfig(resolveClaudeConfigCwd(context));
+        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize, autoCompact);
 
         if (contextWindowMetrics.contextLengthTokens !== null) {
             const usedPercentage = Math.min(100, (contextWindowMetrics.contextLengthTokens / contextConfig.usableTokens) * 100);
@@ -89,4 +100,5 @@ export class ContextPercentageUsableWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

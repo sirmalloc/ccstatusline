@@ -1,13 +1,21 @@
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
+import * as executablePath from '../executable-path';
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 import {
     fetchGitReviewData,
+    getCachedGitReviewData,
+    refreshGitReviewCacheFromCli,
     type GitReviewCacheDeps
 } from '../git-review-cache';
+
+import { mockExecutableResolution } from './executable-path-test-helpers';
+import { gitCommandOf } from './git-test-helpers';
 
 interface FakeCacheFile {
     content: string;
@@ -17,30 +25,40 @@ interface FakeCacheFile {
 interface PrCacheHarness {
     cacheFiles: Map<string, FakeCacheFile>;
     deps: GitReviewCacheDeps;
-    execCalls: { args: string[]; cmd: string; cwd?: string }[];
+    execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[];
+    ghDurations: number[];
     ghResponses: (Error | string)[];
     glabResponses: (Error | string)[];
+    spawnCalls: { args: string[]; command: string }[];
+    advanceNow: (milliseconds: number) => void;
     setCurrentRef: (ref: string) => void;
+    addTag: (name: string) => void;
     setOriginRemoteUrl: (url: string) => void;
     setGlabAvailable: (available: boolean) => void;
     setCliAuthedForHost: (cli: 'gh' | 'glab', host: string, authed: boolean) => void;
+    setSshHostAlias: (host: string, hostname: string) => void;
 }
 
 function createHarness(): PrCacheHarness {
     const cacheFiles = new Map<string, FakeCacheFile>();
-    const execCalls: { args: string[]; cmd: string; cwd?: string }[] = [];
+    const execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[] = [];
+    const ghDurations: number[] = [];
     const ghResponses: (Error | string)[] = [];
     const glabResponses: (Error | string)[] = [];
-    const now = 1_700_000_000_000;
+    const spawnCalls: { args: string[]; command: string }[] = [];
+    let now = 1_700_000_000_000;
     let currentRef = 'feature/cache-a';
+    const tags = new Set<string>();
     let originRemoteUrl: string | null = null;
     let glabAvailable = false;
     const authedHosts: Record<'gh' | 'glab', Set<string>> = {
         gh: new Set(),
         glab: new Set()
     };
+    const sshHostAliases = new Map<string, string>();
 
     const deps: GitReviewCacheDeps = {
+        closeSync: () => undefined,
         execFileSync: ((cmd, args, options) => {
             const commandArgs = Array.isArray(args)
                 ? args.map(arg => String(arg))
@@ -50,19 +68,34 @@ function createHarness(): PrCacheHarness {
                 cmd,
                 cwd: typeof options === 'object' && 'cwd' in options
                     ? String(options.cwd)
+                    : undefined,
+                env: typeof options === 'object' && 'env' in options
+                    ? options.env
                     : undefined
             });
+            const gitArgs = cmd === 'git' ? gitCommandOf(commandArgs).split(' ') : [];
 
-            if (cmd === 'git' && commandArgs[0] === 'remote') {
+            if (cmd === 'git' && gitArgs[0] === 'remote') {
                 if (originRemoteUrl === null) {
                     throw new Error('no origin configured');
                 }
                 return `${originRemoteUrl}\n`;
             }
-            if (cmd === 'git' && commandArgs[0] === 'symbolic-ref')
-                return `${currentRef}\n`;
-            if (cmd === 'git' && commandArgs[0] === 'rev-parse')
+            if (cmd === 'git' && gitArgs[0] === 'symbolic-ref') {
+                // As git does: the full ref, or with --short the branch name,
+                // which becomes `heads/<name>` when a tag has the same name
+                if (!gitArgs.includes('--short'))
+                    return `refs/heads/${currentRef}\n`;
+                return `${tags.has(currentRef) ? 'heads/' : ''}${currentRef}\n`;
+            }
+            if (cmd === 'git' && gitArgs[0] === 'rev-parse')
                 return 'abc123\n';
+            if (cmd === 'ssh' && commandArgs[0] === '-G') {
+                const host = commandArgs.at(-1);
+                if (!host)
+                    throw new Error('missing ssh host');
+                return `hostname ${sshHostAliases.get(host) ?? host}\n`;
+            }
             if (cmd === 'gh' && commandArgs[0] === '--version')
                 return 'gh version 2.0.0\n';
             if (cmd === 'gh' && commandArgs[0] === 'auth' && commandArgs[1] === 'status') {
@@ -73,6 +106,7 @@ function createHarness(): PrCacheHarness {
                 return '';
             }
             if (cmd === 'gh' && commandArgs[0] === 'pr') {
+                now += ghDurations.shift() ?? 0;
                 const response = ghResponses.shift();
                 if (response instanceof Error)
                     throw response;
@@ -102,11 +136,33 @@ function createHarness(): PrCacheHarness {
             throw new Error(`Unexpected command: ${cmd} ${commandArgs.join(' ')}`);
         }) as GitReviewCacheDeps['execFileSync'],
         existsSync: filePath => cacheFiles.has(String(filePath)),
+        getExecPath: () => '/usr/bin/node',
         getHomedir: () => '/tmp/home',
         mkdirSync: () => undefined,
+        openSync: (filePath) => {
+            const normalizedPath = String(filePath);
+            if (cacheFiles.has(normalizedPath)) {
+                throw new Error('EEXIST');
+            }
+            cacheFiles.set(normalizedPath, { content: '', mtimeMs: now });
+            return 42;
+        },
         now: () => now,
         readFileSync: (filePath => cacheFiles.get(String(filePath))?.content ?? '') as GitReviewCacheDeps['readFileSync'],
+        getScriptPath: () => '/app/ccstatusline.js',
+        spawn: ((command, args) => {
+            spawnCalls.push({
+                args: Array.isArray(args) ? args.map(arg => String(arg)) : [],
+                command
+            });
+            return { unref: () => undefined };
+        }) as GitReviewCacheDeps['spawn'],
         statSync: (filePath => ({ mtimeMs: cacheFiles.get(String(filePath))?.mtimeMs ?? now })) as GitReviewCacheDeps['statSync'],
+        unlinkSync: (filePath) => {
+            if (!cacheFiles.delete(String(filePath))) {
+                throw new Error('ENOENT');
+            }
+        },
         writeFileSync: (filePath, content) => {
             const normalizedContent = typeof content === 'string'
                 ? content
@@ -124,10 +180,18 @@ function createHarness(): PrCacheHarness {
         cacheFiles,
         deps,
         execCalls,
+        ghDurations,
         ghResponses,
         glabResponses,
+        spawnCalls,
+        advanceNow: (milliseconds) => {
+            now += milliseconds;
+        },
         setCurrentRef: (ref: string) => {
             currentRef = ref;
+        },
+        addTag: (name: string) => {
+            tags.add(name);
         },
         setOriginRemoteUrl: (url: string) => {
             originRemoteUrl = url;
@@ -141,27 +205,319 @@ function createHarness(): PrCacheHarness {
             } else {
                 authedHosts[cli].delete(host);
             }
+        },
+        setSshHostAlias: (host: string, hostname: string) => {
+            sshHostAliases.set(host, hostname);
         }
     };
 }
 
+function prepareCachePath(harness: PrCacheHarness): string {
+    getCachedGitReviewData('/tmp/repo', {}, harness.deps);
+    const lockPath = [...harness.cacheFiles.keys()].find(filePath => filePath.endsWith('.lock'));
+    if (!lockPath) {
+        throw new Error('Expected a refresh lock');
+    }
+    harness.cacheFiles.delete(lockPath);
+    harness.spawnCalls.length = 0;
+    return lockPath.slice(0, -'.lock'.length);
+}
+
+// The git config that the environment gives git run by another program
+function gitConfigFromEnv(env: NodeJS.ProcessEnv | undefined): [string, string][] {
+    const count = Number.parseInt(env?.GIT_CONFIG_COUNT ?? '0', 10);
+    return Array.from({ length: count }, (_, index): [string, string] => [
+        env?.[`GIT_CONFIG_KEY_${index}`] ?? '',
+        env?.[`GIT_CONFIG_VALUE_${index}`] ?? ''
+    ]);
+}
+
+// The fields a gh call asks for: the value after --json
+function jsonFields(args: string[] | undefined): string | undefined {
+    const index = args?.indexOf('--json') ?? -1;
+    return index >= 0 ? args?.[index + 1] : undefined;
+}
+
+// A gh call's arguments without its --json fields: what it looks up
+function withoutJsonFields(args: string[] | undefined): string[] {
+    const index = args?.indexOf('--json') ?? -1;
+    return index >= 0 ? [...(args ?? []).slice(0, index), ...(args ?? []).slice(index + 2)] : [...(args ?? [])];
+}
+
+mockExecutableResolution();
+
 describe('git-review-cache', () => {
+    it('looks up git, gh and ssh on PATH before running them', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => name);
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('git@mygit:example-owner/example-repo.git');
+            harness.setSshHostAlias('mygit', 'github.com');
+            harness.setCliAuthedForHost('gh', 'github.com', true);
+            harness.ghResponses.push(new Error('no pull request found'));
+            harness.ghResponses.push(new Error('no pull request found'));
+
+            fetchGitReviewData('/tmp/repo', harness.deps);
+
+            const looked = new Set(resolve.mock.calls.map(call => call[0]));
+            expect([...looked].sort()).toEqual(['gh', 'git', 'ssh']);
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
+    it('looks up glab on PATH before running it', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => name);
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('git@gitlab.com:owner/repo.git');
+            harness.setGlabAvailable(true);
+            harness.glabResponses.push(new Error('no merge request found'));
+            harness.glabResponses.push(new Error('no merge request found'));
+
+            fetchGitReviewData('/tmp/repo', harness.deps);
+
+            expect(resolve.mock.calls.map(call => call[0])).toContain('glab');
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
+    it('treats gh as unavailable when it isn\'t on PATH', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation((name) => {
+            if (name === 'gh') {
+                throw new Error('gh was not found on PATH');
+            }
+            return name;
+        });
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+
+            expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+            expect(harness.execCalls.filter(call => call.cmd === 'gh')).toHaveLength(0);
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
+    it('runs git with the hardening config, and gives it to the git that gh runs', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(new Error('no pull request found'));
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const gitCalls = harness.execCalls.filter(call => call.cmd === 'git');
+        expect(gitCalls.length).toBeGreaterThan(0);
+        expect(gitCalls.every(call => call.args.slice(0, GIT_HARDENING_ARGS.length).join(' ') === GIT_HARDENING_ARGS.join(' '))).toBe(true);
+
+        const ghPrCalls = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr');
+        expect(ghPrCalls).toHaveLength(2);
+        for (const call of ghPrCalls) {
+            expect(gitConfigFromEnv(call.env)).toEqual(expect.arrayContaining([
+                ['core.fsmonitor', ''],
+                ['safe.bareRepository', 'explicit']
+            ]));
+        }
+    });
+
+    it('gives the hardening config to the git that glab runs', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push(new Error('no merge request found'));
+        harness.glabResponses.push(new Error('no merge request found'));
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const glabMrCalls = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr');
+        expect(glabMrCalls.length).toBeGreaterThan(0);
+        for (const call of glabMrCalls) {
+            expect(gitConfigFromEnv(call.env)).toEqual(expect.arrayContaining([
+                ['core.fsmonitor', ''],
+                ['safe.bareRepository', 'explicit']
+            ]));
+        }
+    });
+
     it('negative-caches failed gh PR lookups', () => {
         const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('no pull request found'));
         harness.ghResponses.push(new Error('no pull request found'));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterFirstRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterFirstRender).toHaveLength(2);
+        expect(ghCallsAfterFirstRender).toHaveLength(3);
+        const ghPrCalls = ghCallsAfterFirstRender.filter(call => call.args[0] === 'pr');
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[0]?.args).not.toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls.every(call => jsonFields(call.args) === 'url,number,title,state,reviewDecision')).toBe(true);
 
         const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
-        expect(cachedMissEntry?.content).toBe('');
+        expect(JSON.parse(cachedMissEntry?.content ?? '')).toEqual({
+            checksQueried: true,
+            data: null,
+            version: 1
+        });
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterSecondRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterSecondRender).toHaveLength(2);
+        expect(ghCallsAfterSecondRender).toHaveLength(3);
+    });
+
+    it('does not retry metadata-only for ordinary CI lookup failures', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(new Error('no pull request found'));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toBeNull();
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[0]?.args).not.toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls.every(call => jsonFields(call.args)?.includes('statusCheckRollup'))).toBe(true);
+    });
+
+    it('shares one deadline across unpinned and pinned CI lookups', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghDurations.push(5_000);
+        harness.ghResponses.push(new Error('timed out'));
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Too late',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toBeNull();
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(1);
+    });
+
+    it('returns immediately on a cache miss and schedules one metadata refresh', () => {
+        const harness = createHarness();
+
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toBeNull();
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toBeNull();
+
+        expect(harness.execCalls.filter(call => call.cmd === 'gh')).toHaveLength(0);
+        expect(harness.spawnCalls).toHaveLength(1);
+        expect(harness.spawnCalls[0]?.command).toBe('/usr/bin/node');
+        expect(harness.spawnCalls[0]?.args.slice(0, 4)).toEqual([
+            '/app/ccstatusline.js',
+            '--internal-refresh-git-review-cache',
+            '/tmp/repo',
+            'metadata'
+        ]);
+    });
+
+    it('refreshes through the detached CLI mode and releases its lock', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Background result',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toBeNull();
+        const lockPath = [...harness.cacheFiles.keys()].find(filePath => filePath.endsWith('.lock'));
+        expect(lockPath).toBeDefined();
+        refreshGitReviewCacheFromCli('/tmp/repo', {}, lockPath ?? '', harness.deps);
+
+        expect([...harness.cacheFiles.keys()].some(filePath => filePath.endsWith('.lock'))).toBe(false);
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)?.title).toBe('Background result');
+        expect(harness.spawnCalls).toHaveLength(1);
+    });
+
+    it('returns stale data while scheduling a refresh', () => {
+        const harness = createHarness();
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Stale but useful',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.title).toBe('Stale but useful');
+        harness.advanceNow(30_001);
+
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)?.title).toBe('Stale but useful');
+        expect(harness.spawnCalls).toHaveLength(1);
+    });
+
+    it('recovers a stale refresh lock', () => {
+        const harness = createHarness();
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toBeNull();
+        expect(harness.spawnCalls).toHaveLength(1);
+
+        harness.advanceNow(30_001);
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toBeNull();
+        expect(harness.spawnCalls).toHaveLength(2);
+    });
+
+    it('reads legacy metadata cache files and upgrades them when CI is requested', () => {
+        const harness = createHarness();
+        const cachePath = prepareCachePath(harness);
+        const legacyData = {
+            number: 42,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Legacy cache',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        };
+        harness.cacheFiles.set(cachePath, {
+            content: JSON.stringify(legacyData),
+            mtimeMs: harness.deps.now()
+        });
+
+        expect(getCachedGitReviewData('/tmp/repo', {}, harness.deps)).toEqual(legacyData);
+        expect(harness.spawnCalls).toHaveLength(0);
+        expect(getCachedGitReviewData('/tmp/repo', { includeChecks: true }, harness.deps)).toEqual(legacyData);
+        expect(harness.spawnCalls).toHaveLength(1);
+        expect(harness.spawnCalls[0]?.args[3]).toBe('checks');
+    });
+
+    it('accepts legacy empty negative-cache files without refreshing them while fresh', () => {
+        const harness = createHarness();
+        const cachePath = prepareCachePath(harness);
+        harness.cacheFiles.set(cachePath, { content: '', mtimeMs: harness.deps.now() });
+
+        expect(getCachedGitReviewData('/tmp/repo', { includeChecks: true }, harness.deps)).toBeNull();
+        expect(harness.spawnCalls).toHaveLength(0);
+    });
+
+    it('records an empty CI rollup as queried so it is not fetched repeatedly', () => {
+        const harness = createHarness();
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: '',
+            state: 'OPEN',
+            statusCheckRollup: [],
+            title: 'No checks configured',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toBeUndefined();
+        expect(getCachedGitReviewData('/tmp/repo', { includeChecks: true }, harness.deps)?.title).toBe('No checks configured');
+        expect(harness.spawnCalls).toHaveLength(0);
     });
 
     it('uses a different cache entry for each checked-out branch', () => {
@@ -268,18 +624,28 @@ describe('git-review-cache', () => {
         expect(data?.state).toBe('MERGED');
     });
 
-    it('uses gh\'s default repo resolution when it succeeds (no --repo pin needed)', () => {
+    it('uses gh\'s default repo resolution and includes CI checks in one query', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
         harness.ghResponses.push(JSON.stringify({
             number: 42,
             reviewDecision: '',
             state: 'OPEN',
+            statusCheckRollup: [
+                { conclusion: 'SUCCESS', status: 'COMPLETED' },
+                { conclusion: '', status: 'IN_PROGRESS' }
+            ],
             title: 'Standard PR',
             url: 'https://github.com/example-owner/example-repo/pull/42'
         }));
 
-        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toEqual({
+            checks: {
+                failing: 0,
+                pending: 1,
+                state: 'pending',
+                success: 1
+            },
             number: 42,
             provider: 'gh',
             reviewDecision: '',
@@ -293,6 +659,131 @@ describe('git-review-cache', () => {
         );
         expect(ghPrCalls).toHaveLength(1);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
+        expect(jsonFields(ghPrCalls[0]?.args)).toBe(
+            'url,number,title,state,reviewDecision,statusCheckRollup'
+        );
+    });
+
+    it('retries metadata-only when gh cannot query CI checks', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: 'APPROVED',
+            state: 'OPEN',
+            title: 'Restricted token PR',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+
+        const expected = {
+            number: 42,
+            provider: 'gh' as const,
+            reviewDecision: 'APPROVED',
+            state: 'OPEN',
+            title: 'Restricted token PR',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        };
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toEqual(expected);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[0]?.args.slice(0, -2)).toEqual(ghPrCalls[1]?.args.slice(0, -2));
+        expect(jsonFields(ghPrCalls[0]?.args)).toBe(
+            'url,number,title,state,reviewDecision,statusCheckRollup'
+        );
+        expect(jsonFields(ghPrCalls[1]?.args)).toBe('url,number,title,state,reviewDecision');
+
+        const cachedEntry = [...harness.cacheFiles.values()].at(0);
+        expect(JSON.parse(cachedEntry?.content ?? '')).toEqual({
+            checksQueried: true,
+            data: expected,
+            version: 1
+        });
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toEqual(expected);
+        const cachedGhPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(cachedGhPrCalls).toHaveLength(2);
+    });
+
+    // A branch named like a flag (a planted HEAD can say `ref: refs/heads/--web`)
+    // must stay an argument
+    it('passes the branch to gh after --, so it can\'t become a flag', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.setCurrentRef('--web');
+        harness.ghResponses.push('');
+        harness.ghResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr' && call.args.includes('--repo'));
+        expect(pinned.length).toBeGreaterThan(0);
+        for (const call of pinned) {
+            expect(call.args.slice(-2)).toEqual(['--', '--web']);
+        }
+    });
+
+    it('passes the branch to glab after --, so it can\'t become a flag', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.setCurrentRef('--web');
+        harness.glabResponses.push('');
+        harness.glabResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr' && call.args.includes('--repo'));
+        expect(pinned.length).toBeGreaterThan(0);
+        for (const call of pinned) {
+            expect(call.args.slice(-2)).toEqual(['--', '--web']);
+        }
+    });
+
+    // With a tag of the same name, `git symbolic-ref --short HEAD` says
+    // `heads/<branch>`, a branch no PR is on
+    it('pins gh to the branch\'s own name when a tag has the same name', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.addTag('feature/cache-a');
+        harness.ghResponses.push('');
+        harness.ghResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr' && call.args.includes('--repo'));
+        expect(pinned.map(call => call.args.slice(-2))).toEqual([['--', 'feature/cache-a']]);
+    });
+
+    it('pins glab to the branch\'s own name when a tag has the same name', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.addTag('feature/cache-a');
+        harness.glabResponses.push('');
+        harness.glabResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr' && call.args.includes('--repo'));
+        expect(pinned.map(call => call.args.slice(-2))).toEqual([['--', 'feature/cache-a']]);
+    });
+
+    it('passes the SSH host after --, so a host named like an option stays a host', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@-oProxyCommand=x:owner/repo.git');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        // The remote parser lowercases hosts
+        expect(sshCalls.map(call => call.args)).toEqual(sshCalls.map(() => ['-G', '--', '-oproxycommand=x']));
+        expect(sshCalls.length).toBeGreaterThan(0);
     });
 
     it('falls back to --repo <origin> for forked GitHub repos when gh\'s default resolves elsewhere', () => {
@@ -324,6 +815,113 @@ describe('git-review-cache', () => {
         expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
         expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
+    });
+
+    it('reuses the pinned PR target for the metadata-only compatibility retry', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(JSON.stringify({
+            number: 1,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Forked PR',
+            url: 'https://github.com/fork-owner/example-repo/pull/1'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toEqual({
+            number: 1,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Forked PR',
+            url: 'https://github.com/fork-owner/example-repo/pull/1'
+        });
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(3);
+        expect(withoutJsonFields(ghPrCalls[1]?.args)).toEqual(withoutJsonFields(ghPrCalls[2]?.args));
+        expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
+        expect(jsonFields(ghPrCalls[2]?.args)).toBe('url,number,title,state,reviewDecision');
+    });
+
+    it('resolves SSH host aliases before selecting GitHub and pinning --repo', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@mygit:owner/repo.git');
+        harness.setSshHostAlias('mygit', 'github.com');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1485,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Alias PR',
+            url: 'https://github.com/owner/repo/pull/1485'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 1485,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Alias PR',
+            url: 'https://github.com/owner/repo/pull/1485'
+        });
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        expect(sshCalls.length).toBeGreaterThan(0);
+        expect(sshCalls.every(call => call.args.join(' ') === '-G -- mygit')).toBe(true);
+
+        const ghAuthCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'auth'
+        );
+        expect(ghAuthCalls).toHaveLength(0);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[0]?.args).not.toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
+    });
+
+    it('preserves canonical GitHub SSH hosts when SSH config points at a transport endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.com:owner/repo.git');
+        harness.setSshHostAlias('github.com', 'ssh.github.com');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1486,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Canonical GitHub PR',
+            url: 'https://github.com/owner/repo/pull/1486'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 1486,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Canonical GitHub PR',
+            url: 'https://github.com/owner/repo/pull/1486'
+        });
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        expect(sshCalls).toHaveLength(0);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
+        expect(ghPrCalls[1]?.args).not.toContain('https://ssh.github.com/owner/repo');
     });
 
     it('falls back to --repo <origin> for forked GitLab repos when glab\'s default resolves elsewhere', () => {
@@ -476,7 +1074,11 @@ describe('git-review-cache', () => {
         );
         expect(ghPrCalls).toHaveLength(0);
         const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
-        expect(cachedMissEntry?.content).toBe('');
+        expect(JSON.parse(cachedMissEntry?.content ?? '')).toEqual({
+            checksQueried: true,
+            data: null,
+            version: 1
+        });
     });
 
     it('prefers glab over gh for unknown host when both CLIs are authed', () => {
@@ -509,5 +1111,48 @@ describe('git-review-cache', () => {
             call => call.cmd === 'glab' && call.args[0] === 'mr'
         );
         expect(glabMrCalls).toHaveLength(1);
+    });
+
+    it('keys the cache through the render context runGit without spawning git for the ref', () => {
+        const harness = createHarness();
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+        harness.execCalls.length = 0;
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'symbolic-ref --short HEAD' ? 'feature/cache-a' : null;
+            }
+        };
+
+        expect(getCachedGitReviewData('/tmp/repo', { context: { data: { cwd: '/tmp/repo' } } }, deps)).toBeNull();
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD']);
+        expect(harness.execCalls.filter(call => call.cmd === 'git')).toEqual([]);
+        // Same cache file (and so the same lock the refresh child releases)
+        // as the uncached lookup.
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
+    });
+
+    it('falls back to rev-parse through runGit on a detached HEAD', () => {
+        const harness = createHarness();
+        harness.setCurrentRef('');
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'rev-parse --short HEAD' ? 'abc123' : null;
+            }
+        };
+
+        getCachedGitReviewData('/tmp/repo', { context: {} }, deps);
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD', 'rev-parse --short HEAD']);
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
     });
 });

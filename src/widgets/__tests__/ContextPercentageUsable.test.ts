@@ -1,7 +1,10 @@
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type {
@@ -9,6 +12,7 @@ import type {
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import * as claudeSettings from '../../utils/claude-settings';
 import { ContextPercentageUsableWidget } from '../ContextPercentageUsable';
 
 function render(modelId: string | undefined, contextLength: number, rawValue = false, inverse = false) {
@@ -34,6 +38,61 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
 }
 
 describe('ContextPercentageUsableWidget', () => {
+    const envKeys = ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT'];
+    const originalEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+
+    beforeEach(() => {
+        vi.spyOn(claudeSettings, 'getAutoCompactConfig').mockReturnValue({});
+        for (const key of envKeys) {
+            Reflect.deleteProperty(process.env, key);
+        }
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        for (const key of envKeys) {
+            const value = originalEnv[key];
+            if (value === undefined) {
+                Reflect.deleteProperty(process.env, key);
+            } else {
+                process.env[key] = value;
+            }
+        }
+    });
+
+    it('shows 96k of a configured 120k usable budget as 80%, or 20% remaining', () => {
+        process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '60';
+        expect(render(undefined, 96000)).toBe('Ctx(u) Used: 80.0%');
+        expect(render(undefined, 96000, false, true)).toBe('Ctx(u) Left: 20.0%');
+    });
+
+    it('uses the project root from the payload for compaction settings', () => {
+        const readConfig = vi.spyOn(claudeSettings, 'getAutoCompactConfig').mockReturnValue({ windowSize: 200000 });
+        const context: RenderContext = {
+            data: {
+                cwd: '/project/nested',
+                workspace: { project_dir: '/project' },
+                context_window: { context_window_size: 1000000, current_usage: 80000 }
+            }
+        };
+        expect(new ContextPercentageUsableWidget().render({ id: 'usable', type: 'context-percentage-usable' }, context, DEFAULT_SETTINGS))
+            .toBe('Ctx(u) Used: 50.0%');
+        expect(readConfig).toHaveBeenCalledWith('/project');
+    });
+
+    it('uses the full window when auto-compaction is disabled', () => {
+        process.env.DISABLE_AUTO_COMPACT = '1';
+        expect(render(undefined, 100000)).toBe('Ctx(u) Used: 50.0%');
+    });
+
+    it('keeps preview samples independent of compaction settings', () => {
+        const context: RenderContext = { isPreview: true };
+        process.env.DISABLE_AUTO_COMPACT = '1';
+        expect(new ContextPercentageUsableWidget().render({ id: 'usable', type: 'context-percentage-usable' }, context, DEFAULT_SETTINGS))
+            .toBe('Ctx(u) Used: 11.6%');
+        expect(claudeSettings.getAutoCompactConfig).not.toHaveBeenCalled();
+    });
+
     it('toggles inverse metadata and editor modifier', () => {
         const widget = new ContextPercentageUsableWidget();
         const base: WidgetItem = {

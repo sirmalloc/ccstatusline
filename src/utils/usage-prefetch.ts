@@ -1,21 +1,50 @@
-import type { StatusJSON } from '../types/StatusJSON';
+import type {
+    RateLimitPeriod,
+    StatusJSON
+} from '../types/StatusJSON';
 import type { WidgetItem } from '../types/Widget';
+import { isHidden } from '../widgets/shared/hideable';
+import {
+    SESSION_AT_LIMIT_HIDEABLE_STATE,
+    SESSION_UNDER_LIMIT_HIDEABLE_STATE
+} from '../widgets/shared/usage-display';
 
 import type { UsageData } from './usage';
-import { fetchUsageData } from './usage';
+import {
+    fetchUsageData,
+    isStaleUsageFallback
+} from './usage';
+import type { UsageDataField } from './usage-types';
+import {
+    WEEKLY_MODEL_USAGE_BUCKETS,
+    setUsageField
+} from './usage-types';
 
-type UsageDataField = Exclude<keyof UsageData, 'error'>;
-
-const USAGE_WIDGET_TYPES = new Set<string>([
+// Non-model usage widgets/fields. The per-model ones (weekly-sonnet-usage,
+// weekly-opus-usage, ...) are derived below from WEEKLY_MODEL_USAGE_BUCKETS so
+// that adding a model bucket can't desync one of these tables from the others.
+const BASE_USAGE_WIDGET_TYPES = [
     'session-usage',
+    'block-forecast',
+    'block-limit-timer',
     'weekly-usage',
-    'weekly-sonnet-usage',
-    'weekly-opus-usage',
+    'weekly-limit-timer',
+    'fable-weekly-limit-timer',
     'block-timer',
     'reset-timer',
     'weekly-reset-timer',
     'extra-usage-utilization',
-    'extra-usage-remaining'
+    'extra-usage-remaining',
+    'extra-usage-used',
+    'extra-usage-limit',
+    'extra-usage-daily-budget',
+    'spend-limit-usage',
+    'spend-limit-amount'
+];
+
+const USAGE_WIDGET_TYPES = new Set<string>([
+    ...BASE_USAGE_WIDGET_TYPES,
+    ...WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => bucket.widgetType)
 ]);
 
 const USAGE_DATA_FIELDS: UsageDataField[] = [
@@ -23,36 +52,62 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
     'sessionResetAt',
     'weeklyUsage',
     'weeklyResetAt',
-    'weeklySonnetUsage',
-    'weeklySonnetResetAt',
-    'weeklyOpusUsage',
-    'weeklyOpusResetAt',
+    ...WEEKLY_MODEL_USAGE_BUCKETS.flatMap(bucket => [bucket.usageField, bucket.resetField]),
+    'spendLimitUsage',
+    'spendLimitUsedUsd',
+    'spendLimitLimitUsd',
     'extraUsageEnabled',
     'extraUsageLimit',
     'extraUsageUsed',
-    'extraUsageUtilization'
+    'extraUsageUtilization',
+    'extraUsageCurrency'
 ];
 
 interface UsageFieldRequirement {
     alternatives?: UsageDataField[];
     field: UsageDataField;
+    // Fetch the field from the usage API even when the payload has it
+    fromApi?: boolean;
+    suppressFetchError?: boolean;
 }
 
 const EMPTY_USAGE_REQUIREMENTS: UsageFieldRequirement[] = [];
 
+// The spend limit widgets have no entry here on purpose: rate_limits.spend_limit
+// only exists in the statusline payload, so a missing value must not trigger an
+// OAuth usage fetch.
 const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'session-usage': [{ field: 'sessionUsage' }],
+    // The forecast widgets render nothing without data, so a failed fetch made only
+    // for them isn't an error for the rest of the line.
+    'block-forecast': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
+    'block-limit-timer': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
+    'weekly-limit-timer': [{ field: 'weeklyUsage', suppressFetchError: true }, { field: 'weeklyResetAt', suppressFetchError: true }],
+    // Fable's window resets with the all-models one when the API sends no reset of its own
+    'fable-weekly-limit-timer': [{ field: 'fableUsage', suppressFetchError: true }, { field: 'fableResetAt', alternatives: ['weeklyResetAt'], suppressFetchError: true }],
     'weekly-usage': [{ field: 'weeklyUsage' }],
-    'weekly-sonnet-usage': [{ field: 'weeklySonnetUsage' }],
-    'weekly-opus-usage': [{ field: 'weeklyOpusUsage' }],
-    'block-timer': [{ field: 'sessionResetAt' }],
-    'reset-timer': [{ field: 'sessionResetAt' }],
-    'weekly-reset-timer': [{ field: 'weeklyResetAt' }],
+    ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, [{ field: bucket.usageField }]])),
+    'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
+    'reset-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
+    'weekly-reset-timer': [{ field: 'weeklyResetAt', suppressFetchError: true }],
     'extra-usage-utilization': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageUtilization' }
     ],
     'extra-usage-remaining': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageLimit' },
+        { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-used': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-limit': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageLimit' }
+    ],
+    'extra-usage-daily-budget': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageLimit' },
         { field: 'extraUsageUsed' }
@@ -62,9 +117,29 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
 const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     'session-usage': { field: 'sessionResetAt' },
     'weekly-usage': { field: 'weeklyResetAt' },
-    'weekly-sonnet-usage': { field: 'weeklySonnetResetAt', alternatives: ['weeklyResetAt'] },
-    'weekly-opus-usage': { field: 'weeklyOpusResetAt', alternatives: ['weeklyResetAt'] }
+    ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, { field: bucket.resetField, alternatives: ['weeklyResetAt'] }]))
 };
+
+// Block Reset Timer's under-limit and Block Usage's at-limit hide states read
+// the 5-hour block's percent from the usage API, kept as apiSessionUsage. The
+// payload's percent comes from this session's last response, so in a session
+// left idle while others use up the limit it never reaches 100%. Like the
+// timer's own reset requirement, a failed fetch made only for it isn't an
+// error, and the payload's percent stands in.
+const SESSION_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', fromApi: true, suppressFetchError: true };
+
+function readsSessionLimit(item: WidgetItem): boolean {
+    return (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key))
+        || (item.type === 'session-usage' && isHidden(item, SESSION_AT_LIMIT_HIDEABLE_STATE.key));
+}
+
+// A cached answer can outlive its block: the cache is reused for minutes, and
+// for as long as the API keeps failing. Once its block has reset, its percent
+// says nothing about the current one.
+function isFromCurrentBlock(apiData: UsageData): boolean {
+    const resetAtMs = apiData.sessionResetAt === undefined ? Number.NaN : Date.parse(apiData.sessionResetAt);
+    return Number.isNaN(resetAtMs) || resetAtMs > Date.now();
+}
 
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
@@ -85,6 +160,10 @@ function getUsageFieldRequirements(lines: WidgetItem[][]): UsageFieldRequirement
             if (cursorRequirement && isUsageCursorEnabled(item)) {
                 requirements.push(cursorRequirement);
             }
+
+            if (readsSessionLimit(item)) {
+                requirements.push(SESSION_LIMIT_HIDE_REQUIREMENT);
+            }
         }
     }
 
@@ -103,16 +182,26 @@ function isUsageRequirementSatisfied(data: UsageData | null, requirement: UsageF
     return requirement.alternatives?.some(field => hasUsageDataField(data, field)) ?? false;
 }
 
-function getMissingFetchFields(data: UsageData | null, requirements: UsageFieldRequirement[]): UsageDataField[] {
+function getMissingFetchRequirements(
+    data: UsageData | null,
+    requirements: UsageFieldRequirement[]
+): { fields: UsageDataField[]; suppressFetchError: boolean } {
     const missing = new Set<UsageDataField>();
+    let hasUnsuppressedMissingRequirement = false;
 
     for (const requirement of requirements) {
-        if (!isUsageRequirementSatisfied(data, requirement)) {
+        if (requirement.fromApi || !isUsageRequirementSatisfied(data, requirement)) {
             missing.add(requirement.field);
+            if (!requirement.suppressFetchError) {
+                hasUnsuppressedMissingRequirement = true;
+            }
         }
     }
 
-    return Array.from(missing);
+    return {
+        fields: Array.from(missing),
+        suppressFetchError: missing.size > 0 && !hasUnsuppressedMissingRequirement
+    };
 }
 
 function hasAnyUsageDataField(data: UsageData | null | undefined): boolean {
@@ -120,20 +209,16 @@ function hasAnyUsageDataField(data: UsageData | null | undefined): boolean {
 }
 
 function pickDefinedUsageFields(data: UsageData | null | undefined): Partial<UsageData> {
-    return {
-        ...(data?.sessionUsage !== undefined ? { sessionUsage: data.sessionUsage } : {}),
-        ...(data?.sessionResetAt !== undefined ? { sessionResetAt: data.sessionResetAt } : {}),
-        ...(data?.weeklyUsage !== undefined ? { weeklyUsage: data.weeklyUsage } : {}),
-        ...(data?.weeklyResetAt !== undefined ? { weeklyResetAt: data.weeklyResetAt } : {}),
-        ...(data?.weeklySonnetUsage !== undefined ? { weeklySonnetUsage: data.weeklySonnetUsage } : {}),
-        ...(data?.weeklySonnetResetAt !== undefined ? { weeklySonnetResetAt: data.weeklySonnetResetAt } : {}),
-        ...(data?.weeklyOpusUsage !== undefined ? { weeklyOpusUsage: data.weeklyOpusUsage } : {}),
-        ...(data?.weeklyOpusResetAt !== undefined ? { weeklyOpusResetAt: data.weeklyOpusResetAt } : {}),
-        ...(data?.extraUsageEnabled !== undefined ? { extraUsageEnabled: data.extraUsageEnabled } : {}),
-        ...(data?.extraUsageLimit !== undefined ? { extraUsageLimit: data.extraUsageLimit } : {}),
-        ...(data?.extraUsageUsed !== undefined ? { extraUsageUsed: data.extraUsageUsed } : {}),
-        ...(data?.extraUsageUtilization !== undefined ? { extraUsageUtilization: data.extraUsageUtilization } : {})
-    };
+    const picked: Partial<UsageData> = {};
+
+    for (const field of USAGE_DATA_FIELDS) {
+        const value = data?.[field];
+        if (value !== undefined) {
+            setUsageField(picked, field, value);
+        }
+    }
+
+    return picked;
 }
 
 function mergeUsageData(rateLimitsData: UsageData | null, apiData: UsageData): UsageData {
@@ -151,32 +236,46 @@ function epochSecondsToIsoString(epochSeconds: number | null | undefined): strin
     return new Date(epochSeconds * 1000).toISOString();
 }
 
+// A null legacy per-model bucket is ambiguous: migrated accounts can report it
+// alongside an authoritative weekly_scoped API limit. Keep it unset here so
+// prefetching checks the API before parseUsageApiResponse applies its legacy
+// null-bucket fallback.
+function getRateLimitBucketUsage(bucket: RateLimitPeriod | null | undefined): number | undefined {
+    return bucket?.used_percentage ?? undefined;
+}
+
 export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limits']): UsageData | null {
     if (!rateLimits) {
         return null;
     }
 
-    const sessionUsage = rateLimits.five_hour?.used_percentage ?? undefined;
-    const sessionResetAt = epochSecondsToIsoString(rateLimits.five_hour?.resets_at);
-    const weeklyUsage = rateLimits.seven_day?.used_percentage ?? undefined;
-    const weeklyResetAt = epochSecondsToIsoString(rateLimits.seven_day?.resets_at);
-    const weeklySonnetUsage = rateLimits.seven_day_sonnet === null ? 0 : rateLimits.seven_day_sonnet?.used_percentage ?? undefined;
-    const weeklySonnetResetAt = epochSecondsToIsoString(rateLimits.seven_day_sonnet?.resets_at);
-    const weeklyOpusUsage = rateLimits.seven_day_opus === null ? 0 : rateLimits.seven_day_opus?.used_percentage ?? undefined;
-    const weeklyOpusResetAt = epochSecondsToIsoString(rateLimits.seven_day_opus?.resets_at);
+    // rate_limits is keyed by fixed, schema-declared bucket names (five_hour,
+    // seven_day, seven_day_sonnet, ...); WEEKLY_MODEL_USAGE_BUCKETS.apiBucketKey
+    // values are those same names, kept in sync via the schema-parity test in
+    // usage-fetch.test.ts, so this lookup is safe despite the untyped index.
+    const rateLimitBuckets = rateLimits as unknown as Record<string, RateLimitPeriod | null | undefined>;
 
-    // Note: rate_limits does not include extra_usage data (extraUsageEnabled, etc.).
-    // Those fields are only available via the API fetch path.
     const usageData: UsageData = {
-        sessionUsage,
-        sessionResetAt,
-        weeklyUsage,
-        weeklyResetAt,
-        weeklySonnetUsage,
-        weeklySonnetResetAt,
-        weeklyOpusUsage,
-        weeklyOpusResetAt
+        sessionUsage: rateLimits.five_hour?.used_percentage ?? undefined,
+        sessionResetAt: epochSecondsToIsoString(rateLimits.five_hour?.resets_at),
+        weeklyUsage: rateLimits.seven_day?.used_percentage ?? undefined,
+        weeklyResetAt: epochSecondsToIsoString(rateLimits.seven_day?.resets_at),
+        spendLimitUsage: rateLimits.spend_limit?.used_percentage ?? undefined,
+        spendLimitUsedUsd: rateLimits.spend_limit?.used_usd ?? undefined,
+        spendLimitLimitUsd: rateLimits.spend_limit?.limit_usd ?? undefined
+        // Note: rate_limits does not include extra_usage data (extraUsageEnabled, etc.).
+        // Those fields are only available via the API fetch path.
     };
+
+    for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+        if (!bucket.apiBucketKey) {
+            continue;
+        }
+
+        const rateLimitBucket = rateLimitBuckets[bucket.apiBucketKey];
+        setUsageField(usageData, bucket.usageField, getRateLimitBucketUsage(rateLimitBucket));
+        setUsageField(usageData, bucket.resetField, epochSecondsToIsoString(rateLimitBucket?.resets_at));
+    }
 
     return hasAnyUsageDataField(usageData) ? usageData : null;
 }
@@ -188,12 +287,25 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
-    const missingFields = getMissingFetchFields(rateLimitsData, requirements);
+    const missingRequirements = getMissingFetchRequirements(rateLimitsData, requirements);
+    const missingFields = missingRequirements.fields;
 
     if (missingFields.length === 0) {
         return rateLimitsData;
     }
 
     const apiData = await fetchUsageData({ requiredFields: missingFields });
-    return mergeUsageData(rateLimitsData, apiData);
+    if (apiData.error && missingRequirements.suppressFetchError) {
+        return hasAnyUsageDataField(apiData)
+            ? mergeUsageData(rateLimitsData, { ...apiData, error: undefined })
+            : rateLimitsData;
+    }
+
+    const usageData = mergeUsageData(rateLimitsData, apiData);
+    // A stale fallback is the last good cache, served while the API can't be reached
+    // once it has outlived a refresh, so like a failed fetch it leaves the payload's percent to decide
+    if (requirements.includes(SESSION_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData) && !isStaleUsageFallback(apiData)) {
+        usageData.apiSessionUsage = apiData.sessionUsage;
+    }
+    return usageData;
 }

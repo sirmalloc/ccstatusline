@@ -1,5 +1,5 @@
-import { execFile } from 'child_process';
-import * as https from 'https';
+import { execFile } from 'node:child_process';
+import * as https from 'node:https';
 
 import type {
     InstallationMetadata,
@@ -12,7 +12,10 @@ import {
     classifyInstallation,
     type PackageCommandAvailability
 } from './claude-settings';
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export const NPM_REGISTRY_LATEST_URL = 'https://registry.npmjs.org/ccstatusline/latest';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5000;
@@ -66,9 +69,18 @@ export interface CheckForUpdatesOptions extends Omit<BuildUpdateCheckResultOptio
 
 export interface RunGlobalPackageInstallOptions { platform?: NodeJS.Platform }
 
+// A plain release version (semver). The version goes into the install
+// commands the TUI shows and, for npm on Windows, into a cmd.exe command line,
+// so nothing that a shell could read as syntax gets through.
+const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+function isReleaseVersion(version: string): boolean {
+    return RELEASE_VERSION.test(version);
+}
+
 function parseVersion(version: string): number[] {
     return version.split(/[.-]/).map((part) => {
-        const parsed = parseInt(part, 10);
+        const parsed = Number.parseInt(part, 10);
         return Number.isFinite(parsed) ? parsed : 0;
     });
 }
@@ -224,6 +236,10 @@ export async function checkForUpdates({
 }: CheckForUpdatesOptions): Promise<UpdateCheckResult> {
     try {
         const latestVersion = await latestVersionFetcher(timeoutMs);
+        if (!isReleaseVersion(latestVersion)) {
+            throw new Error('npm registry returned an invalid version');
+        }
+
         return buildUpdateCheckResult({
             currentVersion,
             latestVersion,
@@ -295,20 +311,33 @@ export function runGlobalPackageInstall(
     version: string,
     { platform = process.platform }: RunGlobalPackageInstallOptions = {}
 ): Promise<void> {
+    if (!isReleaseVersion(version)) {
+        return Promise.reject(new Error('Not a release version of ccstatusline'));
+    }
+
     const executable = getPackageManagerExecutable(packageManager, platform);
     const args = packageManager === 'npm'
         ? ['install', '-g', `ccstatusline@${version}`]
         : ['add', '-g', `ccstatusline@${version}`];
 
     return new Promise((resolve, reject) => {
-        execFile(executable, args, { timeout: GLOBAL_UPDATE_TIMEOUT_MS, windowsHide: true }, (error) => {
-            if (error) {
-                reject(error instanceof Error ? error : new Error('Global update command failed'));
-                return;
-            }
+        execFile(
+            executable,
+            args,
+            {
+                timeout: GLOBAL_UPDATE_TIMEOUT_MS,
+                windowsHide: true,
+                ...getPackageManagerShellOptions(executable, platform)
+            },
+            (error) => {
+                if (error) {
+                    reject(error instanceof Error ? error : new Error('Global update command failed'));
+                    return;
+                }
 
-            resolve();
-        });
+                resolve();
+            }
+        );
     });
 }
 

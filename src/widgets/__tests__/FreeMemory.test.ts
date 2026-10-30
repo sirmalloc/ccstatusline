@@ -1,5 +1,5 @@
-import * as childProcess from 'child_process';
-import os from 'os';
+import * as childProcess from 'node:child_process';
+import os from 'node:os';
 import {
     afterEach,
     beforeEach,
@@ -78,6 +78,17 @@ describe('FreeMemoryWidget', () => {
             const result = widget.render(item, context, DEFAULT_SETTINGS);
 
             expect(result).toBe('12.4G/16.0G');
+        });
+
+        it('should format mock data with the selected memory style', () => {
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = {
+                id: 'mem',
+                type: 'free-memory',
+                numberFormat: { style: 'whole' }
+            };
+
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Mem: 12G/16G');
         });
     });
 
@@ -190,6 +201,29 @@ Pages wired down:                        100000.
             const result = widget.render(item, context, DEFAULT_SETTINGS);
 
             expect(result).toBe('512M/1.0G');
+        });
+
+        it('should promote to the next unit when the rounded value would reach 1024', () => {
+            mockTotalmem.mockReturnValue(2 * 1024 ** 3); // 2GB total
+            mockFreemem.mockReturnValue(2 * 1024 ** 3 - 1023.6 * 1024 ** 2); // 1023.6MB used
+
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };
+
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('1.0G/2.0G');
+
+            mockFreemem.mockReturnValue(2 * 1024 ** 3 - 1023.6 * 1024); // 1023.6KB used
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('1M/2.0G');
+        });
+
+        it('should keep values below the rounding boundary in the smaller unit', () => {
+            mockTotalmem.mockReturnValue(2 * 1024 ** 3); // 2GB total
+            mockFreemem.mockReturnValue(2 * 1024 ** 3 - 1023.4 * 1024 ** 2); // 1023.4MB used
+
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };
+
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('1023M/2.0G');
         });
     });
 });

@@ -7,6 +7,15 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
+import {
+    getFormat,
+    getFormatKeybinds,
+    getFormatModifierText,
+    handleFormatAction,
+    type FormatOptions
+} from './shared/format-options';
+import { isNerdFontEnabled } from './shared/metadata';
+
 const VIM_ICON = 'v';
 const VIM_NERD_FONT_ICON = '\uE62B';
 
@@ -14,58 +23,17 @@ const FORMATS = ['icon-dash-letter', 'icon-letter', 'icon', 'letter', 'word'] as
 type VimFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: VimFormat = 'icon-dash-letter';
-const CYCLE_FORMAT_ACTION = 'cycle-format';
-const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const NERD_FONT_METADATA_KEY = 'nerdFont';
 
-function getFormat(item: WidgetItem): VimFormat {
-    const f = item.metadata?.format;
-    return (FORMATS as readonly string[]).includes(f ?? '') ? (f as VimFormat) : DEFAULT_FORMAT;
+function canUseNerdFont(item: WidgetItem): boolean {
+    const format = getFormat(item, FORMAT_OPTIONS);
+    return format === 'icon-dash-letter' || format === 'icon-letter' || format === 'icon';
 }
 
-function setFormat(item: WidgetItem, format: VimFormat): WidgetItem {
-    if (format === DEFAULT_FORMAT) {
-        const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
-        void removedFormat;
-
-        return {
-            ...item,
-            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-        };
-    }
-
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            format
-        }
-    };
-}
-
-function isNerdFontEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
-}
-
-function toggleNerdFont(item: WidgetItem): WidgetItem {
-    if (!isNerdFontEnabled(item)) {
-        return {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                [NERD_FONT_METADATA_KEY]: 'true'
-            }
-        };
-    }
-
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
-}
+const FORMAT_OPTIONS: FormatOptions<VimFormat> = {
+    formats: FORMATS,
+    defaultFormat: DEFAULT_FORMAT,
+    canUseNerdFont
+};
 
 function formatMode(mode: string, format: VimFormat, icon: string): string {
     const letter = mode === 'NORMAL' ? 'N' : mode === 'INSERT' ? 'I' : (mode[0] ?? mode);
@@ -85,35 +53,19 @@ export class VimModeWidget implements Widget {
     getCategory(): string { return 'Core'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [getFormat(item)];
-        if (isNerdFontEnabled(item)) {
-            modifiers.push('nerd font');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: `(${modifiers.join(', ')})`
+            modifierText: getFormatModifierText(item, FORMAT_OPTIONS)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === CYCLE_FORMAT_ACTION) {
-            const currentFormat = getFormat(item);
-            const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
-
-            return setFormat(item, nextFormat);
-        }
-
-        if (action === TOGGLE_NERD_FONT_ACTION) {
-            return toggleNerdFont(item);
-        }
-
-        return null;
+        return handleFormatAction(action, item, FORMAT_OPTIONS);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const format = getFormat(item);
-        const icon = isNerdFontEnabled(item) ? VIM_NERD_FONT_ICON : VIM_ICON;
+        const format = getFormat(item, FORMAT_OPTIONS);
+        const icon = isNerdFontEnabled(item, FORMAT_OPTIONS) ? VIM_NERD_FONT_ICON : VIM_ICON;
 
         if (context.isPreview)
             return formatMode('NORMAL', format, icon);
@@ -125,11 +77,8 @@ export class VimModeWidget implements Widget {
         return formatMode(mode, format, icon);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION },
-            { key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getFormatKeybinds(item, FORMAT_OPTIONS);
     }
 
     supportsRawValue(): boolean { return false; }

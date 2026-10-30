@@ -1,7 +1,7 @@
-import * as childProcess from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as childProcess from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
     afterAll,
     afterEach,
@@ -17,22 +17,26 @@ import {
     CCSTATUSLINE_COMMANDS,
     buildStatusLineCommand,
     classifyInstallation,
+    getAutoCompactConfig,
     getClaudeCodeVersion,
     getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
     getRefreshInterval,
+    getRemoteControlStatus,
+    getSandboxConfig,
     getVoiceConfig,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
     isInstalled,
     isKnownCommand,
     loadClaudeSettings,
+    loadClaudeSettingsSync,
     saveClaudeSettings,
     setRefreshInterval,
     uninstallStatusLine
 } from '../claude-settings';
-import { initConfigPath } from '../config';
+import * as config from '../config';
 
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let testClaudeConfigDir = '';
@@ -59,12 +63,25 @@ function writeRawClaudeSettings(content: string): void {
 
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
+    // Every home lookup in this file resolves into the temp directory: an
+    // install test must never touch the developer's real configs, even when
+    // a code change (or a mutation-testing mutant) breaks the settings parse
+    // and the code path materialises defaults.
+    vi.spyOn(os, 'homedir').mockReturnValue(testClaudeConfigDir);
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
-    initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
+    config.initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
 
 afterEach(() => {
-    initConfigPath();
+    vi.restoreAllMocks();
+    config.initConfigPath();
+    // Tests may delete CLAUDE_CONFIG_DIR (the default-path resolution test);
+    // restore it so later tests and other files don't reach the real home
+    if (ORIGINAL_CLAUDE_CONFIG_DIR === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+        process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+    }
     if (testClaudeConfigDir) {
         fs.rmSync(testClaudeConfigDir, { recursive: true, force: true });
     }
@@ -76,6 +93,49 @@ afterAll(() => {
     } else {
         process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
     }
+});
+
+describe('getAutoCompactConfig', () => {
+    function writeLayer(relativePath: string, value: unknown): void {
+        const file = path.join(testClaudeConfigDir, relativePath);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(value));
+    }
+
+    it('reads token counts from the overridden Claude config directory', () => {
+        writeLayer('settings.json', { autoCompactWindow: 200000, autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 200000 });
+    });
+
+    it('merges each field independently with local settings above project and user settings', () => {
+        writeLayer('settings.json', { autoCompactWindow: 800000, autoCompactEnabled: false });
+        writeLayer('settings.local.json', { autoCompactWindow: 600000 });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 400000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.local.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: true, windowSize: 200000 });
+    });
+
+    it('ignores malformed fields individually and never rewrites malformed JSON', () => {
+        writeLayer('settings.json', { autoCompactWindow: 500000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: '60', autoCompactEnabled: false });
+        const localFile = path.join(testClaudeConfigDir, 'project/.claude/settings.local.json');
+        fs.writeFileSync(localFile, '{ invalid JSON');
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 500000 });
+        expect(fs.readFileSync(localFile, 'utf-8')).toBe('{ invalid JSON');
+    });
+
+    it.each([80, 0, -1, 1000001, 200000.5, null, '200000'])('ignores an invalid window of %s', (window) => {
+        writeLayer('settings.json', { autoCompactWindow: window });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBeUndefined();
+    });
+
+    it('refreshes settings and does not leak values between projects', () => {
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(200000);
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(300000);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'other')).windowSize).toBeUndefined();
+    });
 });
 
 describe('isKnownCommand', () => {
@@ -198,49 +258,55 @@ describe('Claude config paths', () => {
 
 describe('buildCommand via installStatusLine', () => {
     it('should use base command when no custom config path', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 
     it('should append --config with simple path (no quoting needed)', async () => {
-        initConfigPath('/tmp/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/tmp/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`);
     });
 
     it('should quote path with spaces', async () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my path/settings.json'`);
     });
 
     it('should quote path with parentheses', async () => {
-        initConfigPath('/my(path)/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my(path)/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my(path)/settings.json'`);
     });
 
     it('should escape embedded single quotes in path', async () => {
-        initConfigPath('/my\'path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my\'path/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my'\\''path/settings.json'`);
     });
 
     it('should use bunx command when commandMode is auto-bunx', async () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         await installStatusLine({ commandMode: 'auto-bunx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
     });
 
     it('should generate global command with custom config path', () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         expect(buildStatusLineCommand('global')).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config '/my path/settings.json'`);
     });
 
     it('should install global command for pinned installs and save metadata', async () => {
         const configPath = path.join(testClaudeConfigDir, 'pinned-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
 
         await installStatusLine({
             commandMode: 'global',
@@ -260,7 +326,7 @@ describe('buildCommand via installStatusLine', () => {
 
     it('should sync hooks on install when settings include hook-enabled widgets', async () => {
         const configPath = path.join(testClaudeConfigDir, 'ccstatusline-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
         const settingsWithSkills = {
             ...DEFAULT_SETTINGS,
             lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
@@ -290,7 +356,7 @@ describe('buildCommand via installStatusLine', () => {
 
     it('should sync hooks from the final global statusline command', async () => {
         const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
         fs.writeFileSync(configPath, JSON.stringify({
             ...DEFAULT_SETTINGS,
             lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
@@ -320,13 +386,13 @@ describe('buildCommand via installStatusLine', () => {
 
 describe('installStatusLine refreshInterval', () => {
     it('should set refreshInterval to 10 when version is supported', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(10);
     });
 
     it('should not set refreshInterval when version is unsupported', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
         expect(readInstalledRefreshInterval()).toBeUndefined();
     });
@@ -341,6 +407,19 @@ describe('installStatusLine refreshInterval', () => {
             }
         }));
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
+        expect(readInstalledRefreshInterval()).toBe(5);
+    });
+
+    it('should preserve existing refreshInterval when version is unsupported', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        }));
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
 });
@@ -412,6 +491,26 @@ describe('refreshInterval', () => {
         const settings = await loadClaudeSettings();
         expect(settings.statusLine).toBeUndefined();
     });
+
+    it('getRefreshInterval should return null without logging when settings cannot be loaded', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await expect(getRefreshInterval()).resolves.toBeNull();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('setRefreshInterval should leave unreadable settings untouched', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await setRefreshInterval(10);
+
+        const settingsPath = getClaudeSettingsPath();
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+        expect(fs.existsSync(`${settingsPath}.bak`)).toBe(false);
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
 });
 
 describe('backup and error handling behavior', () => {
@@ -459,6 +558,23 @@ describe('backup and error handling behavior', () => {
         expect(orig.statusLine?.command).toBe('old-command');
     });
 
+    // settings.json can hold secrets (env, apiKeyHelper), so its backups must
+    // not be readable by anyone who can't read it
+    it.skipIf(process.platform === 'win32')('gives .bak and .orig backups the permissions of a private settings file', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.bak`, 0o644);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.orig`).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.bak`).mode & 0o777).toBe(0o600);
+    });
+
     it('loadClaudeSettings should return empty object when settings file is missing', async () => {
         await expect(loadClaudeSettings()).resolves.toEqual({});
     });
@@ -488,25 +604,16 @@ describe('backup and error handling behavior', () => {
         }
     });
 
-    it('installStatusLine should warn and recover when existing settings are invalid', async () => {
+    it('installStatusLine should abort without touching existing settings that cannot be parsed', async () => {
         writeRawClaudeSettings('{ invalid json');
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        try {
-            await installStatusLine({ commandMode: 'auto-npx' });
+        const settingsPath = getClaudeSettingsPath();
 
-            const settingsPath = getClaudeSettingsPath();
-            const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
-            expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
-            expect(installed.statusLine?.padding).toBe(0);
-            expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
-            expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');
+        const installPromise = installStatusLine({ commandMode: 'auto-npx' });
+        await expect(installPromise).rejects.toThrow(settingsPath);
 
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `Warning: Could not read existing Claude settings. A backup exists at ${settingsPath}.orig.`
-            );
-        } finally {
-            consoleErrorSpy.mockRestore();
-        }
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+        expect(fs.existsSync(`${settingsPath}.bak`)).toBe(false);
+        expect(fs.existsSync(`${settingsPath}.orig`)).toBe(false);
     });
 
     it('uninstallStatusLine should warn and return without modifying invalid settings', async () => {
@@ -603,6 +710,68 @@ describe('backup and error handling behavior', () => {
         });
 
         await expect(isInstalled()).resolves.toBe(true);
+    });
+
+    it('installStatusLine should log and still install when the .orig backup cannot be written', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        // A directory where the backup file should go makes the backup write fail.
+        fs.mkdirSync(`${settingsPath}.orig`);
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { effortLevel?: string; statusLine?: { command?: string } };
+        expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
+        expect(installed.effortLevel).toBe('high');
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to backup Claude settings:', expect.anything());
+    });
+
+    it.each([
+        {
+            name: 'fails validation',
+            content: JSON.stringify({ colorLevel: 'not-a-level', lines: [[{ id: 'skills-1', type: 'skills' }]] })
+        },
+        {
+            name: 'is not valid JSON',
+            content: '{ "lines": [[{ "id": "skills-1", "type": "skills" }]]'
+        }
+    ])('installStatusLine should install without syncing hooks when the ccstatusline config $name', async ({ content }) => {
+        fs.writeFileSync(config.getConfigPath(), content, 'utf-8');
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        const claudeSettings = await loadClaudeSettings();
+        expect(claudeSettings.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
+        expect(claudeSettings.hooks).toBeUndefined();
+    });
+});
+
+describe('loadClaudeSettingsSync', () => {
+    it('should return an empty object when the settings file is missing', () => {
+        expect(loadClaudeSettingsSync()).toEqual({});
+    });
+
+    it('should parse the settings file', () => {
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'my-command', padding: 0 } }));
+
+        expect(loadClaudeSettingsSync()).toEqual({ statusLine: { type: 'command', command: 'my-command', padding: 0 } });
+    });
+
+    it('should log and throw when the settings file is invalid JSON', () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        expect(() => loadClaudeSettingsSync()).toThrow(SyntaxError);
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load Claude settings:', expect.anything());
+    });
+
+    it('should throw without logging when logErrors is false', () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        expect(() => loadClaudeSettingsSync({ logErrors: false })).toThrow(SyntaxError);
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 });
 
@@ -803,5 +972,164 @@ describe('getVoiceConfig', () => {
             writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
             expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
         });
+    });
+});
+
+describe('getSandboxConfig', () => {
+    let testSandboxProjectDir = '';
+
+    function writeRawUserLocalSettings(content: string): void {
+        const settingsPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectSettings(content: string): void {
+        const settingsPath = path.join(testSandboxProjectDir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectLocalSettings(content: string): void {
+        const settingsPath = path.join(testSandboxProjectDir, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    beforeEach(() => {
+        testSandboxProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-sandbox-project-'));
+    });
+
+    afterEach(() => {
+        if (testSandboxProjectDir) {
+            fs.rmSync(testSandboxProjectDir, { recursive: true, force: true });
+        }
+    });
+
+    it('returns null when no candidate file exists', () => {
+        expect(getSandboxConfig(testSandboxProjectDir)).toBeNull();
+    });
+
+    it('returns { enabled: false } when settings.json has no sandbox field', () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('returns { enabled: true } when sandbox.enabled is true', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('returns { enabled: false } when sandbox.enabled is false', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('returns { enabled: false } when sandbox exists but enabled is missing', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { network: { allowAll: true } } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('treats malformed JSON as "no override"', () => {
+        writeRawClaudeSettings('{ not json');
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('treats an unexpected sandbox shape as "no override"', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: 'on' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('respects CLAUDE_CONFIG_DIR env var', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getClaudeSettingsPath().startsWith(testClaudeConfigDir)).toBe(true);
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('project-local overrides project (where /sandbox writes)', () => {
+        writeRawProjectSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        writeRawProjectLocalSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('project overrides user-global', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('user-local overrides user-global', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawUserLocalSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('a layer without sandbox.enabled does not clobber a lower layer', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { network: {} } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('a malformed higher-priority layer does not clobber a defined lower layer', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawProjectLocalSettings('{ corrupt');
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('falls through layers without sandbox.enabled until it finds a defined value', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawUserLocalSettings(JSON.stringify({ effortLevel: 'high' }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { network: {} } }));
+        writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+});
+
+describe('getRemoteControlStatus', () => {
+    function writeSessionFile(name: string, content: string): void {
+        const sessionsDir = path.join(testClaudeConfigDir, 'sessions');
+        fs.mkdirSync(sessionsDir, { recursive: true });
+        fs.writeFileSync(path.join(sessionsDir, name), content, 'utf-8');
+    }
+
+    it('returns null without a session id', () => {
+        writeSessionFile('1.json', JSON.stringify({ sessionId: '', bridgeSessionId: 'bridge-1' }));
+
+        expect(getRemoteControlStatus(undefined)).toBeNull();
+        expect(getRemoteControlStatus('')).toBeNull();
+    });
+
+    it('returns null when the sessions directory does not exist', () => {
+        expect(getRemoteControlStatus('session-a')).toBeNull();
+    });
+
+    it('returns { enabled: true } when the matching session has a bridge attached', () => {
+        writeSessionFile('100.json', JSON.stringify({ sessionId: 'session-b', bridgeSessionId: 'bridge-b' }));
+        writeSessionFile('200.json', JSON.stringify({ sessionId: 'session-a', bridgeSessionId: 'bridge-a' }));
+
+        expect(getRemoteControlStatus('session-a')).toEqual({ enabled: true });
+    });
+
+    it.each([
+        { name: 'null', manifest: { sessionId: 'session-a', bridgeSessionId: null } },
+        { name: 'empty', manifest: { sessionId: 'session-a', bridgeSessionId: '' } },
+        { name: 'missing', manifest: { sessionId: 'session-a' } }
+    ])('returns { enabled: false } when the matching session\'s bridge id is $name', ({ manifest }) => {
+        writeSessionFile('100.json', JSON.stringify(manifest));
+
+        expect(getRemoteControlStatus('session-a')).toEqual({ enabled: false });
+    });
+
+    it('returns null when no readable, well-formed manifest matches the session', () => {
+        const matching = JSON.stringify({ sessionId: 'session-a', bridgeSessionId: 'bridge-a' });
+        // Only .json files are manifests.
+        writeSessionFile('notes.txt', matching);
+        // Unreadable as a file.
+        fs.mkdirSync(path.join(testClaudeConfigDir, 'sessions', 'dir.json'));
+        writeSessionFile('broken.json', '{ "sessionId": "session-a"');
+        writeSessionFile('wrong-shape.json', JSON.stringify({ sessionId: 'session-a', bridgeSessionId: 7 }));
+        writeSessionFile('other.json', JSON.stringify({ sessionId: 'session-b', bridgeSessionId: 'bridge-b' }));
+
+        expect(getRemoteControlStatus('session-a')).toBeNull();
     });
 });

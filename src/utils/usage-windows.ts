@@ -97,6 +97,10 @@ export function resolveWeeklyOpusUsageWindow(usageData: UsageData, nowMs = Date.
     return getWeeklyUsageWindowFromResetAt(usageData.weeklyOpusResetAt ?? usageData.weeklyResetAt, nowMs);
 }
 
+export function resolveFableUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {
+    return getWeeklyUsageWindowFromResetAt(usageData.fableResetAt ?? usageData.weeklyResetAt, nowMs);
+}
+
 export function formatUsageDuration(durationMs: number, compact = false, useDays = true): string {
     const clampedMs = Math.max(0, durationMs);
     const totalHours = Math.floor(clampedMs / (1000 * 60 * 60));

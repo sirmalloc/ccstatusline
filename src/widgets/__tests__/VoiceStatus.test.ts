@@ -64,6 +64,25 @@ describe('VoiceStatusWidget', () => {
             ]);
         });
 
+        it('exposes the Nerd Font keybind only when its icon is visible', () => {
+            const widget = new VoiceStatusWidget();
+            const nerdFontKeybind = { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' };
+
+            expect(widget.getCustomKeybinds(ITEM)).toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, rawValue: true })).toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'icon-text' } }))
+                .toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({
+                ...ITEM,
+                rawValue: true,
+                metadata: { format: 'icon-text' }
+            })).not.toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'text' } }))
+                .not.toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'word' } }))
+                .not.toContainEqual(nerdFontKeybind);
+        });
+
         it('defaults to icon in the editor display', () => {
             expect(new VoiceStatusWidget().getEditorDisplay(ITEM)).toEqual({
                 displayText: 'Voice Status',
@@ -74,11 +93,58 @@ describe('VoiceStatusWidget', () => {
         it('shows the configured format and nerd font in the editor display', () => {
             expect(new VoiceStatusWidget().getEditorDisplay({
                 ...ITEM,
-                metadata: { format: 'word', nerdFont: 'true' }
+                metadata: { format: 'icon-text', nerdFont: 'true' }
             })).toEqual({
                 displayText: 'Voice Status',
-                modifierText: '(word, nerd font)'
+                modifierText: '(icon-text, nerd font)'
             });
+        });
+
+        it('hides stale Nerd Font metadata when raw or text-only modes remove the icon', () => {
+            const widget = new VoiceStatusWidget();
+
+            expect(widget.getEditorDisplay({
+                ...ITEM,
+                rawValue: true,
+                metadata: { format: 'icon-text', nerdFont: 'true' }
+            }).modifierText).toBe('(icon-text)');
+            expect(widget.getEditorDisplay({
+                ...ITEM,
+                metadata: { format: 'word', nerdFont: 'true' }
+            }).modifierText).toBe('(word)');
+        });
+
+        it('keeps Nerd Font through icon formats and clears it before text formats', () => {
+            const widget = new VoiceStatusWidget();
+            const item: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true' } };
+            const iconText = widget.handleEditorAction('cycle-format', item);
+            const text = widget.handleEditorAction('cycle-format', iconText ?? ITEM);
+
+            expect(iconText?.metadata).toEqual({ format: 'icon-text', nerdFont: 'true' });
+            expect(text?.metadata).toEqual({ format: 'text' });
+        });
+
+        it('clears Nerd Font when raw mode makes icon-text text-only', () => {
+            const widget = new VoiceStatusWidget();
+            const item: WidgetItem = { ...ITEM, rawValue: true, metadata: { nerdFont: 'true' } };
+
+            expect(widget.handleEditorAction('cycle-format', item)?.metadata)
+                .toEqual({ format: 'icon-text' });
+        });
+
+        it('does not toggle Nerd Font when no configurable icon is visible', () => {
+            const widget = new VoiceStatusWidget();
+            const textItem: WidgetItem = { ...ITEM, metadata: { format: 'text' } };
+            const rawIconTextItem: WidgetItem = {
+                ...ITEM,
+                rawValue: true,
+                metadata: { format: 'icon-text', nerdFont: 'true' }
+            };
+
+            expect(widget.handleEditorAction('toggle-nerd-font', textItem)?.metadata)
+                .toEqual({ format: 'text' });
+            expect(widget.handleEditorAction('toggle-nerd-font', rawIconTextItem)?.metadata)
+                .toEqual({ format: 'icon-text' });
         });
 
         it('cycles icon -> icon-text -> text -> word -> icon', () => {
@@ -240,19 +306,52 @@ describe('VoiceStatusWidget', () => {
 
     describe('render() - raw value', () => {
         const RAW_ITEM: WidgetItem = { ...ITEM, rawValue: true };
+        const cases: { name: string; item: WidgetItem; off: string; on: string }[] = [
+            { name: 'icon', item: RAW_ITEM, off: '○', on: '◉' },
+            {
+                name: 'icon with Nerd Font',
+                item: { ...RAW_ITEM, metadata: { nerdFont: 'true' } },
+                off: '',
+                on: ''
+            },
+            {
+                name: 'icon-text',
+                item: { ...RAW_ITEM, metadata: { format: 'icon-text' } },
+                off: 'off',
+                on: 'on'
+            },
+            {
+                name: 'icon-text with Nerd Font',
+                item: { ...RAW_ITEM, metadata: { format: 'icon-text', nerdFont: 'true' } },
+                off: 'off',
+                on: 'on'
+            },
+            {
+                name: 'text',
+                item: { ...RAW_ITEM, metadata: { format: 'text' } },
+                off: 'off',
+                on: 'on'
+            },
+            {
+                name: 'word',
+                item: { ...RAW_ITEM, metadata: { format: 'word' } },
+                off: 'off',
+                on: 'on'
+            }
+        ];
 
-        it('returns "on" when ON', () => {
-            vi.spyOn(claudeSettings, 'getVoiceConfig').mockReturnValue({ enabled: true });
-            expect(new VoiceStatusWidget().render(RAW_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('on');
+        it.each(cases)('removes only the label from $name format', ({ item, off, on }) => {
+            const configSpy = vi.spyOn(claudeSettings, 'getVoiceConfig');
+
+            configSpy.mockReturnValue({ enabled: false });
+            expect(new VoiceStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe(off);
+
+            configSpy.mockReturnValue({ enabled: true });
+            expect(new VoiceStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe(on);
         });
 
-        it('returns "off" when OFF', () => {
-            vi.spyOn(claudeSettings, 'getVoiceConfig').mockReturnValue({ enabled: false });
-            expect(new VoiceStatusWidget().render(RAW_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('off');
-        });
-
-        it('returns "on" in preview mode', () => {
-            expect(new VoiceStatusWidget().render(RAW_ITEM, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe('on');
+        it('preserves the default icon format in preview mode', () => {
+            expect(new VoiceStatusWidget().render(RAW_ITEM, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe('◉');
         });
 
         it('returns null when config is null', () => {

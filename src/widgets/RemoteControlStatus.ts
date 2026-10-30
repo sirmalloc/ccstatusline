@@ -4,13 +4,38 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import { getRemoteControlStatus } from '../utils/claude-settings';
 
+import {
+    getFormat,
+    getFormatKeybinds,
+    getFormatModifierText,
+    handleFormatAction,
+    type FormatOptions
+} from './shared/format-options';
+import { isNerdFontEnabled } from './shared/metadata';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    joinSymbol,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
+
 const SATELLITE_EMOJI = '📡';
 const SATELLITE_NERD_FONT = '';
-const SATELLITE_SLASH_NERD_FONT = '';
+// nf-md-wifi_off. Nerd Fonts v3 moved the Material Design icons out of the
+// BMP; the v2 codepoint this used to be (U+F6AC) is unassigned in v3 fonts.
+const SATELLITE_SLASH_NERD_FONT = '\u{f05aa}';
+
+const ON_SLOT: SymbolSlot = { id: 'symbolOn', label: 'On', defaultSymbol: SATELLITE_NERD_FONT };
+const OFF_SLOT: SymbolSlot = { id: 'symbolOff', label: 'Off', defaultSymbol: SATELLITE_SLASH_NERD_FONT };
+const SYMBOL_SLOTS: SymbolSlot[] = [ON_SLOT, OFF_SLOT];
+
 const STATE_DOT_OFF = '○';
 const STATE_DOT_ON = '◉';
 
@@ -22,79 +47,45 @@ const CROSS_MARK = '✗';
 type RemoteFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: RemoteFormat = 'icon';
-const CYCLE_FORMAT_ACTION = 'cycle-format';
-const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const NERD_FONT_METADATA_KEY = 'nerdFont';
+const LABEL = 'remote ';
 
-function getFormat(item: WidgetItem): RemoteFormat {
-    const f = item.metadata?.format;
-    return (FORMATS as readonly string[]).includes(f ?? '') ? (f as RemoteFormat) : DEFAULT_FORMAT;
+function canUseNerdFont(item: WidgetItem): boolean {
+    const format = getFormat(item, FORMAT_OPTIONS);
+    return format === 'icon' || (format === 'icon-text' && !item.rawValue);
 }
 
-function setFormat(item: WidgetItem, format: RemoteFormat): WidgetItem {
-    if (format === DEFAULT_FORMAT) {
-        const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
-        void removedFormat;
+const FORMAT_OPTIONS: FormatOptions<RemoteFormat> = {
+    formats: FORMATS,
+    defaultFormat: DEFAULT_FORMAT,
+    canUseNerdFont
+};
 
-        return {
-            ...item,
-            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-        };
-    }
-
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            format
-        }
-    };
-}
-
-function isNerdFontEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
-}
-
-function toggleNerdFont(item: WidgetItem): WidgetItem {
-    if (!isNerdFontEnabled(item)) {
-        return {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                [NERD_FONT_METADATA_KEY]: 'true'
-            }
-        };
-    }
-
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
-}
-
-function formatStatus(enabled: boolean, format: RemoteFormat, nerdFont: boolean): string {
+function formatStatus(item: WidgetItem, enabled: boolean): string {
+    const format = getFormat(item, FORMAT_OPTIONS);
+    const nerdFont = isNerdFontEnabled(item, FORMAT_OPTIONS);
+    const rawValue = item.rawValue ?? false;
     const stateText = enabled ? 'on' : 'off';
     const stateDot = enabled ? STATE_DOT_ON : STATE_DOT_OFF;
     const icon = nerdFont
-        ? (enabled ? SATELLITE_NERD_FONT : SATELLITE_SLASH_NERD_FONT)
+        ? getSlotSymbol(item, enabled ? ON_SLOT : OFF_SLOT)
         : SATELLITE_EMOJI;
+    // These built-in icons can draw across two cells despite reporting width one.
+    // Custom glyphs keep their normal gap, since their drawn width is font-dependent.
+    const minimumIconWidth = nerdFont && (icon === SATELLITE_NERD_FONT || icon === SATELLITE_SLASH_NERD_FONT) ? 2 : 0;
 
     switch (format) {
         case 'icon':
-            return nerdFont ? icon : `${icon} ${stateDot}`;
+            return nerdFont ? icon : (rawValue ? stateDot : `${icon} ${stateDot}`);
         case 'icon-text':
-            return `${icon} ${stateText}`;
+            return rawValue ? stateText : joinSymbol(icon, stateText, minimumIconWidth);
         case 'text':
             return stateText;
         case 'word':
-            return `remote ${stateText}`;
+            return rawValue ? stateText : `remote ${stateText}`;
         case 'label-check':
-            return `remote ${enabled ? CHECK_EMOJI : CROSS_EMOJI}`;
+            return formatRawOrLabeledValue(item, LABEL, enabled ? CHECK_EMOJI : CROSS_EMOJI);
         case 'label-mark':
-            return `remote ${enabled ? CHECK_MARK : CROSS_MARK}`;
+            return formatRawOrLabeledValue(item, LABEL, enabled ? CHECK_MARK : CROSS_MARK);
     }
 }
 
@@ -104,42 +95,25 @@ export class RemoteControlStatusWidget implements Widget {
     getDisplayName(): string { return 'Remote Control Status'; }
     getCategory(): string { return 'Core'; }
 
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [getFormat(item)];
-        if (isNerdFontEnabled(item)) {
-            modifiers.push('nerd font');
-        }
+    getLabelPrefix(item: WidgetItem): string | undefined {
+        const format = getFormat(item, FORMAT_OPTIONS);
+        return format === 'label-check' || format === 'label-mark' ? LABEL : undefined;
+    }
 
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: `(${modifiers.join(', ')})`
+            modifierText: getFormatModifierText(item, FORMAT_OPTIONS)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === CYCLE_FORMAT_ACTION) {
-            const currentFormat = getFormat(item);
-            const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
-
-            return setFormat(item, nextFormat);
-        }
-
-        if (action === TOGGLE_NERD_FONT_ACTION) {
-            return toggleNerdFont(item);
-        }
-
-        return null;
+        return handleFormatAction(action, item, FORMAT_OPTIONS);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const format = getFormat(item);
-        const nerdFont = isNerdFontEnabled(item);
-
         if (context.isPreview) {
-            if (item.rawValue) {
-                return 'on';
-            }
-            return formatStatus(true, format, nerdFont);
+            return formatStatus(item, true);
         }
 
         const status = getRemoteControlStatus(context.data?.session_id);
@@ -147,18 +121,20 @@ export class RemoteControlStatusWidget implements Widget {
             return null;
         }
 
-        if (item.rawValue) {
-            return status.enabled ? 'on' : 'off';
-        }
-
-        return formatStatus(status.enabled, format, nerdFont);
+        const text = formatStatus(item, status.enabled);
+        return text.length > 0 ? text : null;
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION },
-            { key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        const keybinds = getFormatKeybinds(item, FORMAT_OPTIONS);
+        if (item && isNerdFontEnabled(item, FORMAT_OPTIONS)) {
+            return [...keybinds, getSymbolKeybind()];
+        }
+        return keybinds;
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, SYMBOL_SLOTS);
     }
 
     supportsRawValue(): boolean { return true; }

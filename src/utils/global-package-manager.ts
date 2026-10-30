@@ -1,8 +1,8 @@
 import {
     execFile,
     execFileSync
-} from 'child_process';
-import * as fs from 'fs';
+} from 'node:child_process';
+import * as fs from 'node:fs';
 
 import type { PackageCommandAvailability } from './claude-settings';
 import {
@@ -12,7 +12,10 @@ import {
     isPathInsideDir,
     type GlobalPackageManager
 } from './global-command-resolution';
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export type { GlobalPackageManager };
 
@@ -129,7 +132,11 @@ function getDirectoryName(filePath: string): string {
 }
 
 function getComparablePath(filePath: string): string {
-    return filePath.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+    const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    return isWindowsStylePath(normalized) || normalized.startsWith('/mnt/')
+        ? normalized.toLowerCase()
+        : normalized;
 }
 
 function getUniqueResolvedDirs(resolvedPaths: string[]): string[] {
@@ -175,10 +182,13 @@ function readPackageVersion(packageJsonPath: string): string | null {
 
 function getNpmGlobalPackageVersion(platform: NodeJS.Platform): string | null {
     try {
-        const rootDir = execFileSync(getPackageManagerExecutable('npm', platform), ['root', '-g'], {
+        const executable = getPackageManagerExecutable('npm', platform);
+        const rootDir = execFileSync(executable, ['root', '-g'], {
             encoding: 'utf-8',
             timeout: VERSION_LOOKUP_TIMEOUT_MS,
-            windowsHide: true
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
+            ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
         return rootDir
@@ -355,13 +365,22 @@ export function runGlobalPackageUninstall(
         : ['remove', '-g', 'ccstatusline'];
 
     return new Promise((resolve, reject) => {
-        execFile(executable, args, { timeout: GLOBAL_PACKAGE_TIMEOUT_MS, windowsHide: true }, (error) => {
-            if (error) {
-                reject(error instanceof Error ? error : new Error('Global uninstall command failed'));
-                return;
-            }
+        execFile(
+            executable,
+            args,
+            {
+                timeout: GLOBAL_PACKAGE_TIMEOUT_MS,
+                windowsHide: true,
+                ...getPackageManagerShellOptions(executable, platform)
+            },
+            (error) => {
+                if (error) {
+                    reject(error instanceof Error ? error : new Error('Global uninstall command failed'));
+                    return;
+                }
 
-            resolve();
-        });
+                resolve();
+            }
+        );
     });
 }

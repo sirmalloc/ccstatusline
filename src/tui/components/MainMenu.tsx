@@ -4,10 +4,7 @@ import {
 } from 'ink';
 import React from 'react';
 
-import type {
-    InstallationMetadata,
-    Settings
-} from '../../types/Settings';
+import type { InstallationMetadata } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
@@ -21,6 +18,8 @@ export type MainMenuOption = 'lines'
     | 'manageInstallation'
     | 'checkUpdates'
     | 'configureStatusLine'
+    | 'exportConfig'
+    | 'importConfig'
     | 'starGithub'
     | 'save'
     | 'exit';
@@ -30,10 +29,9 @@ export interface MainMenuProps {
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
+    onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
-    settings: Settings | null;
     installation?: InstallationMetadata;
-    previewIsTruncated?: boolean;
 }
 
 interface MainMenuItem {
@@ -121,6 +119,17 @@ export function buildMainMenuItems(
             description: 'Configure Claude Code status line settings like refresh interval'
         },
         '-',
+        {
+            label: '📤 Export Config',
+            value: 'exportConfig',
+            description: 'Save your current configuration to a JSON file for backup or sharing'
+        },
+        {
+            label: '📥 Import Config',
+            value: 'importConfig',
+            description: 'Load configuration from a previously exported JSON file'
+        },
+        '-',
         getInstallationMenuItem(isClaudeInstalled, installation)
     ];
 
@@ -200,28 +209,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     isClaudeInstalled,
     hasChanges,
     initialSelection = 0,
+    onSelectionChange,
     powerlineFontStatus,
-    settings,
-    installation,
-    previewIsTruncated
+    installation
 }) => {
     const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
 
-    // Check if we should show the truncation warning
-    const showTruncationWarning
-        = previewIsTruncated && settings?.flexMode === 'full-minus-40';
-
     return (
         <Box flexDirection='column'>
-            {showTruncationWarning && (
-                <Box marginBottom={1}>
-                    <Text color='yellow'>
-                        ⚠ Some lines are truncated, see Terminal Options → Terminal Width
-                        for info
-                    </Text>
-                </Box>
-            )}
-
             <Text bold>Main Menu</Text>
 
             <List
@@ -235,6 +230,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                     onSelect(value, index);
                 }}
                 initialSelection={initialSelection}
+                onSelectionChange={(_, index) => onSelectionChange?.(index)}
             />
         </Box>
     );

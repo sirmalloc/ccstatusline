@@ -41,6 +41,38 @@ describe('powerline theme index utils', () => {
         expect(countPowerlineThemeSlots(entries)).toBe(2);
     });
 
+    it('treats separators as powerline theme merge boundaries', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'flex-separator' }),
+            entry({ id: '3', type: 'context-length', merge: true }),
+            entry({ id: '4', type: 'separator' }),
+            entry({ id: '5', type: 'git-branch' })
+        ];
+
+        expect(countPowerlineThemeSlots(entries)).toBe(3);
+    });
+
+    it('carries a merge across a hidden widget that is merged too', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'custom-text', merge: true }, ''),
+            entry({ id: '3', type: 'context-length' })
+        ];
+
+        expect(countPowerlineThemeSlots(entries)).toBe(1);
+    });
+
+    it('ends a merge at a hidden widget that is not merged onward', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'custom-text' }, ''),
+            entry({ id: '3', type: 'context-length' })
+        ];
+
+        expect(countPowerlineThemeSlots(entries)).toBe(2);
+    });
+
     it('advances a running global theme index', () => {
         const firstLine: PowerlineThemeSlotEntry[] = [
             entry({ id: '1', type: 'model' }),

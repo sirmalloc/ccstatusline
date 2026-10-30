@@ -1,7 +1,10 @@
-import { execFileSync } from 'child_process';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import * as path from 'node:path';
 
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export type GlobalPackageManager = 'npm' | 'bun';
 
@@ -33,14 +36,23 @@ function splitCommandOutput(output: string): string[] {
     return paths;
 }
 
-function isTransientBunxStatusLinePath(filePath: string): boolean {
+// While bunx or npx runs the TUI, the bin dir of its temporary copy comes first
+// on PATH, ahead of any persistent install:
+// - bunx: <temp dir>/bunx-<uid>-ccstatusline@<tag>/node_modules/.bin
+// - npx: <npm cache>/_npx/<hash>/node_modules/.bin, wherever the npm cache lives
+const TRANSIENT_STATUS_LINE_PATH_PATTERNS = [
+    /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i,
+    /(?:^|\/)_npx\/[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i
+];
+
+function isTransientStatusLinePath(filePath: string): boolean {
     const normalized = filePath.replace(/\\/g, '/');
 
-    return /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i.test(normalized);
+    return TRANSIENT_STATUS_LINE_PATH_PATTERNS.some(pattern => pattern.test(normalized));
 }
 
 export function getPersistentCommandResolutionPaths(paths: string[]): string[] {
-    return paths.filter(path => !isTransientBunxStatusLinePath(path));
+    return paths.filter(path => !isTransientStatusLinePath(path));
 }
 
 export function getCommandResolutionPaths(
@@ -52,12 +64,14 @@ export function getCommandResolutionPaths(
             ? execFileSync('where', [command], {
                 encoding: 'utf-8',
                 timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-                windowsHide: true
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'ignore']
             })
             : execFileSync('which', ['-a', command], {
                 encoding: 'utf-8',
                 timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-                windowsHide: true
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'ignore']
             });
 
         return splitCommandOutput(output);
@@ -68,10 +82,13 @@ export function getCommandResolutionPaths(
 
 function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
     try {
-        const prefix = execFileSync(getPackageManagerExecutable('npm', platform), ['prefix', '-g'], {
+        const executable = getPackageManagerExecutable('npm', platform);
+        const prefix = execFileSync(executable, ['prefix', '-g'], {
             encoding: 'utf-8',
             timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-            windowsHide: true
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
+            ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
         if (!prefix) {
@@ -88,10 +105,14 @@ function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
 
 function getBunGlobalBinDir(): string | null {
     try {
+        // bun writes an error to stderr when its global dir was never
+        // initialized (no `bun add -g` ever run); silence it so best-effort
+        // probing cannot leak into the TUI terminal.
         const binDir = execFileSync('bun', ['pm', 'bin', '-g'], {
             encoding: 'utf-8',
             timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-            windowsHide: true
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore']
         }).trim();
 
         return binDir || null;

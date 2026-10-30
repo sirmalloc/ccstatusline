@@ -1,0 +1,515 @@
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { z } from 'zod';
+
+import type { ColorLevelString } from '../types/ColorLevel';
+import type { WidgetItem } from '../types/Widget';
+
+import { getColorAnsiCode } from './colors';
+import { isExcludedFromProxy } from './no-proxy';
+import {
+    createProxyAgent,
+    type ClosableProxyAgent
+} from './proxy-agent';
+
+// A short-lived disk cache and an exclusive fetch lock are shared across
+// statusline invocations, with a separate backoff file written on failure.
+// While a fetch is in flight, concurrent sessions
+// serve the expired cache instead of all fetching at once, and an unreachable
+// status page cannot trigger a network attempt on every render.
+const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
+const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
+const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
+const FETCH_LOCK_DIR = path.join(CACHE_DIR, 'claude-status.inflight');
+const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
+const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed or in-flight fetch
+// Longest the last fetched status stands in while the status page can't be
+// reached; past it the widget shows `?`, as with no data at all. Staying under
+// one six-hour history block means an incident still open in the cache colors
+// the same blocks it would had it ended when last seen, never unseen hours.
+const STALE_MAX_AGE = 3600;      // seconds
+
+const STATUS_HOST = 'status.claude.com';
+/** The status page itself, which the widget can link to. */
+export const CLAUDE_STATUS_PAGE_URL = `https://${STATUS_HOST}`;
+const STATUS_PATH = '/api/v2/status.json';
+const INCIDENTS_PATH = '/api/v2/incidents.json';
+const STATUS_TIMEOUT_MS = 5000;
+
+// The incident-history strip covers the past 48 hours as 8 six-hour buckets.
+export const INCIDENT_HISTORY_BUCKET_COUNT = 8;
+export const INCIDENT_HISTORY_BUCKET_MS = 6 * 60 * 60 * 1000;
+
+export type ClaudeIncidentImpact = 'none' | 'minor' | 'major' | 'critical';
+
+export interface ClaudeIncidentWindow {
+    impact: Exclude<ClaudeIncidentImpact, 'none'>;
+    startMs: number;
+    endMs: number | null;  // null while the incident is unresolved
+}
+
+export interface ClaudeServiceStatusData {
+    indicator?: string;
+    incidents?: ClaudeIncidentWindow[];
+    error?: boolean;
+}
+
+const IMPACT_RANK: Record<Exclude<ClaudeIncidentImpact, 'none'>, number> = {
+    minor: 1,
+    major: 2,
+    critical: 3
+};
+
+function isTrackedIncidentImpact(impact: string): impact is Exclude<ClaudeIncidentImpact, 'none'> {
+    return impact === 'minor' || impact === 'major' || impact === 'critical';
+}
+
+/**
+ * Divide the `bucketCount * bucketMs` window ending at `nowMs` into buckets
+ * (oldest first) and return the worst incident impact overlapping each bucket.
+ * Buckets without any overlapping incident report 'none'.
+ */
+export function computeIncidentHistoryBuckets(
+    incidents: ClaudeIncidentWindow[],
+    nowMs: number,
+    bucketCount = INCIDENT_HISTORY_BUCKET_COUNT,
+    bucketMs = INCIDENT_HISTORY_BUCKET_MS
+): ClaudeIncidentImpact[] {
+    const buckets: ClaudeIncidentImpact[] = [];
+
+    for (let i = 0; i < bucketCount; i++) {
+        const bucketStart = nowMs - (bucketCount - i) * bucketMs;
+        const bucketEnd = bucketStart + bucketMs;
+        let worst: ClaudeIncidentImpact = 'none';
+        let worstRank = 0;
+
+        for (const incident of incidents) {
+            const incidentEnd = incident.endMs ?? nowMs;
+            if (incident.startMs < bucketEnd && incidentEnd > bucketStart) {
+                const rank = IMPACT_RANK[incident.impact];
+                if (rank > worstRank) {
+                    worstRank = rank;
+                    worst = incident.impact;
+                }
+            }
+        }
+
+        buckets.push(worst);
+    }
+
+    return buckets;
+}
+
+// statuspage.io payloads. Only the fields this module reads are declared;
+// loose objects pass everything else through without failing validation.
+const StatusResponseSchema = z.looseObject({ status: z.looseObject({ indicator: z.string().nullable().optional() }).nullable().optional() });
+
+const IncidentsResponseSchema = z.looseObject({
+    incidents: z.array(z.looseObject({
+        impact: z.string().nullable().optional(),
+        started_at: z.string().nullable().optional(),
+        created_at: z.string().nullable().optional(),
+        resolved_at: z.string().nullable().optional()
+    })).nullable().optional()
+});
+
+function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
+    try {
+        const parsed = schema.safeParse(JSON.parse(rawJson));
+        return parsed.success ? parsed.data : null;
+    } catch {
+        return null;
+    }
+}
+
+export function parseClaudeStatusResponse(rawJson: string): string | null {
+    return parseJsonWithSchema(rawJson, StatusResponseSchema)?.status?.indicator ?? null;
+}
+
+function parseTimestampMs(value: string | null | undefined): number | null {
+    if (!value) {
+        return null;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Extract the incident windows relevant to the history strip. Incidents with
+ * impact 'none' (or an unrecognized impact) and incidents without a parseable
+ * started_at or created_at are dropped.
+ */
+export function parseClaudeIncidentsResponse(rawJson: string): ClaudeIncidentWindow[] | null {
+    const parsed = parseJsonWithSchema(rawJson, IncidentsResponseSchema);
+    if (!parsed) {
+        return null;
+    }
+
+    const windows: ClaudeIncidentWindow[] = [];
+    for (const incident of parsed.incidents ?? []) {
+        const impact = incident.impact ?? '';
+        if (!isTrackedIncidentImpact(impact)) {
+            continue;
+        }
+
+        const startMs = parseTimestampMs(incident.started_at)
+            ?? parseTimestampMs(incident.created_at);
+        if (startMs === null) {
+            continue;
+        }
+
+        windows.push({
+            impact,
+            startMs,
+            endMs: parseTimestampMs(incident.resolved_at)
+        });
+    }
+
+    return windows;
+}
+
+// Per-bucket bar colors, resolved per color level so the strip degrades
+// sensibly: statuspage "major" is conventionally orange, which only exists
+// above ansi16 - there it falls back to red (with critical on bright red).
+// The named-palette hues from colors.ts are reused where they exist.
+const IMPACT_COLOR_SPECS: Record<ClaudeIncidentImpact | 'maintenance' | 'unknown', Record<ColorLevelString, string>> = {
+    none: { ansi16: '\x1b[32m', ansi256: 'ansi256:70', truecolor: 'hex:4e9a06' },
+    minor: { ansi16: '\x1b[33m', ansi256: 'ansi256:178', truecolor: 'hex:c4a000' },
+    major: { ansi16: '\x1b[31m', ansi256: 'ansi256:208', truecolor: 'hex:ff8700' },
+    critical: { ansi16: '\x1b[91m', ansi256: 'ansi256:160', truecolor: 'hex:cc0000' },
+    maintenance: { ansi16: '\x1b[36m', ansi256: 'ansi256:30', truecolor: 'hex:06989a' },
+    unknown: { ansi16: '\x1b[90m', ansi256: 'ansi256:59', truecolor: 'hex:555753' }
+};
+
+export type ClaudeStatusColorKey = keyof typeof IMPACT_COLOR_SPECS;
+
+export function getClaudeStatusFgCode(key: ClaudeStatusColorKey, colorLevel: ColorLevelString): string {
+    const spec = IMPACT_COLOR_SPECS[key][colorLevel];
+    return spec.startsWith('\x1b') ? spec : getColorAnsiCode(spec, colorLevel, false);
+}
+
+// --- Prefetch plumbing (mirrors usage-prefetch.ts) ---
+
+export const CLAUDE_STATUS_WIDGET_TYPE = 'claude-status';
+
+export function isClaudeStatusHistoryEnabled(item: WidgetItem): boolean {
+    return item.type === CLAUDE_STATUS_WIDGET_TYPE && item.metadata?.history === 'true';
+}
+
+export function hasClaudeStatusWidgets(lines: WidgetItem[][]): boolean {
+    return lines.some(line => line.some(item => item.type === CLAUDE_STATUS_WIDGET_TYPE));
+}
+
+function claudeStatusNeedsIncidents(lines: WidgetItem[][]): boolean {
+    return lines.some(line => line.some(item => isClaudeStatusHistoryEnabled(item)));
+}
+
+const CachedClaudeStatusSchema = z.object({
+    fetchedAt: z.number(),
+    indicator: z.string().nullable().optional(),
+    incidents: z.array(z.object({
+        impact: z.enum(['minor', 'major', 'critical']),
+        startMs: z.number(),
+        endMs: z.number().nullable()
+    })).nullable().optional(),
+    incidentsQueried: z.boolean()
+});
+
+type CachedClaudeStatus = z.infer<typeof CachedClaudeStatusSchema>;
+
+// Memory cache so multiple lines in one invocation share a single lookup
+let memoryCache: CachedClaudeStatus | null = null;
+
+function ensureCacheDirExists(): void {
+    if (!fs.existsSync(CACHE_DIR)) {
+        fs.mkdirSync(CACHE_DIR, { recursive: true });
+    }
+}
+
+function readCachedClaudeStatus(): CachedClaudeStatus | null {
+    try {
+        return parseJsonWithSchema(fs.readFileSync(CACHE_FILE, 'utf8'), CachedClaudeStatusSchema);
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
+    try {
+        ensureCacheDirExists();
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+    } catch {
+        // Best-effort caching
+    }
+}
+
+// Whether a timestamp lies within maxAgeSeconds of now. One dated ahead of now
+// still counts within that window, since clocks sharing a home directory can
+// sit a little apart; further ahead, it was written under a clock since set
+// back, and trusting it would hold that state until real time caught up.
+function isWithinAge(stampSeconds: number, nowSeconds: number, maxAgeSeconds: number): boolean {
+    return Math.abs(nowSeconds - stampSeconds) < maxAgeSeconds;
+}
+
+// The lock is judged by its mtime alone, so an empty lock left by an older
+// version still blocks for FAILURE_BACKOFF.
+function isFailureLockActive(nowSeconds: number): boolean {
+    try {
+        const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
+        return isWithinAge(lockMtime, nowSeconds, FAILURE_BACKOFF);
+    } catch {
+        return false;
+    }
+}
+
+function writeFailureLock(): void {
+    try {
+        ensureCacheDirExists();
+        fs.writeFileSync(LOCK_FILE, '');
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
+// Publish a nonempty directory atomically. Renaming another directory onto it
+// fails while it is occupied, so only one process can acquire the fetch lock.
+// Each claim has a unique marker: stale cleanup removes that marker and uses
+// nonrecursive rmdir, which cannot remove a newer, nonempty claim.
+function acquireFetchLock(nowMs: number): string | null {
+    let stagingDir: string | undefined;
+    try {
+        ensureCacheDirExists();
+        stagingDir = fs.mkdtempSync(`${FETCH_LOCK_DIR}-`);
+        const owner = path.basename(stagingDir);
+        fs.writeFileSync(path.join(stagingDir, owner), '');
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                fs.renameSync(stagingDir, FETCH_LOCK_DIR);
+                return owner;
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                if (code !== 'EEXIST' && code !== 'ENOTEMPTY') {
+                    return null;
+                }
+            }
+
+            const [existingOwner] = fs.readdirSync(FETCH_LOCK_DIR);
+            if (!existingOwner
+                || isWithinAge(Math.floor(fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs / 1000), Math.floor(nowMs / 1000), FAILURE_BACKOFF)) {
+                return null;
+            }
+            clearOwnFetchLock(existingOwner);
+        }
+    } catch {
+        // If coordination is unavailable, serve stale data instead of fetching.
+    } finally {
+        if (stagingDir) {
+            try {
+                fs.rmSync(stagingDir, { recursive: true, force: true });
+            } catch {
+                // Best-effort cleanup of this process's unpublished claim.
+            }
+        }
+    }
+    return null;
+}
+
+function clearOwnFetchLock(owner: string): void {
+    try {
+        fs.unlinkSync(path.join(FETCH_LOCK_DIR, owner));
+        fs.rmdirSync(FETCH_LOCK_DIR);
+    } catch {
+        // The old claim may be gone, or another owner may have replaced it.
+    }
+}
+
+function getStatusPageProxyUrl(): string | null {
+    const proxyUrl = process.env.HTTPS_PROXY?.trim();
+    return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
+}
+
+interface StatusPageResponse {
+    statusCode?: number;
+    setEncoding(encoding: BufferEncoding): unknown;
+    on(event: 'data', listener: (chunk: string) => void): unknown;
+    on(event: 'end' | 'aborted' | 'error', listener: () => void): unknown;
+}
+
+interface StatusPageRequest {
+    destroy(): void;
+    end(): void;
+    on(event: 'error' | 'timeout', listener: () => void): unknown;
+}
+
+type StatusPageRequestFn = (
+    options: https.RequestOptions,
+    onResponse: (response: StatusPageResponse) => void
+) => StatusPageRequest;
+
+const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
+
+function fetchStatusPagePath(
+    pathName: string,
+    requestFn: StatusPageRequestFn = requestStatusPage,
+    deadlineMs = STATUS_TIMEOUT_MS
+): Promise<string | null> {
+    let requestOptions: https.RequestOptions;
+    let proxy: ClosableProxyAgent | null;
+    try {
+        const proxyUrl = getStatusPageProxyUrl();
+        proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        requestOptions = {
+            hostname: STATUS_HOST,
+            path: pathName,
+            method: 'GET',
+            timeout: STATUS_TIMEOUT_MS,
+            ...(proxy ? { agent: proxy.agent } : {})
+        };
+    } catch {
+        return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+        let settled = false;
+
+        const finish = (value: string | null) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(deadline);
+            resolve(value);
+        };
+
+        const request = requestFn(requestOptions, (response) => {
+            let data = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk: string) => {
+                data += chunk;
+            });
+            response.on('end', () => {
+                finish(response.statusCode === 200 && data ? data : null);
+            });
+            response.on('aborted', () => { finish(null); });
+            response.on('error', () => { finish(null); });
+        });
+
+        request.on('error', () => { finish(null); });
+        request.on('timeout', () => {
+            request.destroy();
+            finish(null);
+        });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            proxy?.close();
+            finish(null);
+        }, deadlineMs);
+        request.end();
+    });
+}
+
+// Exposed only for deterministic response-stream failure tests.
+export const __testing = { fetchStatusPagePath };
+
+function toStatusData(cache: CachedClaudeStatus): ClaudeServiceStatusData {
+    return {
+        indicator: cache.indicator ?? undefined,
+        incidents: cache.incidents ?? undefined
+    };
+}
+
+function isCacheUsable(cache: CachedClaudeStatus, includeIncidents: boolean): boolean {
+    return !includeIncidents || cache.incidentsQueried;
+}
+
+async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<ClaudeServiceStatusData> {
+    const nowMs = Date.now();
+    const nowSeconds = Math.floor(nowMs / 1000);
+
+    if (memoryCache
+        && isWithinAge(Math.floor(memoryCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
+        && isCacheUsable(memoryCache, includeIncidents)) {
+        return toStatusData(memoryCache);
+    }
+
+    const diskCache = readCachedClaudeStatus();
+    if (diskCache
+        && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
+        && isCacheUsable(diskCache, includeIncidents)) {
+        memoryCache = diskCache;
+        return toStatusData(diskCache);
+    }
+
+    const serveStaleOrError = (): ClaudeServiceStatusData => {
+        if (diskCache
+            && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, STALE_MAX_AGE)
+            && isCacheUsable(diskCache, includeIncidents)) {
+            return toStatusData(diskCache);
+        }
+        return { error: true };
+    };
+
+    if (isFailureLockActive(nowSeconds)) {
+        return serveStaleOrError();
+    }
+
+    const inFlightLock = acquireFetchLock(nowMs);
+    if (inFlightLock === null) {
+        return serveStaleOrError();
+    }
+
+    // Another fetch may have completed between our initial cache read and
+    // acquisition. Recheck both its result and its failure backoff under lock.
+    const latestCache = readCachedClaudeStatus();
+    if (latestCache
+        && isWithinAge(Math.floor(latestCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
+        && isCacheUsable(latestCache, includeIncidents)) {
+        memoryCache = latestCache;
+        clearOwnFetchLock(inFlightLock);
+        return toStatusData(latestCache);
+    }
+    if (isFailureLockActive(nowSeconds)) {
+        clearOwnFetchLock(inFlightLock);
+        return serveStaleOrError();
+    }
+
+    const [statusBody, incidentsBody] = await Promise.all([
+        fetchStatusPagePath(STATUS_PATH),
+        includeIncidents ? fetchStatusPagePath(INCIDENTS_PATH) : Promise.resolve(null)
+    ]);
+
+    const indicator = statusBody !== null ? parseClaudeStatusResponse(statusBody) : null;
+    const incidents = incidentsBody !== null ? parseClaudeIncidentsResponse(incidentsBody) : null;
+
+    if (indicator === null || (includeIncidents && incidents === null)) {
+        writeFailureLock();
+        clearOwnFetchLock(inFlightLock);
+        return serveStaleOrError();
+    }
+
+    const cache: CachedClaudeStatus = {
+        fetchedAt: nowMs,
+        indicator,
+        incidents,
+        incidentsQueried: includeIncidents
+    };
+    memoryCache = cache;
+    writeCachedClaudeStatus(cache);
+    // Release the lock only after the fresh cache is on disk, so no render can
+    // see neither a lock nor a fresh cache and start a redundant fetch.
+    clearOwnFetchLock(inFlightLock);
+    return toStatusData(cache);
+}
+
+export async function prefetchClaudeStatusIfNeeded(lines: WidgetItem[][]): Promise<ClaudeServiceStatusData | null> {
+    if (!hasClaudeStatusWidgets(lines)) {
+        return null;
+    }
+
+    return fetchClaudeServiceStatus(claudeStatusNeedsIncidents(lines));
+}
