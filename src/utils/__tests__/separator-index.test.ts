@@ -113,7 +113,21 @@ describe('separator index utils', () => {
         }))).toBe(1);
     });
 
-    it('honors merge state on the previous rendered widget across hidden widgets', () => {
+    it('honors merge state on the previous rendered widget across hidden widgets that are merged too', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', merge: true },
+            { id: 'hidden', type: 'custom-text', merge: true },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets, preRendered(widgets, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(0);
+    });
+
+    it('ends a merge at a hidden widget that is not merged onward', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'model', merge: true },
             { id: 'hidden', type: 'custom-text' },
@@ -124,7 +138,7 @@ describe('separator index utils', () => {
             0: 'model',
             1: '',
             2: 'context'
-        }))).toBe(0);
+        }))).toBe(1);
     });
 
     it('advances a running global separator index', () => {
