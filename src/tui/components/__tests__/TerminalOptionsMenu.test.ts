@@ -134,10 +134,6 @@ describe('TerminalOptionsMenu', () => {
 
         try {
             await waitFor(() => {
-                expect(stdout.getOutput()).toContain('▶  ◱ Terminal Width');
-            });
-            stdin.write('\u001B[B');
-            await waitFor(() => {
                 expect(stdout.getOutput()).toContain('▶  ▓ Color Level (Truecolor)');
             });
             stdin.write('\r');
@@ -150,7 +146,6 @@ describe('TerminalOptionsMenu', () => {
             await waitFor(() => {
                 expect(stdout.getOutput()).toContain('▶  ▓ Color Level (No Color)');
             });
-            expect(stdout.getOutput()).not.toContain('▶  ◱ Terminal Width');
 
             stdin.write('\r');
             await waitFor(() => {
@@ -191,10 +186,6 @@ describe('TerminalOptionsMenu', () => {
 
         try {
             await waitFor(() => {
-                expect(stdout.getOutput()).toContain('▶  ◱ Terminal Width');
-            });
-            stdin.write('\u001B[B');
-            await waitFor(() => {
                 expect(stdout.getOutput()).toContain('▶  ▓ Color Level (Truecolor)');
             });
             stdin.write('\r');
@@ -207,7 +198,6 @@ describe('TerminalOptionsMenu', () => {
             await waitFor(() => {
                 expect(stdout.getOutput()).toContain('▶  ▓ Color Level (Truecolor)');
             });
-            expect(stdout.getOutput()).not.toContain('▶  ◱ Terminal Width');
 
             stdout.clearOutput();
             stdin.write('\r');
