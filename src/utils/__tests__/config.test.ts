@@ -63,7 +63,7 @@ function writeV2SettingsWithBlockedBackup(): { original: string; backupPath: str
     const original = JSON.stringify({
         version: 2,
         lines: [[{ id: 'widget-1', type: 'git-branch', metadata: { hideNoGit: 'true' } }]],
-        flexMode: 'full-minus-40'
+        colorLevel: 3
     });
     fs.writeFileSync(settingsPath, original, 'utf-8');
     const backupPath = `${settingsPath}.v2.bak`;
@@ -266,7 +266,7 @@ describe('config utilities', () => {
                     { id: '3', type: 'git-branch' }
                 ]],
                 defaultSeparator: '|',
-                flexMode: 'full-minus-40'
+                colorLevel: 3
             }),
             'utf-8'
         );
@@ -280,9 +280,9 @@ describe('config utilities', () => {
         }
         // The v1 migration still runs (it drops separators a default separator replaces)
         expect(validation.data.lines[0]?.map(item => item.type)).toEqual(['model', 'git-branch']);
-        expect(validation.presentKeys).toEqual(['lines', 'defaultSeparator', 'flexMode']);
+        expect(validation.presentKeys).toEqual(['lines', 'defaultSeparator', 'colorLevel']);
         const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
-        expect(merged.flexMode).toBe('full-minus-40');
+        expect(merged.colorLevel).toBe(3);
         expect(merged.defaultSeparator).toBe('|');
         expect(merged.globalBold).toBe(true);
         expect(merged.updatemessage).toBeUndefined();
@@ -296,8 +296,8 @@ describe('config utilities', () => {
             importPath,
             JSON.stringify({
                 lines: 'not a list',
-                flexMode: null,
-                compactThreshold: 'high',
+                colorLevel: 'high',
+                defaultPadding: 7,
                 defaultSeparator: '|'
             }),
             'utf-8'
@@ -305,8 +305,8 @@ describe('config utilities', () => {
         const current: Settings = {
             ...DEFAULT_SETTINGS,
             lines: [[{ id: 'mine', type: 'git-branch' }]],
-            flexMode: 'full-minus-40',
-            compactThreshold: 80
+            colorLevel: 3,
+            defaultPadding: '  '
         };
 
         const validation = await validateImportFile(importPath);
@@ -318,8 +318,8 @@ describe('config utilities', () => {
         expect(validation.presentKeys).toEqual(['defaultSeparator']);
         const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
         expect(merged.lines).toEqual(current.lines);
-        expect(merged.flexMode).toBe('full-minus-40');
-        expect(merged.compactThreshold).toBe(80);
+        expect(merged.colorLevel).toBe(3);
+        expect(merged.defaultPadding).toBe('  ');
         expect(merged.defaultSeparator).toBe('|');
     });
 
@@ -480,7 +480,7 @@ describe('config utilities', () => {
                 { id: '2', type: 'separator' },
                 { id: '3', type: 'git-branch' }
             ]],
-            flexMode: 'full-minus-40',
+            colorLevel: 3,
             defaultSeparator: '|'
         });
         fs.writeFileSync(settingsPath, original, 'utf-8');
@@ -488,7 +488,7 @@ describe('config utilities', () => {
         const settings = await loadSettings();
 
         expect(settings.version).toBe(CURRENT_VERSION);
-        expect(settings.flexMode).toBe('full-minus-40');
+        expect(settings.colorLevel).toBe(3);
         expect(settings.lines[0]?.map(item => item.type)).toEqual(['model', 'git-branch']);
         expect(settings.updatemessage?.message).toContain('v2.0.2');
         const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
@@ -556,7 +556,7 @@ describe('config utilities', () => {
         // The user's settings, migrated: v4 turned the hide flag into a hide list
         expect(settings.version).toBe(CURRENT_VERSION);
         expect(settings.lines).toEqual([[{ id: 'widget-1', type: 'git-branch', metadata: { hide: 'no-git' } }]]);
-        expect(settings.flexMode).toBe('full-minus-40');
+        expect(settings.colorLevel).toBe(3);
         // The update message the migration adds waits until it's written, since
         // counting it down rewrites the file
         expect(settings.updatemessage).toBeUndefined();
@@ -573,8 +573,8 @@ describe('config utilities', () => {
     it('writes the backup and the migration on a later load once the backup can be written', async () => {
         const { settingsPath } = getSettingsPaths();
         const { original, backupPath } = writeV2SettingsWithBlockedBackup();
-        // The default is 'full', so this run got the user's settings
-        expect((await loadSettings()).flexMode).toBe('full-minus-40');
+        // The default is 2, so this run got the user's settings
+        expect((await loadSettings()).colorLevel).toBe(3);
         fs.rmdirSync(backupPath);
 
         const settings = await loadSettings();
@@ -597,11 +597,11 @@ describe('config utilities', () => {
         expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
         const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
             version?: number;
-            flexMode?: string;
+            colorLevel?: number;
             globalBold?: boolean;
         };
         expect(saved.version).toBe(CURRENT_VERSION);
-        expect(saved.flexMode).toBe('full-minus-40');
+        expect(saved.colorLevel).toBe(3);
         expect(saved.globalBold).toBe(true);
         expect(getConfigLoadNotice()).toBeNull();
     });
@@ -614,7 +614,7 @@ describe('config utilities', () => {
         const edited = JSON.stringify({
             version: 3,
             lines: [[{ id: 'widget-1', type: 'model' }]],
-            flexMode: 'full-until-compact'
+            colorLevel: 1
         });
         fs.writeFileSync(settingsPath, edited, 'utf-8');
         fs.rmdirSync(backupPath);
@@ -635,12 +635,12 @@ describe('config utilities', () => {
         // Edited in place, then backed up and migrated by another run (such as a status
         // line render) once the backup could be written
         const editedLines = [[{ id: 'widget-1', type: 'model' }]];
-        const edited = JSON.stringify({ version: 2, lines: editedLines, flexMode: 'full-until-compact' });
+        const edited = JSON.stringify({ version: 2, lines: editedLines, colorLevel: 1 });
         fs.rmdirSync(backupPath);
         fs.writeFileSync(backupPath, edited, 'utf-8');
         fs.writeFileSync(
             settingsPath,
-            JSON.stringify({ version: CURRENT_VERSION, lines: editedLines, flexMode: 'full-until-compact' }),
+            JSON.stringify({ version: CURRENT_VERSION, lines: editedLines, colorLevel: 1 }),
             'utf-8'
         );
 
