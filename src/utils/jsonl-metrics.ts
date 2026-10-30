@@ -73,7 +73,7 @@ interface SpeedRequest {
     inputTokens: number;
     outputTokens: number;
     assistantTimestampMs: number | null;
-    interval: SpeedInterval | null;
+    intervals: SpeedInterval[];
 }
 
 interface CollectedSpeedMetrics {
@@ -86,6 +86,7 @@ interface TokenMetricEntry {
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    messageId: string | null;
 }
 
 interface TokenMetricAccumulator {
@@ -102,6 +103,7 @@ interface TokenMetricAccumulator {
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
+    countedOutputByMessageId: Map<string, number>;
     lastUsageEntry: TokenMetricEntry | null;
     sawCompactBoundary: boolean;
     boundaryAfterLastUsage: boolean;
@@ -169,11 +171,38 @@ function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
+        countedOutputByMessageId: new Map(),
         lastUsageEntry: null,
         sawCompactBoundary: false,
         boundaryAfterLastUsage: false,
         lastCompactBoundaryPostTokens: null
     };
+}
+
+// Count each message once even when another response separates its content
+// blocks. Keep the maximum output and the first counted context snapshot, as
+// consecutive duplicates did; records without an id still count independently.
+function accumulateCumulativeTokenEntry(
+    state: TokenMetricState,
+    entry: TokenMetricEntry,
+    includePostCompactionUsage: boolean
+): void {
+    const previousOutput = entry.messageId === null
+        ? undefined
+        : state.countedOutputByMessageId.get(entry.messageId);
+    if (entry.messageId !== null && previousOutput !== undefined) {
+        const outputDelta = entry.usage.output - previousOutput;
+        if (outputDelta > 0) {
+            state.countedOutputByMessageId.set(entry.messageId, entry.usage.output);
+            state.metrics.outputTokens += outputDelta;
+        }
+        return;
+    }
+
+    if (entry.messageId !== null) {
+        state.countedOutputByMessageId.set(entry.messageId, entry.usage.output);
+    }
+    accumulateTokenMetricEntry(state.metrics, entry, includePostCompactionUsage);
 }
 
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
@@ -188,20 +217,23 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const message = data?.message;
     const usage = message?.usage;
     if (usage) {
+        const rawMessageId = message.id;
         const entry: TokenMetricEntry = {
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+            messageId: typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null
         };
 
         const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.countedOutputByMessageId.clear();
         }
         if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            accumulateCumulativeTokenEntry(state, entry, !compactBoundary);
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
@@ -210,7 +242,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
 
 function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        accumulateCumulativeTokenEntry(state, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -317,13 +349,22 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    lastRequest: SpeedRequest | null;
+    lastRequestInterval: SpeedInterval | null;
+    // Scoped to this transcript so subagent collectors keep independent requests.
+    requestsByMessageId: Map<string, SpeedRequest>;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        lastRequest: null,
+        lastRequestInterval: null,
+        requestsByMessageId: new Map()
     };
 }
 
@@ -356,12 +397,50 @@ function collectSpeedMetricRecord(
     }
 
     const usage = parseUsageTokens(data.message.usage);
-    state.requests.push({
+    const rawMessageId = data.message.id;
+    const messageId = typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null;
+
+    // One API call can be written as several entries sharing a message.id,
+    // each repeating the call's input tokens. Count the call once, keeping
+    // its largest output count and its latest end time.
+    const previous = messageId === null ? undefined : state.requestsByMessageId.get(messageId);
+    if (previous) {
+        if (state.lastRequest !== previous) {
+            state.lastRequestInterval = null;
+        }
+        previous.inputTokens = usage.input;
+        previous.outputTokens = Math.max(previous.outputTokens, usage.output);
+        if (timestampMs !== null) {
+            previous.assistantTimestampMs = timestampMs;
+        }
+        if (interval) {
+            const lastInterval = state.lastRequestInterval;
+            if (lastInterval) {
+                lastInterval.startMs = Math.min(lastInterval.startMs, interval.startMs);
+                lastInterval.endMs = Math.max(lastInterval.endMs, interval.endMs);
+            } else {
+                // A nonconsecutive repeat must not turn the intervening idle
+                // time into active processing time.
+                previous.intervals.push(interval);
+                state.lastRequestInterval = interval;
+            }
+        }
+        state.lastRequest = previous;
+        return;
+    }
+
+    const request: SpeedRequest = {
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
-        interval
-    });
+        intervals: interval ? [interval] : []
+    };
+    state.requests.push(request);
+    state.lastRequest = request;
+    state.lastRequestInterval = interval;
+    if (messageId !== null) {
+        state.requestsByMessageId.set(messageId, request);
+    }
 }
 
 async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
@@ -397,21 +476,20 @@ function buildSpeedMetrics(
     windowSeconds?: number
 ): SpeedMetrics {
     const normalizedWindowSeconds = normalizeWindowSeconds(windowSeconds);
-    if (normalizedWindowSeconds !== null && collected.latestTimestampMs === null) {
+    const windowBounds = normalizedWindowSeconds !== null && collected.latestTimestampMs !== null
+        ? {
+            startMs: collected.latestTimestampMs - (normalizedWindowSeconds * 1000),
+            endMs: collected.latestTimestampMs
+        }
+        : null;
+    if (normalizedWindowSeconds !== null && windowBounds === null) {
         return createEmptySpeedMetrics();
     }
 
-    const windowEndMs = normalizedWindowSeconds !== null && collected.latestTimestampMs !== null
-        ? collected.latestTimestampMs
-        : null;
-    const windowStartMs = normalizedWindowSeconds !== null && windowEndMs !== null
-        ? windowEndMs - (normalizedWindowSeconds * 1000)
-        : null;
-
-    const selectedRequests = normalizedWindowSeconds !== null && windowStartMs !== null && windowEndMs !== null
+    const selectedRequests = windowBounds
         ? collected.requests.filter(request => request.assistantTimestampMs !== null
-            && request.assistantTimestampMs >= windowStartMs
-            && request.assistantTimestampMs <= windowEndMs
+            && request.assistantTimestampMs >= windowBounds.startMs
+            && request.assistantTimestampMs <= windowBounds.endMs
         )
         : collected.requests;
 
@@ -423,22 +501,20 @@ function buildSpeedMetrics(
         inputTokens += request.inputTokens;
         outputTokens += request.outputTokens;
 
-        if (!request.interval) {
-            continue;
-        }
+        for (const interval of request.intervals) {
+            if (windowBounds === null) {
+                intervals.push(interval);
+                continue;
+            }
 
-        if (windowStartMs === null || windowEndMs === null) {
-            intervals.push(request.interval);
-            continue;
-        }
-
-        const clippedStartMs = Math.max(request.interval.startMs, windowStartMs);
-        const clippedEndMs = Math.min(request.interval.endMs, windowEndMs);
-        if (clippedEndMs > clippedStartMs) {
-            intervals.push({
-                startMs: clippedStartMs,
-                endMs: clippedEndMs
-            });
+            const clippedStartMs = Math.max(interval.startMs, windowBounds.startMs);
+            const clippedEndMs = Math.min(interval.endMs, windowBounds.endMs);
+            if (clippedEndMs > clippedStartMs) {
+                intervals.push({
+                    startMs: clippedStartMs,
+                    endMs: clippedEndMs
+                });
+            }
         }
     }
 
@@ -539,6 +615,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
     let lastTimestampMs: number | null = null;
     let thinkingEffort: ResolvedThinkingEffort | undefined;
     let sessionName: string | null = null;
+    let automaticTitle: string | null = null;
 
     try {
         for await (const line of iterateJsonlLines(transcriptPath)) {
@@ -572,6 +649,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             }
             if (options.includeSessionName) {
                 sessionName = getSessionNameFromRecord(data) ?? sessionName;
+                automaticTitle = getSessionNameFromRecord(data, 'ai-title') ?? automaticTitle;
             }
         }
 
@@ -604,7 +682,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             speedMetricsCollection,
             compactionData,
             thinkingEffort,
-            sessionName
+            sessionName: sessionName ?? automaticTitle
         };
     } catch {
         return emptyResult;

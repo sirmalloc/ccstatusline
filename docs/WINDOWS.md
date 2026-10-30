@@ -116,6 +116,7 @@ Git, JJ, GitHub/GitLab CLI, SSH, and the UTF-8 code-page helper are resolved fro
 - Current Working Directory widget displays Windows-style paths correctly
 - Full support for mapped network drives and UNC paths
 - Handles Windows drive letters (C:, D:, etc.)
+- Current Working Dir link mode builds Windows `file:///C:/...` and UNC `file://server/share/...` targets with reserved characters encoded
 
 ## Windows Troubleshooting
 
