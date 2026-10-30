@@ -45,6 +45,97 @@
 
 <br />
 
+## 🚀 Quick Start
+
+### No installation needed! Use directly with npx or bunx:
+
+```bash
+# Run the configuration TUI with npm
+npx -y ccstatusline@latest
+
+# Or use bunx, Bun's alternative to npx
+bunx -y ccstatusline@latest
+```
+
+Startup time can vary with the package runner (`npx` or `bunx`), its cache, and your platform. If repeated status line launches are slow, consider the **Pinned global install** option described below to run `ccstatusline` directly.
+
+Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
+
+<br />
+<details>
+<summary><b>Configure ccstatusline</b></summary>
+
+The interactive configuration tool provides a terminal UI where you can:
+- Configure multiple separate status lines
+- Add/remove/reorder status line widgets
+- Customize colors for each widget
+- Configure flex separator behavior
+- Configure Claude Code status line refresh interval when supported
+- Edit custom text widgets
+- Export JSON backups and preview imported configs before replacing or merging settings
+- Install/uninstall to Claude Code settings
+- Preview your status line in real-time
+
+> 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
+
+> 🔧 **Custom Claude Config:** If your Claude Code configuration is in a non-standard location, set the `CLAUDE_CONFIG_DIR` environment variable:
+> ```bash
+> # Linux/macOS
+> export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
+> ```
+
+> 🌐 **HTTPS proxy:** Usage and Claude Status requests honor uppercase `HTTPS_PROXY`, with exclusions from both `NO_PROXY` and `no_proxy`. See [proxy settings](docs/USAGE.md#proxy-settings) for host, domain, and port matching.
+
+> 🪟 **Windows Support:** PowerShell examples, installation notes, fonts, troubleshooting, WSL, and Windows Terminal configuration are in [docs/WINDOWS.md](docs/WINDOWS.md).
+
+> 🫥 **Status line empty in one folder?** Claude Code only runs the status line command in trusted workspaces, and nested git repositories stopped inheriting trust in Claude Code 2.1.232. See [Status line empty in one folder](docs/USAGE.md#status-line-empty-in-one-folder-but-fine-elsewhere).
+
+> 🧩 **Skills always `none` with a wrapper script?** Skills needs Claude Code hooks, which are only added when the status line command contains `ccstatusline`. See [Skills always shows none](docs/USAGE.md#skills-always-shows-none).
+
+</details>
+
+<details>
+<summary><b>Claude Code settings.json format</b></summary>
+
+When you install from the TUI, ccstatusline writes a `statusLine` command object to your Claude Code settings:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0,
+    "refreshInterval": 10
+  }
+}
+```
+
+`refreshInterval` is written only when your Claude Code version supports it (>=2.1.97). The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
+
+Other supported command values are:
+- `bunx -y ccstatusline@latest`
+- `ccstatusline` (for self-managed/global installs)
+
+The status line command runs once per repaint, so what it costs to invoke is paid over and over. Under
+Bun that cost depends on the specifier: `bunx` re-resolves the `latest` dist-tag against the registry
+on every run, because a dist-tag is not cacheable. Measured on Windows with a warm cache, median of
+five runs of `--version`, which exits before rendering:
+
+| command | median |
+| --- | --- |
+| `bunx -y ccstatusline@latest` | 633 ms |
+| `bunx -y ccstatusline@2.2.27` | 202 ms |
+| `bunx -y ccstatusline` | 207 ms |
+
+Dropping `@latest` is worth about 430 ms per repaint there. npm does not behave this way: `npx -y
+ccstatusline@latest` and `npx -y ccstatusline@2.2.27` measured 1082 ms and 1135 ms, so pinning buys
+nothing under `npx`. A **Pinned global install**, which writes `"command": "ccstatusline"`, avoids the
+resolution entirely on both.
+
+For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
+
+</details>
+
 ## 🆕 Recent Updates
 
 ### v2.2.32 - Safer imports, proxy handling, and rendering fixes
@@ -118,6 +209,7 @@ Across the updates since the September 3 release, 64 PRs have been incorporated,
 - **🧭 Selective Powerline alignment** - Press `x` in the line editor to let a widget and the rest of its line keep their natural widths while earlier Powerline columns stay auto-aligned.
 - **📏 Git widget width limits** - `Git Branch` and `Git Root Dir` can cap their visible width with ellipsis-safe truncation while preserving hyperlink targets.
 - **🔣 Current directory glyphs** - `Current Working Dir` can prepend an optional custom glyph, including in raw-value mode.
+- **📂 Clickable current directory** - `Current Working Dir` can link its displayed path to a file manager, VS Code, or Cursor while keeping the shortened label.
 - **🧠 Configurable context fallback** - `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` overrides the default 200k last-resort context window when Claude Code and the model name do not report one.
 - **🧩 Composable compaction metrics** - `Compaction Counter` can render count, auto, manual, unknown, or reclaimed-token values independently for custom layouts.
 - **🏷️ CLI version flag** - `ccstatusline --version` now prints the installed package version and exits.
@@ -338,96 +430,11 @@ The localizations in this section are third-party forks maintained outside this 
 
 <br />
 
-## 🚀 Quick Start
-
-### No installation needed! Use directly with npx or bunx:
-
-```bash
-# Run the configuration TUI with npm
-npx -y ccstatusline@latest
-
-# Or with Bun (faster)
-bunx -y ccstatusline@latest
-```
-
-Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
-
-<br />
-<details>
-<summary><b>Configure ccstatusline</b></summary>
-
-The interactive configuration tool provides a terminal UI where you can:
-- Configure multiple separate status lines
-- Add/remove/reorder status line widgets
-- Customize colors for each widget
-- Configure flex separator behavior
-- Configure Claude Code status line refresh interval when supported
-- Edit custom text widgets
-- Export JSON backups and preview imported configs before replacing or merging settings
-- Install/uninstall to Claude Code settings
-- Preview your status line in real-time
-
-> 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
-
-> 🔧 **Custom Claude Config:** If your Claude Code configuration is in a non-standard location, set the `CLAUDE_CONFIG_DIR` environment variable:
-> ```bash
-> # Linux/macOS
-> export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
-> ```
-
-> 🌐 **HTTPS proxy:** Usage and Claude Status requests honor uppercase `HTTPS_PROXY`, with exclusions from both `NO_PROXY` and `no_proxy`. See [proxy settings](docs/USAGE.md#proxy-settings) for host, domain, and port matching.
-
-> 🪟 **Windows Support:** PowerShell examples, installation notes, fonts, troubleshooting, WSL, and Windows Terminal configuration are in [docs/WINDOWS.md](docs/WINDOWS.md).
-
-> 🫥 **Status line empty in one folder?** Claude Code only runs the status line command in trusted workspaces, and nested git repositories stopped inheriting trust in Claude Code 2.1.232. See [Status line empty in one folder](docs/USAGE.md#status-line-empty-in-one-folder-but-fine-elsewhere).
-
-</details>
-
-<details>
-<summary><b>Claude Code settings.json format</b></summary>
-
-When you install from the TUI, ccstatusline writes a `statusLine` command object to your Claude Code settings:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "npx -y ccstatusline@latest",
-    "padding": 0,
-    "refreshInterval": 10
-  }
-}
-```
-
-`refreshInterval` is written only when your Claude Code version supports it (>=2.1.97). The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
-
-Other supported command values are:
-- `bunx -y ccstatusline@latest`
-- `ccstatusline` (for self-managed/global installs)
-
-The status line command runs once per repaint, so what it costs to invoke is paid over and over. Under
-Bun that cost depends on the specifier: `bunx` re-resolves the `latest` dist-tag against the registry
-on every run, because a dist-tag is not cacheable. Measured on Windows with a warm cache, median of
-five runs of `--version`, which exits before rendering:
-
-| command | median |
-| --- | --- |
-| `bunx -y ccstatusline@latest` | 633 ms |
-| `bunx -y ccstatusline@2.2.27` | 202 ms |
-| `bunx -y ccstatusline` | 207 ms |
-
-Dropping `@latest` is worth about 430 ms per repaint there. npm does not behave this way: `npx -y
-ccstatusline@latest` and `npx -y ccstatusline@2.2.27` measured 1082 ms and 1135 ms, so pinning buys
-nothing under `npx`. A **Pinned global install**, which writes `"command": "ccstatusline"`, avoids the
-resolution entirely on both.
-
-For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
-
-</details>
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+See the [contributor guide](CONTRIBUTING.md) for setup, checks, and compatibility requirements.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -468,6 +475,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
 - [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
 - [claudenews](https://github.com/bhpark1013/claudenews) - Developer news in your status line while the agent works: Hacker News, GitHub Trending, and per-language sources, with optional translation and short summaries. Ships a `--segment` mode built to embed as a Custom Command widget.
+- [claude-eta](https://github.com/harshece16/claude-eta) - Predicts how long the current Claude Code turn and its running subagents will take, learned from your own session history. Zero tokens, one Python file; works as a Custom Command widget.
 
 ## 🙏 Acknowledgments
 

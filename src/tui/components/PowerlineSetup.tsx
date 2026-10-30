@@ -194,7 +194,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     if (hasManualSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
-                        onUpdate(buildEnabledPowerlineSettings(settings, false));
+                        onUpdate(buildEnabledPowerlineSettings(settings));
                     }
                 } else {
                     onUpdate({
@@ -352,10 +352,10 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     {hasManualSeparatorItems && (
                         <>
                             <Box>
-                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing manual separators from your status lines.</Text>
+                                <Text color='yellow'>⚠ Powerline mode uses its own separator system.</Text>
                             </Box>
                             <Box marginBottom={1}>
-                                <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
+                                <Text dimColor>Your existing manual separators will stay in this configuration but won't be shown while Powerline is enabled.</Text>
                             </Box>
                         </>
                     )}
@@ -366,7 +366,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         <ConfirmDialog
                             inline={true}
                             onConfirm={() => {
-                                onUpdate(buildEnabledPowerlineSettings(settings, true));
+                                onUpdate(buildEnabledPowerlineSettings(settings));
                                 setConfirmingEnable(false);
                             }}
                             onCancel={() => {

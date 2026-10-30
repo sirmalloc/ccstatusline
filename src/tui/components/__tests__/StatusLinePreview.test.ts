@@ -4,7 +4,8 @@ import React from 'react';
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import {
@@ -14,6 +15,7 @@ import {
 import type { WidgetItem } from '../../../types/Widget';
 import { getVisibleWidth } from '../../../utils/ansi';
 import { renderOsc8Link } from '../../../utils/hyperlink';
+import * as sessionUsageHistory from '../../../utils/session-usage-history';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     StatusLinePreview,
@@ -81,6 +83,18 @@ describe('StatusLinePreview helpers', () => {
         );
     });
 
+    it('keeps a shortened CWD label linked to its complete file URL in preview', () => {
+        const target = 'file:///Users/example/Documents/Projects/%E4%B8%AD%E6%96%87%20project%20%231';
+        const line = renderOsc8Link(target, 'cwd: ~/.../中文 project #1');
+        const prepared = preparePreviewLineForTerminal(line, 160);
+
+        expect(prepared).toBe(`\x1b]8;;${target}\x07cwd: ~/.../中文 project #1\x1b]8;;\x07`);
+        expect(getVisibleWidth(prepared)).toBe(getVisibleWidth('cwd: ~/.../中文 project #1'));
+        expect(getVisibleWidth(prepared)).toBeLessThan(
+            getVisibleWidth('cwd: /Users/example/Documents/Projects/中文 project #1')
+        );
+    });
+
     it('still removes non-link OSC sequences', () => {
         expect(preparePreviewLineForTerminal('\x1b]0;title\x07Claude: ok', 40)).toBe('Claude: ok');
     });
@@ -123,6 +137,42 @@ describe('StatusLinePreview helpers', () => {
             if (history) {
                 expect(output).toContain('▮');
             }
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('renders a CWD file link in Ink with the shortened visible label', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            defaultPadding: ''
+        };
+        const lines: WidgetItem[][] = [[{
+            id: 'cwd',
+            type: 'current-working-dir',
+            rawValue: true,
+            metadata: { fishStyle: 'true', linkTo: 'file' }
+        }]];
+        const instance = render(
+            React.createElement(StatusLinePreview, { lines, terminalWidth: 160, settings }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('~/D/P/my-project');
+            });
+            const output = stdout.getOutput();
+            expect(output).toContain('file:///Users/example/Documents/Projects/my-project');
+            expect(output).toContain('\x1b]8;;\x07');
+            expect(getVisibleWidth('\x1b]8;;file:///Users/example/Documents/Projects/my-project\x07~/D/P/my-project\x1b]8;;\x07')).toBe('~/D/P/my-project'.length);
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -207,6 +257,52 @@ describe('StatusLinePreview helpers', () => {
             stdin.destroy();
             stdout.destroy();
             stderr.destroy();
+        }
+    });
+
+    // The forecast widgets show samples here; only a real status-line render records
+    // a reading, so browsing the TUI never adds to the history.
+    it('previews the forecast widgets without recording a reading', async () => {
+        const recordSpy = vi.spyOn(sessionUsageHistory, 'recordSessionUsageReading').mockReturnValue([]);
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const lines: WidgetItem[][] = [[
+            { id: 'usage', type: 'session-usage' },
+            { id: 'forecast', type: 'block-forecast' },
+            { id: 'limit', type: 'block-limit-timer' }
+        ]];
+
+        const instance = render(
+            React.createElement(StatusLinePreview, {
+                lines,
+                terminalWidth: 160,
+                settings: DEFAULT_SETTINGS
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Limit in: 1hr 13m');
+            });
+
+            expect(stdout.getOutput()).toContain('→100.0%');
+            expect(recordSpy).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+            recordSpy.mockRestore();
         }
     });
 });

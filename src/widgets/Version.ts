@@ -7,7 +7,7 @@ import type {
 } from '../types/Widget';
 
 export class VersionWidget implements Widget {
-    getDefaultColor(): string { return 'gray'; }
+    getDefaultColor(): string { return 'brightBlack'; }
     getDescription(): string { return 'Shows Claude Code CLI version number'; }
     getDisplayName(): string { return 'Version'; }
     getCategory(): string { return 'Core'; }
