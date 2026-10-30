@@ -32,7 +32,7 @@ interface ListProps<V = string | number> extends BoxProps {
     wrapNavigation?: boolean;
     // When only the number of items changes, keeps the highlight on the item
     // it was on instead of moving it to initialSelection. For a list whose
-    // initialSelection doesn't follow the highlight.
+    // initialSelection doesn't move with the highlighted item.
     keepHighlightOnItemsChange?: boolean;
 }
 

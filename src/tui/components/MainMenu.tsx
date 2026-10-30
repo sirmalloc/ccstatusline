@@ -239,9 +239,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
             <Text bold>Main Menu</Text>
 
-            {/* initialSelection is the entry last opened. Saving swaps Save & Exit
-                and Exit without saving for Exit, and must not move the highlight
-                back to that entry. */}
+            {/* initialSelection is the highlighted row's index. Saving swaps Save &
+                Exit and Exit without saving for Exit, which moves the entries
+                below, and the highlight must stay on its entry, not its row. */}
             <List
                 items={menuItems}
                 marginTop={1}
