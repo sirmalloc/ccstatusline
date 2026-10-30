@@ -22,7 +22,7 @@ import {
     applyLineGradientSegment,
     getVisibleText,
     getVisibleWidth,
-    restoreBackgroundAfterResets,
+    restoreStyleAfterResets,
     stripSgrCodes,
     truncateStyledText
 } from './ansi';
@@ -525,9 +525,14 @@ function renderPowerlineStatusLine(
             ? overrideForegroundGradientStops
             : null;
         // Resets in preserved content would clear the segment background up
-        // to the separator, so it is re-applied after each one.
-        const segmentContent = isPreserveColors && widget.bgColor
-            ? restoreBackgroundAfterResets(widget.content, getColorAnsiCode(widget.bgColor, colorLevel, true))
+        // to the separator, and the widget's bold and dim, so they are
+        // re-applied after each one.
+        const segmentContent = isPreserveColors
+            ? restoreStyleAfterResets(widget.content, {
+                background: getColorAnsiCode(widget.bgColor, colorLevel, true),
+                bold: shouldBold,
+                dim: shouldDim
+            })
             : widget.content;
         const styledContent = widget.widget.dim === 'parens'
             ? applyParensDim(segmentContent, shouldBold)
@@ -1064,6 +1069,13 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
+    // Override background color takes precedence over EVERYTHING, including passed background color
+    const resolveBackgroundColor = (backgroundColor?: string): string | undefined => (
+        settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
+            ? settings.overrideBackgroundColor
+            : backgroundColor
+    );
+
     // Helper to apply colors with optional background, bold, and dim
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
@@ -1081,11 +1093,7 @@ export function renderStatusLine(
             }
         }
 
-        // Override background color takes precedence over EVERYTHING, including passed background color
-        let bgColor = backgroundColor;
-        if (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
-            bgColor = settings.overrideBackgroundColor;
-        }
+        const bgColor = resolveBackgroundColor(backgroundColor);
 
         const shouldBold = (settings.globalBold) || bold;
         return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
@@ -1127,8 +1135,12 @@ export function renderStatusLine(
             // and the preceding visible content. A visible separator owns that
             // boundary, while spacing-only separators can be replaced by a
             // more meaningful separator that follows the empty widget.
+            // Separators placed next to each other form one run and all
+            // render; only a run on the far side of an empty widget can
+            // own or give up the boundary.
             let contentBeforeIndex: number | null = null;
             let replacesSpacingSeparator = false;
+            let followsSeparatorInRun = false;
             let crossedEmptyWidget = false;
             let crossedUnmergedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
@@ -1136,6 +1148,10 @@ export function renderStatusLine(
                 if (!prevWidget)
                     continue;
                 if (prevWidget.type === 'separator') {
+                    if (!crossedEmptyWidget) {
+                        followsSeparatorInRun = true;
+                        continue;
+                    }
                     if (!isSpacingSeparator(prevWidget, settings.defaultSeparator))
                         break;
                     replacesSpacingSeparator = true;
@@ -1157,7 +1173,10 @@ export function renderStatusLine(
             if (contentBeforeIndex === null)
                 continue;
 
-            if (replacesSpacingSeparator) {
+            // Only the first separator of a run removes the spacing it
+            // replaces; the rest of the run would remove that run's own
+            // separators.
+            if (replacesSpacingSeparator && !followsSeparatorInRun) {
                 while (isSpacingSeparator(elements[elements.length - 1]?.widget, settings.defaultSeparator)) {
                     elements.pop();
                 }
@@ -1229,6 +1248,13 @@ export function renderStatusLine(
                     if (hasForegroundOverride(settings)) {
                         finalOutput = stripSgrCodes(finalOutput);
                     }
+                    // Resets in the command's output would clear the widget's
+                    // background, bold and dim, so they are re-applied after each one
+                    finalOutput = restoreStyleAfterResets(finalOutput, {
+                        background: getColorAnsiCode(resolveBackgroundColor(widget.backgroundColor), colorLevel, true),
+                        bold: settings.globalBold || widget.bold,
+                        dim: widget.dim === true
+                    });
                     // Preserve intrinsic foregrounds only when no global
                     // foreground override is active. Bold, dim, backgrounds,
                     // and global overrides still wrap the widget normally.
