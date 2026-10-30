@@ -3,7 +3,7 @@ import type { WidgetItem } from '../types/Widget';
 export const SPEED_WINDOW_METADATA_KEY = 'windowSeconds';
 export const DEFAULT_SPEED_WINDOW_SECONDS = 0;
 export const MIN_SPEED_WINDOW_SECONDS = 0;
-export const MAX_SPEED_WINDOW_SECONDS = 120;
+export const MAX_SPEED_WINDOW_SECONDS = 3600;
 
 export function clampSpeedWindowSeconds(value: number): number {
     if (!Number.isFinite(value)) {
