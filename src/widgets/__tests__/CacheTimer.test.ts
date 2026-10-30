@@ -58,8 +58,9 @@ describe('CacheTimer widget', () => {
 
     it('renders the preview as a labeled or raw sample', () => {
         const widget = new CacheTimerWidget();
-        expect(widget.render(item(), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4:52');
-        expect(widget.render(item({ rawValue: true }), { isPreview: true }, DEFAULT_SETTINGS)).toBe('🟢 4:52');
+        expect(widget.render(item(), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4m 52s');
+        expect(widget.render(item({ rawValue: true }), { isPreview: true }, DEFAULT_SETTINGS)).toBe('🟢 4m 52s');
+        expect(widget.render(item({ metadata: { compact: 'true' } }), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4m52s');
     });
 
     it('renders n/a when no transcript is available by default', () => {
@@ -92,13 +93,13 @@ describe('CacheTimer widget', () => {
         const context = transcriptContext([assistant(10800), pendingUser]);
         context.data = { ...context.data, prompt_cache: { warm: true, caching_observed: true, ttl: '1h', expires_at: now / 1000 + 2100 } };
 
-        expect(new CacheTimerWidget().render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 35:00');
+        expect(new CacheTimerWidget().render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 35m 0s');
     });
 
     it.each([
-        { ttl: '1h', configured: '300', remaining: 600, expected: 'Cache: 🔴 10:00' },
-        { ttl: '1h', configured: '300', remaining: 1500, expected: 'Cache: 🟡 25:00' },
-        { ttl: '5m', configured: '3600', remaining: 240, expected: 'Cache: 🟢 4:00' }
+        { ttl: '1h', configured: '300', remaining: 600, expected: 'Cache: 🔴 10m 0s' },
+        { ttl: '1h', configured: '300', remaining: 1500, expected: 'Cache: 🟡 25m 0s' },
+        { ttl: '5m', configured: '3600', remaining: 240, expected: 'Cache: 🟢 4m 0s' }
     ])('uses reported $ttl instead of configured $configured seconds for the glyph', ({ ttl, configured, remaining, expected }) => {
         const now = 1800000000000;
         vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -113,8 +114,8 @@ describe('CacheTimer widget', () => {
         const context: RenderContext = { data: { prompt_cache: { ttl, expires_at: now / 1000 + 240 } } };
         const widget = new CacheTimerWidget();
 
-        expect(widget.render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4:00');
-        expect(widget.render(item({ metadata: { ttlSeconds: '3600' } }), context, DEFAULT_SETTINGS)).toBe('Cache: 🔴 4:00');
+        expect(widget.render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4m 0s');
+        expect(widget.render(item({ metadata: { ttlSeconds: '3600' } }), context, DEFAULT_SETTINGS)).toBe('Cache: 🔴 4m 0s');
     });
 
     it('renders reported expiry without a transcript and preserves raw values and glyph overrides', () => {
@@ -122,8 +123,24 @@ describe('CacheTimer widget', () => {
         vi.spyOn(Date, 'now').mockReturnValue(now);
         const context: RenderContext = { data: { prompt_cache: { expires_at: now / 1000 + 240 } } };
 
-        expect(new CacheTimerWidget().render(item({ rawValue: true }), context, DEFAULT_SETTINGS)).toBe('🟢 4:00');
-        expect(new CacheTimerWidget().render(item({ rawValue: true, metadata: { symbolFresh: '+' } }), context, DEFAULT_SETTINGS)).toBe('+ 4:00');
+        expect(new CacheTimerWidget().render(item({ rawValue: true }), context, DEFAULT_SETTINGS)).toBe('🟢 4m 0s');
+        expect(new CacheTimerWidget().render(item({ rawValue: true, metadata: { symbolFresh: '+' } }), context, DEFAULT_SETTINGS)).toBe('+ 4m 0s');
+    });
+
+    it.each([
+        { remaining: 240, expected: '4m 0s', compact: '4m0s' },
+        { remaining: 3600, expected: '1hr 0m 0s', compact: '1h0m0s' },
+        { remaining: 7195, expected: '1hr 59m 55s', compact: '1h59m55s' },
+        { remaining: 45, expected: '45s', compact: '45s' }
+    ])('formats reported expiry with $remaining seconds in both time modes', ({ remaining, expected, compact }) => {
+        const now = 1800000000000;
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const context: RenderContext = { data: { prompt_cache: { expires_at: now / 1000 + remaining } } };
+        const widget = new CacheTimerWidget();
+        const timer = item({ rawValue: true, metadata: { symbolFresh: '', symbolUrgent: '' } });
+
+        expect(widget.render(timer, context, DEFAULT_SETTINGS)).toBe(expected);
+        expect(widget.render({ ...timer, metadata: { ...timer.metadata, compact: 'true' } }, context, DEFAULT_SETTINGS)).toBe(compact);
     });
 
     it.each([
@@ -160,7 +177,7 @@ describe('CacheTimer widget', () => {
         it(`renders the ${label} countdown with the ${icon} icon`, () => {
             const widget = new CacheTimerWidget();
             const out = widget.render(item(), transcriptContext([assistant(elapsed)]), DEFAULT_SETTINGS);
-            expect(out).toMatch(new RegExp(`^Cache: ${icon} \\d+:\\d{2}$`));
+            expect(out).toMatch(new RegExp(`^Cache: ${icon} (\\d+m )?\\d+s$`));
         });
     }
 
@@ -172,7 +189,7 @@ describe('CacheTimer widget', () => {
     it('renders a raw countdown without the label', () => {
         const widget = new CacheTimerWidget();
         const out = widget.render(item({ rawValue: true }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS);
-        expect(out).toMatch(/^🟢 \d+:\d{2}$/);
+        expect(out).toMatch(/^🟢 (\d+m )?\d+s$/);
     });
 
     it('ignores sidechain rows when deriving the cache state', () => {
@@ -239,8 +256,8 @@ describe('CacheTimer widget', () => {
 
     it('starts the countdown from rows with cache reads or cache writes', () => {
         const widget = new CacheTimerWidget();
-        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_read_input_tokens: 1234 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
-        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_creation_input_tokens: 55 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_read_input_tokens: 1234 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 (\d+m )?\d+s$/);
+        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_creation_input_tokens: 55 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 (\d+m )?\d+s$/);
     });
 
     it('finds the trailing record even when it exceeds the initial 32 KiB tail read', () => {
@@ -251,13 +268,13 @@ describe('CacheTimer widget', () => {
         expect(widget.render(item(), transcriptContext([assistant(400), bigUser]), DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
         // ...and an oversized trailing assistant row must still drive the countdown.
         const bigAssistant = JSON.stringify({ type: 'assistant', timestamp: isoAgo(10), content: 'x'.repeat(64 * 1024) });
-        expect(widget.render(item(), transcriptContext([bigAssistant]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+        expect(widget.render(item(), transcriptContext([bigAssistant]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 (\d+m )?\d+s$/);
     });
 
     it('finds a valid trailing record larger than 1 MiB', () => {
         const widget = new CacheTimerWidget();
         const huge = JSON.stringify({ type: 'assistant', timestamp: isoAgo(10), message: { usage: { cache_read_input_tokens: 42 } }, content: 'x'.repeat(2 * 1024 * 1024) });
-        expect(widget.render(item(), transcriptContext([huge]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+        expect(widget.render(item(), transcriptContext([huge]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 (\d+m )?\d+s$/);
     });
 
     it('renders n/a after scanning a file with no parseable records', () => {
@@ -276,6 +293,7 @@ describe('CacheTimer widget', () => {
         const widget = new CacheTimerWidget();
         expect(widget.getCustomKeybinds()).toEqual([
             { key: 't', label: '(t)tl', action: 'toggle-ttl' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
         ]);
         expect(widget.getHideableStates().map(state => state.key)).toEqual(['empty']);
@@ -292,18 +310,18 @@ describe('CacheTimer widget', () => {
     it('renders custom state glyphs from metadata overrides', () => {
         const widget = new CacheTimerWidget();
         expect(widget.render(item({ metadata: { symbolCold: 'X' } }), transcriptContext([assistant(400)]), DEFAULT_SETTINGS)).toBe('Cache: X COLD');
-        expect(widget.render(item({ metadata: { symbolFresh: '*' } }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toMatch(/^Cache: \* \d+:\d{2}$/);
+        expect(widget.render(item({ metadata: { symbolFresh: '*' } }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toMatch(/^Cache: \* (\d+m )?\d+s$/);
         expect(widget.render(item({ metadata: { symbolHot: '>' } }), transcriptContext([assistant(60), pendingUser]), DEFAULT_SETTINGS)).toBe('Cache: > HOT');
     });
 
     it('drops the glyph and its space when an override is blanked', () => {
         const widget = new CacheTimerWidget();
-        expect(widget.render(item({ metadata: { symbolFresh: '' } }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toMatch(/^Cache: \d+:\d{2}$/);
+        expect(widget.render(item({ metadata: { symbolFresh: '' } }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toMatch(/^Cache: (\d+m )?\d+s$/);
     });
 
     it('reflects a custom fresh glyph in the preview', () => {
         const widget = new CacheTimerWidget();
-        expect(widget.render(item({ metadata: { symbolFresh: '#' } }), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: # 4:52');
+        expect(widget.render(item({ metadata: { symbolFresh: '#' } }), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: # 4m 52s');
     });
 
     it('extends the countdown window when the TTL is set to 1 hour', () => {
@@ -311,7 +329,7 @@ describe('CacheTimer widget', () => {
         // 600s in is COLD at the default 5-minute TTL...
         expect(widget.render(item(), transcriptContext([assistant(600)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
         // ...but still fresh under a 1-hour TTL.
-        expect(widget.render(item({ metadata: { ttlSeconds: '3600' } }), transcriptContext([assistant(600)]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+        expect(widget.render(item({ metadata: { ttlSeconds: '3600' } }), transcriptContext([assistant(600)]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 (\d+m )?\d+s$/);
     });
 
     it('falls back to the default TTL for a malformed value', () => {
@@ -325,6 +343,34 @@ describe('CacheTimer widget', () => {
         expect(toOneHour?.metadata?.ttlSeconds).toBe('3600');
         const backToDefault = widget.handleEditorAction('toggle-ttl', toOneHour ?? item());
         expect(backToDefault?.metadata?.ttlSeconds).toBeUndefined();
+    });
+
+    it('drops the separator in short time mode', () => {
+        const widget = new CacheTimerWidget();
+        const context = transcriptContext([assistant(10)]);
+        expect(widget.render(item(), context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 4m \d+s$/);
+        expect(widget.render(item({ metadata: { compact: 'true' } }), context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 4m\d+s$/);
+    });
+
+    it('renders hours once the remaining time exceeds an hour', () => {
+        const widget = new CacheTimerWidget();
+        const context = transcriptContext([assistant(10)]);
+        expect(widget.render(item({ metadata: { ttlSeconds: '7200' } }), context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 1hr 59m \d+s$/);
+        expect(widget.render(item({ metadata: { ttlSeconds: '7200', compact: 'true' } }), context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 1h59m\d+s$/);
+    });
+
+    it('omits the minutes below a minute remaining', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([assistant(260)]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🔴 \d+s$/);
+    });
+
+    it('toggles short time via the keybind and annotates the editor', () => {
+        const widget = new CacheTimerWidget();
+        const short = widget.handleEditorAction('toggle-compact', item());
+        expect(short?.metadata?.compact).toBe('true');
+        expect(widget.getEditorDisplay(short ?? item()).modifierText).toBe('(compact)');
+        expect(widget.getEditorDisplay(item({ metadata: { ttlSeconds: '3600', compact: 'true' } })).modifierText).toBe('(ttl 1h, compact)');
+        expect(widget.handleEditorAction('toggle-compact', short ?? item())?.metadata?.compact).toBe('false');
     });
 
     it('annotates the editor with a non-default TTL', () => {
