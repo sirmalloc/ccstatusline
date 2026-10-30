@@ -62,7 +62,7 @@ function formatCause(name: string, details: LastMissCause): string {
     }
 
     // likely_server_side and any cause a later Claude Code adds
-    return name.replaceAll('_', ' ');
+    return name.replace(/_/g, ' ');
 }
 
 // Claude Code leaves last_miss_cause null when it couldn't identify a cause,
