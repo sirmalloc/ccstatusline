@@ -116,6 +116,16 @@ process.stdout.write(JSON.stringify({ result, requests, homedir: os.homedir() })
         fs.utimesSync(lockFile, mtimeMs / 1000, mtimeMs / 1000);
     }
 
+    // Another process's claim on the fetch, as one left by a process that
+    // stopped mid-fetch
+    function seedFetchClaim(mtimeMs: number): void {
+        const claimDir = path.join(cacheDir, 'claude-status.inflight');
+        const owner = path.join(claimDir, 'other-process');
+        fs.mkdirSync(claimDir);
+        fs.writeFileSync(owner, '');
+        fs.utimesSync(owner, mtimeMs / 1000, mtimeMs / 1000);
+    }
+
     function runProbe(options: ProbeOptions = {}): ProbeResult {
         const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
             const normalizedKey = key.toUpperCase();
@@ -154,7 +164,8 @@ process.stdout.write(JSON.stringify({ result, requests, homedir: os.homedir() })
         cleanup,
         runProbe,
         seedCache,
-        seedFailureLock
+        seedFailureLock,
+        seedFetchClaim
     };
 }
 
@@ -210,6 +221,20 @@ describe('Claude Status cache', () => {
     ])('backs off for a failure lock %s only while it can be current', (_label, lockOffsetMs, expectedRequests, expectedIndicator) => {
         harness.seedCache(cachedStatus(NOW - 10 * MINUTE_MS, 'none'));
         harness.seedFailureLock(NOW + lockOffsetMs);
+
+        const probe = harness.runProbe({ statusBody: MAJOR_STATUS_BODY });
+
+        expect(probe.requests).toEqual(expectedRequests);
+        expect(probe.result).toEqual({ indicator: expectedIndicator });
+    });
+
+    it.each([
+        ['ten seconds old', -10 * SECOND_MS, [], 'none'],
+        ['dated a few seconds in the future', 2 * SECOND_MS, [], 'none'],
+        ['dated two hours in the future', 2 * HOUR_MS, [STATUS_PATH], 'major']
+    ])('leaves the fetch to another process whose claim is %s only while it can be current', (_label, claimOffsetMs, expectedRequests, expectedIndicator) => {
+        harness.seedCache(cachedStatus(NOW - 10 * MINUTE_MS, 'none'));
+        harness.seedFetchClaim(NOW + claimOffsetMs);
 
         const probe = harness.runProbe({ statusBody: MAJOR_STATUS_BODY });
 

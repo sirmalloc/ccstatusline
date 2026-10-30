@@ -298,7 +298,7 @@ function acquireFetchLock(nowMs: number): string | null {
 
             const [existingOwner] = fs.readdirSync(FETCH_LOCK_DIR);
             if (!existingOwner
-                || nowMs - fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs < FAILURE_BACKOFF * 1000) {
+                || isWithinAge(Math.floor(fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs / 1000), Math.floor(nowMs / 1000), FAILURE_BACKOFF)) {
                 return null;
             }
             clearOwnFetchLock(existingOwner);
@@ -467,7 +467,7 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     // acquisition. Recheck both its result and its failure backoff under lock.
     const latestCache = readCachedClaudeStatus();
     if (latestCache
-        && nowSeconds - Math.floor(latestCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isWithinAge(Math.floor(latestCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
         && isCacheUsable(latestCache, includeIncidents)) {
         memoryCache = latestCache;
         clearOwnFetchLock(inFlightLock);
