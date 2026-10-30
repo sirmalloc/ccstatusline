@@ -1,6 +1,8 @@
 import chalk from 'chalk';
 import * as childProcess from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
     afterEach,
@@ -16,6 +18,7 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import * as claudeSettings from '../../utils/claude-settings';
+import { DEV_RELOAD_CHILD_ARG_PREFIX } from '../../utils/dev-reload';
 import * as globalCommandResolution from '../../utils/global-command-resolution';
 import * as globalPackageManager from '../../utils/global-package-manager';
 import { getPackageVersion } from '../../utils/terminal';
@@ -411,8 +414,7 @@ describe('App after a global update run from the TUI', () => {
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
@@ -735,8 +737,7 @@ describe('App save with a widget whose hooks the status line command can\'t run'
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
@@ -769,17 +770,26 @@ function createPendingRun() {
 
 describe('App while an install or update runs', () => {
     let sandbox: AppSandbox;
+    let devReloadDir: string;
+    let devReloadStateFile: string;
     const savedEnv = { ...process.env };
+    const savedArgv = [...process.argv];
 
     beforeEach(() => {
         sandbox = setUpAppSandbox();
+        const capability = randomBytes(32).toString('hex');
+        devReloadDir = path.join(os.tmpdir(), `ccstatusline-dev-reload-${capability}`);
+        devReloadStateFile = path.join(devReloadDir, 'snapshot.json');
+        fs.mkdirSync(devReloadDir, { mode: 0o700 });
         process.env.CCSTATUSLINE_DEV_RELOAD = '1';
-        process.env.CCSTATUSLINE_DEV_RELOAD_STATE = `${sandbox.settingsPath}.reload`;
+        process.argv = [...savedArgv, `${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`];
     });
 
     afterEach(() => {
         sandbox.restore();
         process.env = { ...savedEnv };
+        process.argv = [...savedArgv];
+        fs.rmSync(devReloadDir, { recursive: true, force: true });
     });
 
     it('runs a confirmed install once, ignoring Enter, ESC and Ctrl+R until it finishes', async () => {
@@ -822,7 +832,7 @@ describe('App while an install or update runs', () => {
             await letReactCatchUp();
             rendered.stdin.write('\u0012');
             await letReactCatchUp();
-            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(fs.existsSync(devReloadStateFile)).toBe(false);
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Working...');
             expect(rendered.getFrame()).not.toContain('Select update style');
@@ -872,7 +882,7 @@ describe('App while an install or update runs', () => {
             await letReactCatchUp();
             rendered.stdin.write('\u0012');
             await letReactCatchUp();
-            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(fs.existsSync(devReloadStateFile)).toBe(false);
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Updating npm global install to v');
             expect(rendered.getFrame()).not.toContain('Exit');

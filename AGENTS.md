@@ -112,7 +112,7 @@ All widgets must implement:
 - **Cross-platform stdin reading**: Detects Bun vs Node.js environment and uses appropriate stdin API
 - **Token metrics**: Parses Claude Code transcript files (JSONL format) to calculate token usage
 - **Git integration**: Uses child_process.execSync to get current branch and changes
-- **Terminal width management**: Three modes for handling width (full, full-minus-40, full-until-compact)
+- **Terminal width management**: Lines use the full width minus 5 columns, taken from `CCSTATUSLINE_WIDTH`, then the `COLUMNS` Claude Code sets, then a terminal probe
 - **Flex separators**: Special separator type that expands to fill available space
 - **Powerline mode**: Optional Powerline-style rendering with arrow separators
 - **Custom commands**: Execute shell commands and display output in status line

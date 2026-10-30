@@ -60,8 +60,8 @@ describe('migrations', () => {
         }, 2) as Record<string, unknown>;
 
         expect(migrated.version).toBe(2);
-        expect(migrated.flexMode).toBe('full');
-        expect(migrated.compactThreshold).toBe(70);
+        expect(migrated.flexMode).toBeUndefined();
+        expect(migrated.compactThreshold).toBeUndefined();
         expect(migrated.colorLevel).toBe(3);
         expect(migrated.defaultSeparator).toBe('|');
         expect(migrated.defaultPadding).toBe(' ');
@@ -108,10 +108,10 @@ describe('v3 to v4 hide flag migration', () => {
     }
 
     it('bumps the version without touching unrelated data', () => {
-        const migrated = migrateConfig({ version: 3, flexMode: 'full' }, 4) as Record<string, unknown>;
+        const migrated = migrateConfig({ version: 3, colorLevel: 3 }, 4) as Record<string, unknown>;
 
         expect(migrated.version).toBe(4);
-        expect(migrated.flexMode).toBe('full');
+        expect(migrated.colorLevel).toBe(3);
         expect(migrated.updatemessage).toBeUndefined();
     });
 

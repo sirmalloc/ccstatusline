@@ -173,6 +173,27 @@ describe('computeSessionForecastIfNeeded', () => {
         expect(loginLookups).toBe(0);
     });
 
+    it('has nothing to forecast once the usage API puts the block at its limit, and still records the reading', () => {
+        const deps = makeDeps({
+            version: 1,
+            profiles: { [path.resolve(PROFILE)]: [{ resetAt: RESET_AT, readings: [[at(12, 47), at(13, 15), 75], [at(13, 16), at(13, 16), 98]] }] }
+        });
+
+        expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'block-limit-timer' }]], { ...usageData, sessionUsage: 99, apiSessionUsage: 100 }, deps)).toBeNull();
+        expect(deps.files.get(CACHE_PATH)).toContain(`[${NOW},${NOW},99]`);
+    });
+
+    it('keeps forecasting from the session percent while the usage API is under the limit', () => {
+        const deps = makeDeps({
+            version: 1,
+            profiles: { [path.resolve(PROFILE)]: [{ resetAt: RESET_AT, readings: [[at(12, 20), at(12, 52), 30], [at(12, 53), at(13, 16), 42]] }] }
+        });
+
+        const forecast = computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], { ...usageData, apiSessionUsage: 99.7 }, deps);
+
+        expect(forecast?.projectedPercent).toBeCloseTo(83.2, 6);
+    });
+
     it('clamps a session percent over 100 and has nothing to forecast', () => {
         const deps = makeDeps();
 

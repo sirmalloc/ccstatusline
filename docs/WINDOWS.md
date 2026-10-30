@@ -124,13 +124,15 @@ Git, JJ, GitHub/GitLab CLI, SSH, and the UTF-8 code-page helper are resolved fro
 
 **Issue**: Status lines wrap because terminal width cannot be detected
 
+Claude Code 2.1.153 and later pass the terminal width to the status line in `COLUMNS`, which ccstatusline reads on Windows too. With an older Claude Code, update it or set an explicit width before launching it:
+
 ```powershell
 # Set an explicit width before launching Claude Code
 $env:CCSTATUSLINE_WIDTH="160"
 claude
 ```
 
-`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. This is useful on Windows because native width probing is disabled when ccstatusline runs outside WSL.
+`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before `COLUMNS` and automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. Without either variable, Windows has no width: native width probing is disabled when ccstatusline runs outside WSL.
 
 **Issue**: Powerline symbols showing as question marks or boxes
 

@@ -69,7 +69,6 @@ The interactive configuration tool provides a terminal UI where you can:
 - Configure multiple separate status lines
 - Add/remove/reorder status line widgets
 - Customize colors for each widget
-- Configure flex separator behavior
 - Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
 - Export JSON backups and preview imported configs before replacing or merging settings
@@ -110,7 +109,7 @@ When you install from the TUI, ccstatusline writes a `statusLine` command object
 }
 ```
 
-`refreshInterval` is written only when your Claude Code version supports it (>=2.1.97). The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
+`refreshInterval` defaults to `10` seconds on fresh installs when Claude Code supports it (>=2.1.97). Reinstalling preserves an existing value even if the version check fails. The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
 
 Other supported command values are:
 - `bunx -y ccstatusline@latest`
@@ -137,6 +136,28 @@ For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -
 </details>
 
 ## 🆕 Recent Updates
+
+### v2.2.32 - v2.2.33 - Usage forecasts, live previews, and accurate metrics
+
+Includes all 56 PRs merged since the v2.2.32 tag.
+
+- **🔮 Block forecasts** - New Block Forecast and Block Limit Timer widgets project 5-hour usage at reset and estimate time to the limit from your recent pace.
+- **⏳ Clearer block usage and countdowns** - Session Usage is now Block Usage with a `5h:` label; hide it at 100% and hide Block Reset Timer below 100% to swap the percentage for a reset countdown.
+- **💳 Gateway spend limits** - New Spend Limit Usage and Spend Limit Amount widgets show gateway-reported usage percentages and dollar amounts without an extra API request.
+- **⚡ Fast Mode and Extra Usage Limit** - Display Claude Code's fast-mode state and your monthly extra-usage limit, with configurable formats and hide states.
+- **👀 Live widget picking** - Preview highlighted widgets before adding, inserting, or changing them; long picker lists scroll to keep the preview visible, and global installs no longer pause on each editor keypress.
+- **🔗 Directory and status links** - Open the current directory in a file manager, VS Code, or Cursor while keeping your preferred path abbreviation; Claude Status can link its text and history strip to the status page.
+- **🌿 Shorter Git names** - Toggle fish-style abbreviation for Git Branch and Git Worktree while branch links keep their full targets.
+- **🎨 Glyph controls** - Customize Remote Control Status's Nerd Font on/off glyphs and label formats, with a corrected Nerd Fonts v3 off icon; Shift+Tab clears or restores every glyph slot together.
+- **📊 Accurate token and context metrics** - Split or interleaved records from one API response no longer inflate token totals or speed; calculated context percentages exclude output tokens until they become input.
+- **⏱️ Reliable cache and usage timing** - Cache Timer prefers Claude Code's reported cache expiry; stale usage fallback drops windows that have reset, and remaining-usage bars place their cursor at time remaining.
+- **👤 Account and profile isolation** - Usage caches and backoff locks are separate per Claude config directory, account email follows the live credentials, and macOS credential lookups retry by username and stop further Keychain probes after a timeout.
+- **🏷️ Automatic session titles** - Session Name falls back to Claude Code's generated title when no custom rename exists.
+- **⌨️ Clearer editing** - Blinking bar cursors make trailing spaces visible, and label edits update the status-line preview before confirmation.
+- **🛠️ Developer reload** - Set `CCSTATUSLINE_DEV_RELOAD=1` and press Ctrl+R to restart the TUI with the latest code while retaining unsaved settings and navigation.
+- **🩹 Miscellaneous bug fixes** - Preserve manual separators across Powerline toggles and existing refresh intervals during failed version checks; fix wrapped-hook dispatch, block detection, Git/JJ counts and detached-HEAD handling, Git cache timing, install detection, default colors, memory-unit rounding, and the terminal-width menu's default label.
+- **📐 Rendering and hook feedback** - Hidden widgets end merges unless merged onward; 8-bit terminal colors and hyperlinks render correctly while other control sequences are removed whole, and saves explain when a wrapper command prevents widget-hook installation.
+- **🔧 Maintenance** - Refresh dependencies and publishing CI, and isolate install and settings tests from the real home directory and unrelated tests.
 
 ### v2.2.32 - Safer imports, proxy handling, and rendering fixes
 
@@ -237,6 +258,10 @@ Across the updates since the September 3 release, 64 PRs have been incorporated,
 - **🧪 Usage test cache isolation** - Usage-fetch test probes now isolate `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables so local tests cannot touch the real ccstatusline cache.
 - **📦 Dependency refresh** - Refreshed React/React DOM and Bun lockfile development-tooling resolutions for the release.
 
+<br />
+<details>
+<summary><b>Older updates (v2.2.19 and earlier)</b></summary>
+
 ### v2.2.14 - v2.2.19 - Version pinning, npm provenance, usage overage widgets, and Git lock avoidance
 
 - **📌 Version pinning support** - Added support for pinned global installs so Claude Code can keep running a specific ccstatusline version.
@@ -256,10 +281,6 @@ Across the updates since the September 3 release, 64 PRs have been incorporated,
 - **🎤 Voice Status widget** - Added a widget that shows whether Claude Code voice input is enabled, with icon, text, word, and optional Nerd Font display modes.
 - **📉 Timer short bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now support compact short-bar progress displays.
 - **🔕 Quieter hook output** - Hook handling now suppresses no-op JSON output so non-status updates stay silent.
-
-<br />
-<details>
-<summary><b>Older updates (v2.2.12 and earlier)</b></summary>
 
 ### v2.2.9 - v2.2.12 - GitLab support, reset timers, context, compaction, and git widgets
 
