@@ -25,6 +25,7 @@ export interface UsageData {
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
     extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
+    apiSessionUsage?: number;      // the usage API's own sessionUsage, never rate_limits'; see usage-prefetch.ts
     error?: UsageError;
 }
 
@@ -36,7 +37,7 @@ export interface UsageWindowMetrics {
     remainingPercent: number;
 }
 
-export type UsageDataField = Exclude<keyof UsageData, 'error'>;
+export type UsageDataField = Exclude<keyof UsageData, 'error' | 'apiSessionUsage'>;
 
 // Fields that exist only in the statusline payload, never in the usage API
 // response or its on-disk cache.

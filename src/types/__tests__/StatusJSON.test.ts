@@ -7,6 +7,32 @@ import {
 import { StatusJSONSchema } from '../StatusJSON';
 
 describe('StatusJSONSchema numeric coercion', () => {
+    it('coerces prompt cache numeric fields while preserving the reported state', () => {
+        const result = StatusJSONSchema.parse({
+            prompt_cache: {
+                warm: true,
+                caching_observed: true,
+                ttl: '1h',
+                expires_at: '1800000300',
+                hit_ratio: '0.97',
+                recache_tokens_if_cold: '200000'
+            }
+        });
+
+        expect(result.prompt_cache).toEqual({
+            warm: true,
+            caching_observed: true,
+            ttl: '1h',
+            expires_at: 1800000300,
+            hit_ratio: 0.97,
+            recache_tokens_if_cold: 200000
+        });
+    });
+
+    it.each([undefined, null, {}, { warm: null, caching_observed: null, expires_at: null }])('accepts optional prompt cache data: %j', (prompt_cache) => {
+        expect(StatusJSONSchema.parse({ prompt_cache }).prompt_cache).toEqual(prompt_cache);
+    });
+
     it('coerces numeric strings to numbers', () => {
         const result = StatusJSONSchema.safeParse({
             cost: {
@@ -170,5 +196,40 @@ describe('StatusJSONSchema numeric coercion', () => {
 
         expect(result.data.rate_limits?.spend_limit?.used_percentage).toBe(12);
         expect(result.data.rate_limits?.spend_limit?.used_usd).toBeUndefined();
+    });
+
+    it('parses fast_mode', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: true });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBe(true);
+    });
+
+    it('accepts null fast_mode', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: null });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBeNull();
+    });
+
+    // One widget's field must not blank the whole status line
+    it('drops a malformed fast_mode and keeps the rest of the payload', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: 'yes', model: { id: 'claude-opus-4-6' } });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBeUndefined();
+        expect(result.data.model).toEqual({ id: 'claude-opus-4-6' });
     });
 });
