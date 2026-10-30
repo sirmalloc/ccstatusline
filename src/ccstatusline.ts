@@ -104,7 +104,7 @@ async function readStdin(): Promise<string | null> {
     }
 }
 
-async function renderMultipleLines(data: StatusJSON) {
+async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unknown>) {
     const settings = await loadSettings();
     const configError = getConfigLoadError();
 
@@ -173,6 +173,7 @@ async function renderMultipleLines(data: StatusJSON) {
     // Create render context
     const context: RenderContext = {
         data,
+        rawData,
         tokenMetrics,
         speedMetrics,
         windowedSpeedMetrics,
@@ -362,14 +363,16 @@ async function main() {
                     return;
                 }
 
-                // Parse and validate JSON in one step
-                const result = StatusJSONSchema.safeParse(parsed);
+                // Widgets read the validated copy; custom commands get the JSON
+                // as it arrived. Validation fails for anything but an object.
+                const rawData = parsed as Record<string, unknown>;
+                const result = StatusJSONSchema.safeParse(rawData);
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
                 }
 
-                await renderMultipleLines(result.data);
+                await renderMultipleLines(result.data, rawData);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);

@@ -79,8 +79,11 @@ function findMostRecentBlockStartTime(
             if (mtime.getTime() < cutoffTime.getTime()) {
                 break;
             }
-            const fileTimestamps = getAllTimestampsFromFile(file);
-            timestamps.push(...fileTimestamps);
+            // One push per timestamp: spreading a long transcript's timestamps
+            // into a single call exceeds the engine's argument limit and throws
+            for (const timestamp of getAllTimestampsFromFile(file)) {
+                timestamps.push(timestamp);
+            }
         }
 
         if (timestamps.length === 0) {
