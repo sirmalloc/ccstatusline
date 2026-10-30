@@ -10,6 +10,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    effectiveDecimals,
     renderMagnitude,
     resolveNumberFormat
 } from '../utils/number-format';
@@ -22,10 +23,13 @@ function formatBytes(bytes: number, format: NumberFormat): string {
     const GB = 1024 ** 3;
     const MB = 1024 ** 2;
     const KB = 1024;
+    // Promote to the next unit once the smaller-unit value would round up to
+    // "1024" at the displayed precision (e.g. 1023.6M -> "1.0G", not "1024M").
+    const rollover = 1024 - 0.5 / 10 ** effectiveDecimals(format, 0);
 
-    if (bytes >= GB)
+    if (bytes >= MB * rollover)
         return `${renderMagnitude(bytes / GB, format, 1)}G`;
-    if (bytes >= MB)
+    if (bytes >= KB * rollover)
         return `${renderMagnitude(bytes / MB, format, 0)}M`;
     if (bytes >= KB)
         return `${renderMagnitude(bytes / KB, format, 0)}K`;

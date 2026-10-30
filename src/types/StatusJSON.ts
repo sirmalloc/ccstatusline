@@ -106,6 +106,9 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    // Only the Fast Mode widget reads it, so a malformed value is dropped
+    // rather than failing the whole payload
+    fast_mode: z.boolean().nullable().optional().catch(undefined),
     worktree: z.object({
         name: z.string().optional(),
         path: z.string().optional(),
@@ -113,14 +116,17 @@ export const StatusJSONSchema = z.looseObject({
         original_cwd: z.string().optional(),
         original_branch: z.string().optional()
     }).nullable().optional(),
+    // Claude Code reports the live prompt-cache state, including the real
+    // expiry timestamp, so consumers do not have to infer it from transcript
+    // timings. Absent on older Claude Code versions.
+    prompt_cache: tolerant(PromptCacheSchema),
     rate_limits: z.object({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
         seven_day_sonnet: RateLimitPeriodSchema.nullable().optional(),
         seven_day_opus: RateLimitPeriodSchema.nullable().optional(),
         spend_limit: SpendLimitSchema.nullable().optional()
-    }).nullable().optional(),
-    prompt_cache: tolerant(PromptCacheSchema)
+    }).nullable().optional()
 });
 
 export type StatusJSON = z.infer<typeof StatusJSONSchema>;
