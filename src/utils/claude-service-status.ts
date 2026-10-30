@@ -14,14 +14,15 @@ import {
     type ClosableProxyAgent
 } from './proxy-agent';
 
-// Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
-// across statusline invocations, plus a lock that is written before each fetch
-// and refreshed on failure. While a fetch is in flight, concurrent sessions
+// A short-lived disk cache and an exclusive fetch lock are shared across
+// statusline invocations, with a separate backoff file written on failure.
+// While a fetch is in flight, concurrent sessions
 // serve the expired cache instead of all fetching at once, and an unreachable
 // status page cannot trigger a network attempt on every render.
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
 const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
 const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
+const FETCH_LOCK_DIR = path.join(CACHE_DIR, 'claude-status.inflight');
 const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
 const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed or in-flight fetch
 
@@ -239,7 +240,7 @@ function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
 
 // The lock is judged by its mtime alone, so an empty lock left by an older
 // version still blocks for FAILURE_BACKOFF.
-function isFetchLockActive(nowSeconds: number): boolean {
+function isFailureLockActive(nowSeconds: number): boolean {
     try {
         const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
         return nowSeconds - lockMtime < FAILURE_BACKOFF;
@@ -257,29 +258,56 @@ function writeFailureLock(): void {
     }
 }
 
-// Write the in-flight lock with contents unique to this fetch, so the success
-// path can tell whether the lock is still its own.
-function writeInFlightLock(nowMs: number): string {
-    const contents = `${process.pid}:${nowMs}:${Math.random().toString(36).slice(2)}`;
+// Publish a nonempty directory atomically. Renaming another directory onto it
+// fails while it is occupied, so only one process can acquire the fetch lock.
+// Each claim has a unique marker: stale cleanup removes that marker and uses
+// nonrecursive rmdir, which cannot remove a newer, nonempty claim.
+function acquireFetchLock(nowMs: number): string | null {
+    let stagingDir: string | undefined;
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, contents);
-    } catch {
-        // Ignore lock file errors
-    }
-    return contents;
-}
+        stagingDir = fs.mkdtempSync(`${FETCH_LOCK_DIR}-`);
+        const owner = path.basename(stagingDir);
+        fs.writeFileSync(path.join(stagingDir, owner), '');
 
-// Remove the lock only while it still holds the in-flight record this process
-// wrote. A concurrent render may have replaced it with a failure lock in the
-// meantime; deleting that would let the next render retry inside its backoff.
-function clearOwnFetchLock(ownContents: string): void {
-    try {
-        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
-            fs.rmSync(LOCK_FILE, { force: true });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                fs.renameSync(stagingDir, FETCH_LOCK_DIR);
+                return owner;
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                if (code !== 'EEXIST' && code !== 'ENOTEMPTY') {
+                    return null;
+                }
+            }
+
+            const [existingOwner] = fs.readdirSync(FETCH_LOCK_DIR);
+            if (!existingOwner
+                || nowMs - fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs < FAILURE_BACKOFF * 1000) {
+                return null;
+            }
+            clearOwnFetchLock(existingOwner);
         }
     } catch {
-        // Ignore lock file errors
+        // If coordination is unavailable, serve stale data instead of fetching.
+    } finally {
+        if (stagingDir) {
+            try {
+                fs.rmSync(stagingDir, { recursive: true, force: true });
+            } catch {
+                // Best-effort cleanup of this process's unpublished claim.
+            }
+        }
+    }
+    return null;
+}
+
+function clearOwnFetchLock(owner: string): void {
+    try {
+        fs.unlinkSync(path.join(FETCH_LOCK_DIR, owner));
+        fs.rmdirSync(FETCH_LOCK_DIR);
+    } catch {
+        // The old claim may be gone, or another owner may have replaced it.
     }
 }
 
@@ -409,11 +437,29 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
         return { error: true };
     };
 
-    if (isFetchLockActive(nowSeconds)) {
+    if (isFailureLockActive(nowSeconds)) {
         return serveStaleOrError();
     }
 
-    const inFlightLock = writeInFlightLock(nowMs);
+    const inFlightLock = acquireFetchLock(nowMs);
+    if (inFlightLock === null) {
+        return serveStaleOrError();
+    }
+
+    // Another fetch may have completed between our initial cache read and
+    // acquisition. Recheck both its result and its failure backoff under lock.
+    const latestCache = readCachedClaudeStatus();
+    if (latestCache
+        && nowSeconds - Math.floor(latestCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isCacheUsable(latestCache, includeIncidents)) {
+        memoryCache = latestCache;
+        clearOwnFetchLock(inFlightLock);
+        return toStatusData(latestCache);
+    }
+    if (isFailureLockActive(nowSeconds)) {
+        clearOwnFetchLock(inFlightLock);
+        return serveStaleOrError();
+    }
 
     const [statusBody, incidentsBody] = await Promise.all([
         fetchStatusPagePath(STATUS_PATH),
@@ -425,6 +471,7 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
 
     if (indicator === null || (includeIncidents && incidents === null)) {
         writeFailureLock();
+        clearOwnFetchLock(inFlightLock);
         return serveStaleOrError();
     }
 

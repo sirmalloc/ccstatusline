@@ -405,15 +405,60 @@ function createStatusProbeHarness() {
     const cacheDir = path.join(home, '.cache', 'ccstatusline');
     const inFlightFile = path.join(tempRoot, 'in-flight');
     const releaseFile = path.join(tempRoot, 'release');
+    const barrierDir = path.join(tempRoot, 'barrier');
+    const barrierReleaseFile = path.join(tempRoot, 'release-barrier');
     fs.mkdirSync(cacheDir, { recursive: true });
+    fs.mkdirSync(barrierDir);
 
     const probeScript = `
 import * as fs from 'fs';
 import * as os from 'os';
-import { createRequire } from 'module';
+import { createRequire, syncBuiltinESMExports } from 'module';
 
 const require = createRequire(import.meta.url);
 const https = require('https');
+const mutableFs = require('fs');
+const originalWrite = mutableFs.writeFileSync;
+const originalRename = mutableFs.renameSync;
+const originalUnlink = mutableFs.unlinkSync;
+let barrierPassed = false;
+const waitAtBarrier = () => {
+    if (barrierPassed) return;
+    barrierPassed = true;
+    originalWrite(process.env.TEST_BARRIER_DIR + '/' + process.pid, '');
+    const deadline = Date.now() + 20000;
+    while (!fs.existsSync(process.env.TEST_BARRIER_RELEASE)) {
+        if (Date.now() > deadline) throw new Error('acquisition barrier timed out');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+};
+// Pause immediately before publishing a claim, including the old nonexclusive
+// file write so this regression test exercises the original race as well.
+mutableFs.writeFileSync = (file, ...args) => {
+    if (process.env.TEST_BARRIER === 'publish' && String(file).endsWith('/claude-status.lock')) {
+        waitAtBarrier();
+    }
+    return originalWrite(file, ...args);
+};
+mutableFs.renameSync = (source, destination) => {
+    if (process.env.TEST_BARRIER === 'publish' && String(destination).endsWith('/claude-status.inflight')) {
+        waitAtBarrier();
+    }
+    return originalRename(source, destination);
+};
+mutableFs.unlinkSync = (file) => {
+    if (process.env.TEST_BARRIER === 'reclaim' && String(file).endsWith('/expired-owner')) {
+        waitAtBarrier();
+    }
+    return originalUnlink(file);
+};
+syncBuiltinESMExports();
+// Bun binds built-in fs imports directly; replace the module as well so the
+// filesystem barriers apply inside the imported TypeScript module.
+if (process.versions.bun) {
+    const { mock } = await import('bun:test');
+    mock.module('node:fs', () => ({ ...mutableFs }));
+}
 const hold = process.env.TEST_HOLD === '1';
 const indicator = process.env.TEST_INDICATOR || 'none';
 let requestCount = 0;
@@ -422,7 +467,7 @@ https.request = (options, callback) => {
     requestCount += 1;
     const responseHandlers = new Map();
     const response = {
-        statusCode: 200,
+        statusCode: process.env.TEST_FAIL === '1' ? 503 : 200,
         setEncoding() {},
         on(event, handler) {
             responseHandlers.set(event, handler);
@@ -434,18 +479,19 @@ https.request = (options, callback) => {
         responseHandlers.get('data')?.(JSON.stringify({ status: { indicator } }));
         responseHandlers.get('end')?.();
     };
+    let responseTimer;
     const request = {
         on() { return request; },
-        destroy() {},
+        destroy() { clearInterval(responseTimer); },
         end() {
             if (!hold) {
                 respond();
                 return;
             }
             fs.writeFileSync(process.env.TEST_IN_FLIGHT_FILE, '');
-            const timer = setInterval(() => {
+            responseTimer = setInterval(() => {
                 if (fs.existsSync(process.env.TEST_RELEASE_FILE)) {
-                    clearInterval(timer);
+                    clearInterval(responseTimer);
                     respond();
                 }
             }, 10);
@@ -460,15 +506,19 @@ process.stdout.write(JSON.stringify({ result, requestCount, homedir: os.homedir(
 `;
     fs.writeFileSync(probeScriptPath, probeScript);
 
-    function runProbe(options: { hold?: boolean; indicator?: string }): Promise<StatusProbeResult> {
+    function runProbe(options: { hold?: boolean; fail?: boolean; indicator?: string; barrier?: 'publish' | 'reclaim' }): Promise<StatusProbeResult> {
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             HOME: home,
             USERPROFILE: home,
             TEST_HOLD: options.hold ? '1' : '0',
+            TEST_FAIL: options.fail ? '1' : '0',
             TEST_INDICATOR: options.indicator ?? 'none',
             TEST_IN_FLIGHT_FILE: inFlightFile,
-            TEST_RELEASE_FILE: releaseFile
+            TEST_RELEASE_FILE: releaseFile,
+            TEST_BARRIER: options.barrier ?? '',
+            TEST_BARRIER_DIR: barrierDir,
+            TEST_BARRIER_RELEASE: barrierReleaseFile
         };
         delete env.HTTPS_PROXY;
         delete env.https_proxy;
@@ -498,12 +548,25 @@ process.stdout.write(JSON.stringify({ result, requestCount, homedir: os.homedir(
         }
     }
 
+    async function waitForContenders(count: number): Promise<void> {
+        const deadline = Date.now() + 20000;
+        while (fs.readdirSync(barrierDir).length < count) {
+            if (Date.now() > deadline) {
+                throw new Error('status contenders never reached acquisition barrier');
+            }
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+    }
+
     return {
         cacheFile: path.join(cacheDir, 'claude-status.json'),
         lockFile: path.join(cacheDir, 'claude-status.lock'),
+        fetchLockDir: path.join(cacheDir, 'claude-status.inflight'),
         cleanup: () => { fs.rmSync(tempRoot, { recursive: true, force: true }); },
         release: () => { fs.writeFileSync(releaseFile, ''); },
+        releaseContenders: () => { fs.writeFileSync(barrierReleaseFile, ''); },
         runProbe,
+        waitForContenders,
         waitForInFlight
     };
 }
@@ -543,6 +606,115 @@ describe('claude-status fetch lock across processes', () => {
         expect(firstResult.result).toEqual({ indicator: 'none' });
         // The fetching process removes its own in-flight lock on success
         expect(fs.existsSync(harness.lockFile)).toBe(false);
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+    }, 30000);
+
+    it('allows only one fetch when processes reach acquisition simultaneously', async () => {
+        const probes = Array.from({ length: 4 }, () => harness.runProbe({ hold: true, barrier: 'publish' }));
+        try {
+            await harness.waitForContenders(probes.length);
+            harness.releaseContenders();
+            await harness.waitForInFlight();
+            const loser = await Promise.race(probes);
+            expect(loser.requestCount).toBe(0);
+            expect(loser.result).toEqual({ indicator: 'minor' });
+        } finally {
+            harness.releaseContenders();
+            harness.release();
+            await Promise.all(probes);
+        }
+        const results = await Promise.all(probes);
+        expect(results.reduce((sum, result) => sum + result.requestCount, 0)).toBe(1);
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+    }, 30000);
+
+    it('does not remove a replacement claim when processes reclaim the same expired lock', async () => {
+        fs.mkdirSync(harness.fetchLockDir);
+        const marker = path.join(harness.fetchLockDir, 'expired-owner');
+        fs.writeFileSync(marker, '');
+        const expired = new Date(Date.now() - 31000);
+        fs.utimesSync(marker, expired, expired);
+
+        const probes = Array.from({ length: 4 }, () => harness.runProbe({ hold: true, barrier: 'reclaim' }));
+        try {
+            await harness.waitForContenders(probes.length);
+            harness.releaseContenders();
+            await harness.waitForInFlight();
+            expect((await Promise.race(probes)).requestCount).toBe(0);
+            expect(fs.readdirSync(harness.fetchLockDir)).toHaveLength(1);
+        } finally {
+            harness.releaseContenders();
+            harness.release();
+            await Promise.all(probes);
+        }
+        const results = await Promise.all(probes);
+        expect(results.reduce((sum, result) => sum + result.requestCount, 0)).toBe(1);
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+    }, 30000);
+
+    it.each([false, true])('rechecks a completed refresh after delayed acquisition (failure: %s)', async (fail) => {
+        const delayed = harness.runProbe({ barrier: 'publish' });
+        try {
+            await harness.waitForContenders(1);
+            const completed = await harness.runProbe({ fail });
+            expect(completed.requestCount).toBe(1);
+        } finally {
+            harness.releaseContenders();
+        }
+        const result = await delayed;
+        expect(result.requestCount).toBe(0);
+        expect(result.result).toEqual({ indicator: fail ? 'minor' : 'none' });
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+    }, 30000);
+
+    it('recovers an empty claim directory left by interrupted cleanup', async () => {
+        fs.mkdirSync(harness.fetchLockDir);
+        const result = await harness.runProbe({});
+        expect(result.requestCount).toBe(1);
+        expect(result.result).toEqual({ indicator: 'none' });
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+    }, 30000);
+
+    it('retries after a legacy failure lock expires', async () => {
+        fs.writeFileSync(harness.lockFile, '');
+        const expired = new Date(Date.now() - 31000);
+        fs.utimesSync(harness.lockFile, expired, expired);
+        const result = await harness.runProbe({});
+        expect(result.requestCount).toBe(1);
+        expect(result.result).toEqual({ indicator: 'none' });
+    }, 30000);
+
+    it('releases the fetch claim and preserves backoff after a failed request', async () => {
+        const failed = await harness.runProbe({ fail: true });
+        expect(failed.requestCount).toBe(1);
+        expect(failed.result).toEqual({ indicator: 'minor' });
+        expect(fs.existsSync(harness.fetchLockDir)).toBe(false);
+        expect(fs.readFileSync(harness.lockFile, 'utf8')).toBe('');
+
+        const retry = await harness.runProbe({});
+        expect(retry.requestCount).toBe(0);
+        expect(retry.result).toEqual({ indicator: 'minor' });
+    }, 30000);
+
+    it('serves stale data when it cannot acquire the fetch lock', async () => {
+        fs.writeFileSync(harness.fetchLockDir, 'not a directory');
+        const result = await harness.runProbe({});
+        expect(result.requestCount).toBe(0);
+        expect(result.result).toEqual({ indicator: 'minor' });
+    }, 30000);
+
+    it('returns the existing error fallback when another fetch owns the lock and no cache exists', async () => {
+        fs.unlinkSync(harness.cacheFile);
+        const first = harness.runProbe({ hold: true });
+        try {
+            await harness.waitForInFlight();
+            const concurrent = await harness.runProbe({});
+            expect(concurrent.requestCount).toBe(0);
+            expect(concurrent.result).toEqual({ error: true });
+        } finally {
+            harness.release();
+            await first;
+        }
     }, 30000);
 
     it('keeps a failure lock another process wrote during its fetch', async () => {
