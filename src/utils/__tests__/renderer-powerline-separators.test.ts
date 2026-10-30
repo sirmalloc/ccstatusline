@@ -291,12 +291,32 @@ describe('powerline merged widgets', () => {
         );
     });
 
-    it('merges across a widget that rendered empty', () => {
-        const widgets = [text('a', { color: A_FG, merge: true }), text('empty'), text('b', { color: B_FG })];
+    it('merges across an empty widget that is merged too', () => {
+        const widgets = [text('a', { color: A_FG, merge: true }), text('empty', { merge: true }), text('b', { color: B_FG })];
         const contents = { 0: 'A', 2: 'B' };
 
         expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings())).toEqual([2]);
         expect(render(widgets, contents)).toBe(`${A_FG_CODE}A${COLOR_RESET}${B_FG_CODE}B${COLOR_RESET}`);
+    });
+
+    // The merge joined A to the empty widget, which wasn't merged on to B, so it
+    // ends there: A and B get their own segments, as if A were never merged.
+    it('ends a merge at an empty widget that is not merged', () => {
+        const widgets = [text('a', { color: A_FG, merge: true }), text('empty'), text('b', { color: B_FG })];
+        const unmerged = [text('a', { color: A_FG }), text('empty'), text('b', { color: B_FG })];
+        const contents = { 0: 'A', 2: 'B' };
+
+        expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings()))
+            .toEqual(calculateMaxWidthsFromPreRendered([preRender(unmerged, contents)], powerlineSettings()));
+        expect(render(widgets, contents)).toBe(render(unmerged, contents));
+    });
+
+    it('keeps theme colors in place when a widget after a merge renders empty', () => {
+        const widgets = [text('a', { merge: true }), text('empty'), text('b'), text('c')];
+        const unmerged = [text('a'), text('empty'), text('b'), text('c')];
+        const contents = { 0: 'A', 2: 'B', 3: 'C' };
+
+        expect(render(widgets, contents, { theme: 'nord-aurora' })).toBe(render(unmerged, contents, { theme: 'nord-aurora' }));
     });
 
     it('keeps the trailing padding of a no-padding merge when nothing after it rendered', () => {
