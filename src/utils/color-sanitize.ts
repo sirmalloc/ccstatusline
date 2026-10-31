@@ -27,8 +27,13 @@ function isIncompatibleForLevel(value: string | undefined, nextLevel: 0 | 1 | 2 
 }
 
 function resetWidgetForegroundToDefault(widget: WidgetItem, nextWidget: WidgetItem): WidgetItem {
+    // Separators have no widget default: without a color they render in the
+    // separator default (or inherit the previous widget's colors)
     if (widget.type === 'separator' || widget.type === 'flex-separator') {
-        return nextWidget;
+        return {
+            ...nextWidget,
+            color: undefined
+        };
     }
 
     const widgetImpl = getWidget(widget.type);
