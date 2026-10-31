@@ -190,6 +190,15 @@ describe('usage window helpers', () => {
         expect(result).toMatch(/^2026-04-27 7:00 PM /);
     });
 
+    it('normalizes spaced 12-hour day periods from locale data', () => {
+        // es-ES writes the day period as 'a. m.' and 'p. m.'
+        const result = formatUsageResetAt('2026-10-20T08:30:00.000Z', false, 'Europe/Madrid', 'es-ES', true);
+        expect(result).toMatch(/^2026-10-20 10:30 AM /);
+
+        const weekdayResult = formatUsageResetAt('2026-10-20T18:30:00.000Z', true, 'Europe/Madrid', 'es-ES', true, true);
+        expect(weekdayResult).toBe('mar 8:30 PM');
+    });
+
     it('keeps UTC behavior when timezone is undefined or "UTC"', () => {
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z')).toBe('2026-03-12 08:30 UTC');
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC')).toBe('2026-03-12 08:30 UTC');
@@ -216,6 +225,23 @@ describe('usage window helpers', () => {
         expect(en).toBe('2026-04-27 19:00 GMT+9');
     });
 
+    it('uses the Gregorian calendar whatever calendar the locale defaults to', () => {
+        // ar-SA defaults to Gregorian or to the Islamic calendar depending on the
+        // runtime's ICU data; th-TH defaults to the Buddhist calendar and fa-IR
+        // to the Persian one. The digits stay the locale's own.
+        const ar = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'America/Chicago', 'ar-SA');
+        expect(ar).toMatch(/^٢٠٢٦-١٠-١٣ ١٦:٠٥ /);
+
+        const arCompact = formatUsageResetAt('2026-10-13T21:05:00.000Z', true, 'America/Chicago', 'ar-SA');
+        expect(arCompact).toBe('١٠-١٣ ١٦:٠٥');
+
+        const th = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'Asia/Bangkok', 'th-TH');
+        expect(th).toMatch(/^2026-10-14 04:05 /);
+
+        const fa = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'Asia/Tehran', 'fa-IR');
+        expect(fa).toMatch(/^۲۰۲۶-۱۰-۱۴ ۰۰:۳۵ /);
+    });
+
     it('compact mode drops the locale-dependent timezone abbreviation', () => {
         const ja = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo', 'ja-JP');
         expect(ja).toBe('04-27 19:00');
@@ -238,6 +264,34 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'UTC', true, false, true)).toBe('Sun 8:30 AM UTC');
         expect(formatUsageResetAt('2026-03-15T20:30:00.000Z', false, 'UTC', true, false, true)).toBe('Sun 8:30 PM UTC');
         expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', true, false, true)).toBe('Sun 8:30 AMZ');
+    });
+
+    it('formats UTC reset timestamps in the supplied locale', () => {
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'de-DE', false, true)).toBe('So 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'de-DE', false, true)).toBe('So 08:30Z');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'ja-JP', true)).toBe('2026-03-15 8:30 午前 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'ja-JP', true)).toBe('03-15 8:30 午前Z');
+    });
+
+    it('labels UTC reset timestamps UTC whatever the locale calls the zone', () => {
+        // el-GR names UTC 'Συντονισμένη Παγκόσμια Ώρα'
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'el-GR')).toBe('2026-03-15 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'UTC', 'el-GR', false, true)).toBe('Κυρ 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'el-GR')).toBe('03-15 08:30Z');
+    });
+
+    it('formats UTC reset timestamps in en-US the same as without a locale', () => {
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC', 'en-US')).toBe('2026-03-12 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', true, 'UTC', 'en-US', true)).toBe('03-12 8:30 PMZ');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'UTC', 'en-US', true, true)).toBe('Sun 8:30 AM UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'en-US', false, true)).toBe('Sun 08:30Z');
+    });
+
+    it('keeps the fixed UTC format when Intl rejects the supplied locale', () => {
+        // 'de_DE' is not a valid language tag, so Intl throws on it
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'de_DE', false, true)).toBe('Sun 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'de_DE', false, true)).toBe('Sun 08:30Z');
+        expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', false, 'UTC', 'de_DE', true)).toBe('2026-03-12 8:30 PM UTC');
     });
 
     it('formats reset timestamps with weekday in a specific IANA timezone', () => {

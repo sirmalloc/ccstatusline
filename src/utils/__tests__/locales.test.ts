@@ -1,7 +1,9 @@
 import {
+    afterEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import {
@@ -14,7 +16,18 @@ import {
     isValidLocale
 } from '../locales';
 
+// Node takes the runtime's locale from LANG and Bun keeps en-US, so a test
+// that depends on the System row pins it
+function stubSystemLocale(locale: string): void {
+    const resolved = new Intl.DateTimeFormat(locale).resolvedOptions();
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue(resolved);
+}
+
 describe('locale helpers', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('includes the default locale first and curated common locales', () => {
         const options = getLocaleOptions();
 
@@ -61,6 +74,44 @@ describe('locale helpers', () => {
             displayName: `Use ${customLocale}`,
             description: 'Custom locale'
         });
+    });
+
+    it('ranks a locale whose keyword is the search above the custom locale it spells', () => {
+        stubSystemLocale(DEFAULT_RESET_LOCALE);
+
+        // 'uk' and 'ca' are keywords of en-GB and en-CA, and also the language
+        // codes of Ukrainian and Catalan
+        const ukMatches = filterLocaleOptions(getLocaleOptions(), 'uk');
+        expect(ukMatches[0]?.value).toBe('en-GB');
+        expect(ukMatches[1]).toMatchObject({ value: 'uk', description: 'Custom locale' });
+
+        const caMatches = filterLocaleOptions(getLocaleOptions(), 'ca');
+        expect(caMatches[0]?.value).toBe('en-CA');
+        expect(caMatches[1]).toMatchObject({ value: 'ca', description: 'Custom locale' });
+    });
+
+    // The System and Configured rows take the place of the common row for
+    // their locale, so they have to keep its keywords
+    it.each([
+        ['en-GB', 'uk'],
+        ['en-CA', 'ca']
+    ] as const)('ranks %s above the custom locale %s when it is the system locale', (locale, keyword) => {
+        stubSystemLocale(locale);
+
+        const matches = filterLocaleOptions(getLocaleOptions(), keyword);
+        expect(matches[0]).toMatchObject({ value: locale, displayName: `System (${locale})` });
+        expect(matches[1]).toMatchObject({ value: keyword, description: 'Custom locale' });
+    });
+
+    it.each([
+        ['en-GB', 'uk'],
+        ['en-CA', 'ca']
+    ] as const)('ranks %s above the custom locale %s when it is the configured locale', (locale, keyword) => {
+        stubSystemLocale(DEFAULT_RESET_LOCALE);
+
+        const matches = filterLocaleOptions(getLocaleOptions(locale), keyword);
+        expect(matches[0]).toMatchObject({ value: locale, description: 'Configured locale' });
+        expect(matches[1]).toMatchObject({ value: keyword, description: 'Custom locale' });
     });
 
     it('does not add a custom locale option for invalid typed locales', () => {
