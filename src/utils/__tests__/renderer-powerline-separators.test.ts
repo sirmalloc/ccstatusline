@@ -269,6 +269,22 @@ describe('powerline widgets that preserve their own colors', () => {
     );
 });
 
+describe('powerline widgets that color only some runs of their text', () => {
+    it('colors the rest of the text, returning to the widget color after each run', () => {
+        const widgets: WidgetItem[] = [{
+            id: 'effort',
+            type: 'thinking-effort',
+            metadata: { levelColors: 'true' },
+            color: A_FG,
+            backgroundColor: A_BG
+        }];
+
+        const line = render(widgets, { 0: 'a\x1b[31mb\x1b[39mc' });
+
+        expect(line).toBe(`${A_FG_CODE}${A_BG_CODE}a\x1b[31mb${A_FG_CODE}c${COLOR_RESET}`);
+    });
+});
+
 describe('powerline merged widgets', () => {
     it('pads a merged group as a unit, after its last widget, when auto-aligning', () => {
         const line1 = [text('a', { color: A_FG, merge: true }), text('b', { color: B_FG }), text('c', { color: A_FG })];

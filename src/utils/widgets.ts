@@ -49,6 +49,15 @@ export function widgetPreservesColors(item: WidgetItem): boolean {
     return getWidget(item.type)?.preservesRenderedColors?.(item) ?? false;
 }
 
+/**
+ * True when the item's rendered output colors some runs of its text itself
+ * (e.g. Thinking Effort's level colors), so the renderer colors the rest around
+ * them instead of over them.
+ */
+export function widgetColorsOnlyItsRuns(item: WidgetItem): boolean {
+    return getWidget(item.type)?.colorsOnlyItsRuns?.(item) ?? false;
+}
+
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
     const allTypes = WIDGET_MANIFEST.map(entry => entry.type);
 
