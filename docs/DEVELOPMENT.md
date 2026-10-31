@@ -8,7 +8,7 @@ If you want the main project overview, return to [README.md](../README.md).
 
 - [Bun](https://bun.sh) (v1.0+)
 - Git
-- Node.js 14+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
+- Node.js 18+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
 
 ## Setup
 
@@ -143,7 +143,7 @@ Update checks and global package installs both validate release-version strings 
 ## Build Notes
 
 - The entry point imports the TUI lazily for interactive mode; keep the Ink initialization path out of piped rendering. The distribution build uses code splitting, so ship the complete `dist/` directory.
-- Build target is Node.js 14+ (`dist/ccstatusline.js`)
+- Build target is Node.js 18+ (`dist/ccstatusline.js`); Bun's bundler does not lower modern syntax, so older Node versions reject the bundle (`??=` needs Node 15+, bundled deps need `Array.prototype.at`, Node 16.6+). Node 14 (EOL since 2023) is not supported
 - `postbuild` replaces the bundled `__PACKAGE_VERSION__` placeholder from `package.json`; `ccstatusline --version` reads that value and exits before mode detection
 - During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
 - React and React DOM are exact-version pins; dependency refreshes should update `package.json` and `bun.lock` together
