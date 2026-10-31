@@ -148,7 +148,10 @@ describe('GitPrWidget', () => {
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
         );
-        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', { includeChecks: false });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', {
+            includeChecks: false,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 
     it('should request checks when a CI widget shares the render context', () => {
@@ -156,7 +159,10 @@ describe('GitPrWidget', () => {
 
         render({ cwd: '/tmp/repo', needsChecks: true }, { getCachedGitReviewData });
 
-        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/repo', { includeChecks: true });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/repo', {
+            includeChecks: true,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 
     it('should truncate long titles', () => {

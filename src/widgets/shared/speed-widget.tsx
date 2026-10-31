@@ -55,21 +55,21 @@ const SPEED_WIDGET_CONFIG: Record<SpeedWidgetKind, SpeedWidgetKindConfig> = {
     input: {
         label: 'In: ',
         displayName: 'Input Speed',
-        description: 'Shows session-average input token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
+        description: 'Shows session-average input token speed (tokens/sec). Optional window: 0-3600 seconds (0 = full-session average).',
         sessionPreview: 85.2,
         windowedPreview: 31.5
     },
     output: {
         label: 'Out: ',
         displayName: 'Output Speed',
-        description: 'Shows session-average output token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
+        description: 'Shows session-average output token speed (tokens/sec). Optional window: 0-3600 seconds (0 = full-session average).',
         sessionPreview: 42.5,
         windowedPreview: 26.8
     },
     total: {
         label: 'Total: ',
         displayName: 'Total Speed',
-        description: 'Shows session-average total token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
+        description: 'Shows session-average total token speed (tokens/sec). Optional window: 0-3600 seconds (0 = full-session average).',
         sessionPreview: 127.7,
         windowedPreview: 58.3
     }

@@ -16,7 +16,8 @@ import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
 import {
     isMetadataFlagEnabled,
-    removeMetadataKeys
+    removeMetadataKeys,
+    toggleMetadataFlag
 } from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -30,19 +31,24 @@ const LABEL = 'Cache: ';
 
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
-// The expiry itself is never exposed (the transcript only records token counts),
-// so this is a best-effort countdown from the last turn; the TTL is configurable
-// to match whichever tier the user cares about.
+// Recent Claude Code reports the real expiry in status JSON as
+// prompt_cache.expires_at, which is used when present. The transcript-derived
+// countdown below stays as the fallback for older versions, where the expiry is
+// not exposed and the configured TTL is the only thing to count down from.
 const TTL_METADATA_KEY = 'ttlSeconds';
 const DEFAULT_TTL_SECONDS = 300;
 const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
 const TOGGLE_TTL_ACTION = 'toggle-ttl';
 
-const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
-const PREVIEW_REMAINING_SECONDS = 292; // 4:52 in the editor preview
+// Same key, action and metadata flag as the reset timers, so short time works
+// the same way on every timer widget.
+const COMPACT_METADATA_KEY = 'compact';
+const TOGGLE_COMPACT_ACTION = 'toggle-compact';
 
-// Whole minutes (rounded up) instead of m:ss, for layouts that only need a
-// glance and should not change every second.
+const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
+
+// Whole minutes (rounded up) instead of minutes and seconds, for layouts that
+// only need a glance and should not change every second.
 const MINUTES_METADATA_KEY = 'minutes';
 const TOGGLE_MINUTES_ACTION = 'toggle-minutes';
 
@@ -262,16 +268,54 @@ function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
-function formatCountdown(remaining: number, minutes: boolean): string {
+/**
+ * Seconds left according to Claude Code's own prompt_cache.expires_at, or null
+ * when the field is absent (older Claude Code) or the session has not cached
+ * anything yet. Reported expiry beats any countdown inferred from timestamps:
+ * it survives a resumed session, and it is right even when the last turn read a
+ * cache entry written much earlier.
+ */
+function getReportedRemainingSeconds(context: RenderContext): number | null {
+    const cache = context.data?.prompt_cache;
+    if (!cache || cache.caching_observed === false) {
+        return null;
+    }
+    if (cache.warm === false) {
+        return 0;
+    }
+    const expiresAt = cache.expires_at;
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) {
+        return null;
+    }
+    return expiresAt - Date.now() / 1000;
+}
+
+function getReportedTtlSeconds(context: RenderContext): number | null {
+    switch (context.data?.prompt_cache?.ttl) {
+        case '5m': return 300;
+        case '1h': return 3600;
+        default: return null;
+    }
+}
+
+// Labeled like the reset timers ('4m 52s' / '4m52s') rather than clock
+// notation, so every timer widget reads the same way. Seconds always render:
+// they are the point of a cache countdown, and dropping a zero part the way
+// formatUsageDuration does would make the widget jump width every minute.
+// Minutes only rounds up, so a still-warm cache never reads `0m`.
+function formatCountdown(remaining: number, compact: boolean, minutes: boolean): string {
     if (remaining <= 0) {
         return 'COLD';
     }
     if (minutes) {
         return `${Math.ceil(remaining / 60)}m`;
     }
-    const m = Math.floor(remaining / 60);
-    const s = Math.floor(remaining % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    const total = Math.floor(remaining);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const parts = [h > 0 && `${h}${compact ? 'h' : 'hr'}`, (h > 0 || m > 0) && `${m}m`, `${s}s`];
+    return parts.filter(Boolean).join(compact ? '' : ' ');
 }
 
 // The glyph for the current drain state (excluding HOT, handled in render).
@@ -308,6 +352,10 @@ export class CacheTimerWidget implements Widget {
         if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
         }
+
+        if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
+            modifiers.push('compact');
+        }
         if (isMetadataFlagEnabled(item, MINUTES_METADATA_KEY)) {
             modifiers.push('minutes');
         }
@@ -328,9 +376,15 @@ export class CacheTimerWidget implements Widget {
         if (action === TOGGLE_TTL_ACTION) {
             return cycleTtl(item);
         }
+
+        if (action === TOGGLE_COMPACT_ACTION) {
+            return toggleMetadataFlag(item, COMPACT_METADATA_KEY);
+        }
+
         if (action === TOGGLE_MINUTES_ACTION) {
             return toggleFlag(item, MINUTES_METADATA_KEY);
         }
+
         if (action === TOGGLE_WORKING_FRESH_ACTION) {
             return toggleFlag(item, WORKING_FRESH_METADATA_KEY);
         }
@@ -340,11 +394,21 @@ export class CacheTimerWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
+        const compact = isMetadataFlagEnabled(item, COMPACT_METADATA_KEY);
         const minutes = isMetadataFlagEnabled(item, MINUTES_METADATA_KEY);
         const show = (text: string, glyph = ''): string => formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, text));
+        const countdown = (remaining: number, ttlSeconds: number): string => show(
+            formatCountdown(remaining, compact, minutes),
+            getStateSymbol(item, remaining, ttlSeconds)
+        );
 
         if (context.isPreview) {
-            return show(formatCountdown(PREVIEW_REMAINING_SECONDS, minutes), getSlotSymbol(item, FRESH_SLOT));
+            return show(formatCountdown(292, compact, minutes), getSlotSymbol(item, FRESH_SLOT));
+        }
+
+        const reportedRemaining = getReportedRemainingSeconds(context);
+        if (reportedRemaining !== null) {
+            return countdown(reportedRemaining, getReportedTtlSeconds(context) ?? getTtlSeconds(item));
         }
 
         const transcriptPath = context.data?.transcript_path;
@@ -354,26 +418,26 @@ export class CacheTimerWidget implements Widget {
 
         const state = getTranscriptState(transcriptPath);
         const ttlSeconds = getTtlSeconds(item);
-        let remaining: number;
 
         if (state.isWorking) {
             if (!isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
                 return show('HOT', getSlotSymbol(item, HOT_SLOT));
             }
             // An in-flight turn is refreshing the cache: show it as just written.
-            remaining = ttlSeconds - SAFETY_MARGIN;
-        } else if (state.lastAssistant) {
-            remaining = getRemainingSeconds(state.lastAssistant, ttlSeconds);
-        } else {
+            return countdown(ttlSeconds - SAFETY_MARGIN, ttlSeconds);
+        }
+
+        if (!state.lastAssistant) {
             return hideWhenEmpty ? null : show('n/a');
         }
 
-        return show(formatCountdown(remaining, minutes), getStateSymbol(item, remaining, ttlSeconds));
+        return countdown(getRemainingSeconds(state.lastAssistant, ttlSeconds), ttlSeconds);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
+            { key: 's', label: '(s)hort time', action: TOGGLE_COMPACT_ACTION },
             { key: 'o', label: 'minutes (o)nly', action: TOGGLE_MINUTES_ACTION },
             { key: 'w', label: '(w)orking shows fresh', action: TOGGLE_WORKING_FRESH_ACTION },
             getSymbolKeybind()

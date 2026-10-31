@@ -14,6 +14,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
+import { StatusJSONSchema } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleText,
@@ -85,8 +86,6 @@ describe('CustomCommandWidget', () => {
     const settings: Settings = {
         version: 3,
         lines: [],
-        flexMode: 'full',
-        compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -169,8 +168,30 @@ describe('CustomCommandWidget', () => {
         expect(model?.display_name).toBe('Sonnet');
     });
 
+    it('pipes Claude Code\'s JSON as it arrived, not the validated copy', () => {
+        const rawData = {
+            model: { id: 'claude-opus-4-6', display_name: 'Opus', family: 'opus' },
+            workspace: { current_dir: '/p', project_dir: '/p', added_dirs: ['/extra'], git_worktree: 'wt' },
+            cost: { total_cost_usd: '1.5' }
+        };
+        const context: RenderContext = { ...createContext(142), data: StatusJSONSchema.parse(rawData), rawData };
+
+        const output = widget.render(createItem(), context, settings);
+
+        expect(JSON.parse(output ?? '{}')).toEqual({ ...rawData, terminal_width: 142 });
+    });
+
     it('omits terminal_width when the width is unknown', () => {
         expect(renderParsed(null)).not.toHaveProperty('terminal_width');
+    });
+
+    it.each([
+        ['color codes around an empty value', '\x1b[32m\x1b[0m'],
+        ['a link with no text', '\x1b]8;;https://example.com\x1b\\\x1b]8;;\x1b\\']
+    ])('renders nothing when preserved output is only %s', (_case, stdout) => {
+        respondWith(stdout);
+
+        expect(widget.render({ ...createItem(), preserveColors: true }, createContext(200), settings)).toBeNull();
     });
 
     it('runs the command on every render when no cache TTL is configured', () => {

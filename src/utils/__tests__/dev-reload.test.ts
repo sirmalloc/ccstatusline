@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -14,6 +15,7 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
+    DEV_RELOAD_CHILD_ARG_PREFIX,
     DEV_RELOAD_EXIT_CODE,
     getDevReloadMode,
     getDevReloadStateFile,
@@ -27,6 +29,22 @@ import {
     type DevReloadChild,
     type DevReloadSnapshot
 } from '../dev-reload';
+
+function createDevReloadTestState() {
+    const capability = randomBytes(32).toString('hex');
+    const stateDir = path.join(os.tmpdir(), `ccstatusline-dev-reload-${capability}`);
+    const stateFile = path.join(stateDir, 'snapshot.json');
+    fs.mkdirSync(stateDir, { mode: 0o700 });
+
+    return {
+        capability,
+        stateDir,
+        stateFile,
+        env: { CCSTATUSLINE_DEV_RELOAD: '1' },
+        args: [`${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`],
+        cleanup: () => { fs.rmSync(stateDir, { recursive: true, force: true }); }
+    };
+}
 
 // A terminal whose keys the test types and whose output it reads
 function makeTerminal() {
@@ -55,15 +73,56 @@ describe('getDevReloadMode', () => {
 
     it('supervises from the first launch and runs the TUI in the children it starts', () => {
         expect(getDevReloadMode({ CCSTATUSLINE_DEV_RELOAD: '1' })).toBe('supervisor');
-        expect(getDevReloadMode({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBe('child');
+        expect(getDevReloadMode({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBe('supervisor');
+
+        const state = createDevReloadTestState();
+        try {
+            expect(getDevReloadMode(state.env, state.args)).toBe('child');
+        } finally {
+            state.cleanup();
+        }
+    });
+
+    it('rejects a forged capability unless the supervisor created its private directory', () => {
+        const capability = randomBytes(32).toString('hex');
+        expect(getDevReloadMode(
+            { CCSTATUSLINE_DEV_RELOAD: '1' },
+            [`${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`]
+        )).toBe('supervisor');
     });
 });
 
 describe('getDevReloadStateFile', () => {
-    it('is the snapshot path only in a child the supervisor started', () => {
-        expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBe('/tmp/x.json');
+    it('derives a fixed snapshot path only in a child the supervisor started', () => {
+        expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBeNull();
         expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD: '1' })).toBeNull();
         expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBeNull();
+
+        const state = createDevReloadTestState();
+        try {
+            expect(getDevReloadStateFile(state.env, state.args)).toBe(state.stateFile);
+        } finally {
+            state.cleanup();
+        }
+    });
+
+    it('rejects malformed capabilities and insecure state directories', () => {
+        expect(getDevReloadStateFile(
+            { CCSTATUSLINE_DEV_RELOAD: '1' },
+            [`${DEV_RELOAD_CHILD_ARG_PREFIX}../../chosen-path`]
+        )).toBeNull();
+
+        if (process.platform === 'win32') {
+            return;
+        }
+
+        const state = createDevReloadTestState();
+        try {
+            fs.chmodSync(state.stateDir, 0o755);
+            expect(getDevReloadStateFile(state.env, state.args)).toBeNull();
+        } finally {
+            state.cleanup();
+        }
     });
 });
 
@@ -138,8 +197,8 @@ describe('superviseDevReload', () => {
     // Starts children that each write a snapshot first, as ctrl+r would
     function spawnWritingSnapshot(child: () => DevReloadChild) {
         const stateFiles: string[] = [];
-        const spawn = vi.fn((_command: string, _args: string[], env: NodeJS.ProcessEnv) => {
-            const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE ?? '';
+        const spawn = vi.fn((_command: string, args: string[], env: NodeJS.ProcessEnv) => {
+            const stateFile = getDevReloadStateFile(env, args) ?? '';
             stateFiles.push(stateFile);
             fs.writeFileSync(stateFile, '{}');
             return child();
@@ -150,7 +209,7 @@ describe('superviseDevReload', () => {
     it('relaunches this command with a snapshot path, and removes its snapshot directory when done', async () => {
         const launches: { command: string; args: string[]; stateFile: string | undefined }[] = [];
         const spawn = vi.fn((command: string, args: string[], env: NodeJS.ProcessEnv) => {
-            const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE;
+            const stateFile = getDevReloadStateFile(env, args) ?? undefined;
             launches.push({ command, args, stateFile });
             if (launches.length > 1 || !stateFile) {
                 return exitedChild(0);
@@ -176,8 +235,8 @@ describe('superviseDevReload', () => {
         const leftover = path.join(os.tmpdir(), `ccstatusline-dev-reload-${process.pid}.json`);
         fs.writeFileSync(leftover, '{}');
         const firstLaunches: { stateFile: string; existed: boolean; dirMode: number }[] = [];
-        const spawn = vi.fn((_command: string, _args: string[], env: NodeJS.ProcessEnv) => {
-            const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE ?? '';
+        const spawn = vi.fn((_command: string, args: string[], env: NodeJS.ProcessEnv) => {
+            const stateFile = getDevReloadStateFile(env, args) ?? '';
             firstLaunches.push({
                 stateFile,
                 existed: fs.existsSync(stateFile),
@@ -198,6 +257,29 @@ describe('superviseDevReload', () => {
         expect(first?.dirMode).toBe(0o700);
         expect(second?.stateFile).not.toBe(first?.stateFile);
         expect(fs.existsSync(path.dirname(first?.stateFile ?? ''))).toBe(false);
+    });
+
+    it('does not pass a legacy attacker-controlled snapshot path to children', async () => {
+        const previousState = process.env.CCSTATUSLINE_DEV_RELOAD_STATE;
+        process.env.CCSTATUSLINE_DEV_RELOAD_STATE = '/tmp/attacker-selected.json';
+        const childContexts: { env: NodeJS.ProcessEnv; stateFile: string | null }[] = [];
+        const spawn = vi.fn((_command: string, args: string[], env: NodeJS.ProcessEnv) => {
+            childContexts.push({ env, stateFile: getDevReloadStateFile(env, args) });
+            return exitedChild(0);
+        });
+
+        try {
+            await superviseDevReload([], spawn);
+        } finally {
+            if (previousState === undefined) {
+                delete process.env.CCSTATUSLINE_DEV_RELOAD_STATE;
+            } else {
+                process.env.CCSTATUSLINE_DEV_RELOAD_STATE = previousState;
+            }
+        }
+
+        expect(childContexts[0]?.env.CCSTATUSLINE_DEV_RELOAD_STATE).toBeUndefined();
+        expect(childContexts[0]?.stateFile).not.toBeNull();
     });
 
     it.each(['SIGTERM', 'SIGINT', 'SIGHUP'] as const)('passes %s on to the TUI rather than orphaning it, then cleans up and stops', async (signal) => {
