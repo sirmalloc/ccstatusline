@@ -20,7 +20,10 @@ import {
     getPlainInput,
     shouldInsertInput
 } from '../../utils/input-guards';
-import { getWidget } from '../../utils/widgets';
+import {
+    getWidget,
+    widgetColorsOnlyItsRuns
+} from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -609,7 +612,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         </Text>
                     )}
                     {selectedWidget ? (
-                        <Box marginTop={1}>
+                        <Box marginTop={1} flexDirection='column'>
                             <Text>
                                 Current
                                 {' '}
@@ -622,6 +625,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {colorDisplay}
                                 {styleIndicators && ` ${styleIndicators}`}
                             </Text>
+                            {/* Widgets that fully own their colors are filtered out
+                                above; this one colors only some runs itself */}
+                            {!editingBackground && widgetColorsOnlyItsRuns(selectedWidget) && (
+                                <Text dimColor>  This widget sets some of its own colors (see its options in Edit Lines); this foreground colors the rest.</Text>
+                            )}
                         </Box>
                     ) : (
                         <Box marginTop={1}>
