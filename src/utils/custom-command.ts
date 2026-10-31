@@ -149,15 +149,23 @@ function readPersistentCache(cachePath: string): PersistentCustomCommandCache | 
 }
 
 function writePersistentCache(cachePath: string, cache: PersistentCustomCommandCache): void {
+    // Stable temp name, as in git.ts writePersistentCache: a held handle (e.g. a
+    // Windows virus scanner or sync client) can make the rename and the cleanup
+    // unlink both fail, and a unique name would then leave one more orphan on
+    // every write. A concurrent writer can tear the shared temp file, which only
+    // costs a miss, since readPersistentCache treats malformed JSON as one.
+    const tempPath = `${cachePath}.tmp`;
     try {
         // Owner-only, because a custom command prints whatever its author chose to
         // print. Git metadata is predictable, arbitrary command output is not.
         fs.mkdirSync(path.dirname(cachePath), { recursive: true, mode: 0o700 });
-        const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
         fs.writeFileSync(tempPath, JSON.stringify(cache), { encoding: 'utf-8', mode: 0o600 });
         fs.renameSync(tempPath, cachePath);
     } catch {
         // Best-effort cache. Statusline rendering must never fail because of it.
+        try {
+            fs.unlinkSync(tempPath);
+        } catch { /* best-effort cleanup; ignore */ }
     }
 }
 

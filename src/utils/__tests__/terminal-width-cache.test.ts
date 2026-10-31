@@ -48,8 +48,30 @@ function makeDeps(initial: string | null, now = 1_000_000): WidthCacheDeps & { f
 
             files.set(to, data);
             files.delete(from);
+        },
+        unlinkSync: (p: string) => {
+            if (!files.delete(p)) {
+                throw new Error('ENOENT');
+            }
         }
     };
+}
+
+function tempFiles(deps: ReturnType<typeof makeDeps>): string[] {
+    return [...deps.files.keys()].filter(p => p.endsWith('.tmp'));
+}
+
+// Every render is a fresh process with its own pid; this runs fn as one of them.
+function asProcess(pid: number, fn: () => void): void {
+    const original = Object.getOwnPropertyDescriptor(process, 'pid');
+    Object.defineProperty(process, 'pid', { value: pid, configurable: true });
+    try {
+        fn();
+    } finally {
+        if (original) {
+            Object.defineProperty(process, 'pid', original);
+        }
+    }
 }
 
 describe('terminal width cache', () => {
@@ -134,6 +156,31 @@ describe('terminal width cache', () => {
         writeCachedWidth('session-a', 209, tracking);
         expect(renames).toHaveLength(1);
         expect(renames[0]).toContain(`->${CACHE_PATH}`);
+    });
+
+    // A Windows virus scanner or sync client holding a handle makes the
+    // rename fail with EPERM, and the render must not leave its temp file.
+    it('removes its temp file when the rename fails', () => {
+        const held = makeDeps(null);
+        held.renameSync = () => { throw new Error('EPERM'); };
+
+        writeCachedWidth('session-a', null, held);
+
+        expect(tempFiles(held)).toEqual([]);
+    });
+
+    // The same held handle can make the cleanup fail too, and while it lasts
+    // every render misses and writes again.
+    it('leaves at most one temp file when neither the rename nor the cleanup succeeds', () => {
+        const held = makeDeps(null);
+        held.renameSync = () => { throw new Error('EPERM'); };
+        held.unlinkSync = () => { throw new Error('EPERM'); };
+
+        for (const pid of [101, 202, 303]) {
+            asProcess(pid, () => { writeCachedWidth('session-a', null, held); });
+        }
+
+        expect(tempFiles(held)).toHaveLength(1);
     });
 
     describe('write locking', () => {
