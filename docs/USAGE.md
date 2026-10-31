@@ -71,6 +71,17 @@ Block Usage was previously named Session Usage. Its default label is now `5h:`, 
 
 An explicit per-model quota at 0% is shown even when its reset timestamp is still missing; the time cursor appears only once a usable window is available. Weekly Fable Usage uses the label `Weekly Fable:` and stays empty when the API reports no Fable quota.
 
+### Usable context estimate
+
+**Context % (usable)** estimates the budget available before auto-compaction. It uses 80% of the full context window by default. These Claude Code settings affect only this widget's usable budget; **Context Window**, **Context %**, and **Context Bar** continue to describe the full window.
+
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW` sets the compaction window in tokens, ahead of Claude Code's top-level `autoCompactWindow` setting. Environment values accept numbers or `k`/`M` suffixes and are bounded to 100,000–1,000,000 tokens, then capped at the full model window. Suffixes require Claude Code 2.1.304 or later.
+- Settings are read from Claude Code's user directory (`CLAUDE_CONFIG_DIR`, otherwise `~/.claude`) and the payload's project directory. Project-local settings override project settings, then user-local and user settings. The reader refreshes these values on each render and leaves malformed files untouched.
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` accepts a percentage from 1 through 100. It can lower the 80% estimate, but cannot raise it. For example, `60` with a 200,000-token compaction window gives a 120,000-token usable budget.
+- `DISABLE_AUTO_COMPACT=1`, `DISABLE_COMPACT=1`, or Claude Code's `autoCompactEnabled: false` makes the widget use the full model window. The environment switches also accept `true`, `yes`, and `on` (case-insensitive).
+
+The exact live compaction threshold is not included in the status payload. This remains an estimate: model-specific reserves, per-model `modelSettings`, managed settings, and CLI-only overrides may make Claude Code compact at a different point. See [Claude Code's compaction settings](https://code.claude.com/docs/en/settings-reference#autocompactwindow) and [environment variables](https://code.claude.com/docs/en/env-vars). The separate `CCSTATUSLINE_CONTEXT_WINDOW_SIZE` override changes the full window for every context widget and takes precedence over the reported size; its percentage is recalculated from token usage.
+
 ### Environment, Layout & Custom
 
 - **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit. Press `l` in its editor to cycle clickable links (`off` → file manager → VS Code → Cursor). The displayed path still honors home abbreviation, segment limits, and fish-style shortening, while the link always targets the original absolute directory. File-manager links use `file://` URLs on POSIX and Windows, including UNC shares; local terminals need OSC 8 hyperlink support.
