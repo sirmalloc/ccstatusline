@@ -579,6 +579,16 @@ describe('getDefaultSessionUsageHistoryDeps', () => {
         expect(getDefaultSessionUsageHistoryDeps().loginFingerprint).toBe(getUsageLoginFingerprint);
     });
 
+    // In an idle session, a newer usage API percent replaces the payload's (see
+    // usage-prefetch.ts), and was seen when the API sent it
+    it('dates the usage API\'s percent by when the API sent it once it replaced the payload\'s', () => {
+        fs.writeFileSync(transcriptPath, `${transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1' } })}\n`);
+
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), { sessionUsage: 35 }).percentSeenAt).toBe(getUsageFetchedAtMs);
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), { sessionUsage: 20 }).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), null).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
+    });
+
     // The payload's percent is still from a response: one before this
     // transcript began, as after /clear
     it('finds no time for a payload\'s percent without a response in its transcript', () => {
