@@ -11,6 +11,7 @@ import {
     hasCustomWidgetColors,
     sanitizeLinesForColorLevel
 } from '../../utils/color-sanitize';
+import { updateColorMap } from '../../utils/colors';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -84,6 +85,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
         }
 
         chalk.level = nextLevel;
+        updateColorMap();
 
         const cleanedLines = sanitizeLinesForColorLevel(settings.lines, nextLevel);
 
@@ -97,6 +99,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
     const handleColorConfirm = () => {
         if (pendingColorLevel !== null) {
             chalk.level = pendingColorLevel;
+            updateColorMap();
 
             const cleanedLines = sanitizeLinesForColorLevel(settings.lines, pendingColorLevel);
 
