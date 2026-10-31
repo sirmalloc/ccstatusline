@@ -107,6 +107,29 @@ describe('getAutoCompactConfig', () => {
         expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 200000 });
     });
 
+    it.each([true, false])('falls back to the legacy toggle %s without taking its window', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: enabled, autoCompactWindow: 100000 });
+        writeLayer('settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled, windowSize: 300000 });
+    });
+
+    it('reads the legacy preference from the home directory without a config override', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+        writeLayer('.claude.json', { autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(false);
+    });
+
+    it.each([true, false])('prioritizes an explicit settings toggle %s over the legacy preference', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: !enabled });
+        writeLayer('settings.json', { autoCompactEnabled: enabled });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(enabled);
+    });
+
+    it.each(['{ invalid JSON', 'null', '{"autoCompactEnabled":"false"}', '{}'])('ignores invalid legacy preferences: %s', (content) => {
+        fs.writeFileSync(getClaudeJsonPath(), content);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: undefined, windowSize: undefined });
+    });
+
     it('merges each field independently with local settings above project and user settings', () => {
         writeLayer('settings.json', { autoCompactWindow: 800000, autoCompactEnabled: false });
         writeLayer('settings.local.json', { autoCompactWindow: 600000 });

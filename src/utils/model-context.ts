@@ -47,7 +47,7 @@ let cachedEnvRaw: string | undefined;
 let cachedEnvResult: number | null = null;
 let hasCachedEnv = false;
 
-function parseContextWindowEnvValue(raw: string): number | null {
+function parsePositiveWindowEnvValue(raw: string): number | null {
     const trimmed = raw.trim();
     if (!trimmed) {
         return null;
@@ -66,7 +66,15 @@ function parseContextWindowEnvValue(raw: string): number | null {
 
     const unit = suffixMatch[2]?.toLowerCase();
     const multiplier = unit === 'm' ? 1000000 : unit === 'k' ? 1000 : 1;
-    const result = Math.round(numeric * multiplier);
+    return toValidWindowSize(numeric * multiplier);
+}
+
+function parseContextWindowEnvValue(raw: string): number | null {
+    const parsed = parsePositiveWindowEnvValue(raw);
+    if (parsed === null) {
+        return null;
+    }
+    const result = Math.round(parsed);
 
     // Reject nonsensical tiny windows (e.g. "1.5" without a unit rounds to 2).
     if (result < 1000) {
@@ -74,6 +82,12 @@ function parseContextWindowEnvValue(raw: string): number | null {
     }
 
     return result;
+}
+
+function parseAutoCompactWindowEnvValue(raw: string): number | null {
+    const parsed = parsePositiveWindowEnvValue(raw);
+    // Preserve small positive values so they reach Claude Code's minimum clamp.
+    return parsed === null ? null : Math.round(Math.max(100000, Math.min(1000000, parsed)));
 }
 
 export function getContextWindowEnvOverride(): number | null {
@@ -154,11 +168,9 @@ function getUsableTokens(maxTokens: number, autoCompact: AutoCompactConfig): num
     }
 
     const rawWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
-    const envWindow = rawWindow === undefined ? null : parseContextWindowEnvValue(rawWindow);
+    const envWindow = rawWindow === undefined ? null : parseAutoCompactWindowEnvValue(rawWindow);
     // Claude Code bounds its compaction window to 100k–1M and the model window.
-    const configuredWindow = envWindow === null
-        ? toValidWindowSize(autoCompact.windowSize)
-        : Math.max(100000, Math.min(1000000, envWindow));
+    const configuredWindow = envWindow ?? toValidWindowSize(autoCompact.windowSize);
     const windowSize = Math.min(maxTokens, configuredWindow ?? maxTokens);
 
     const rawPercent = process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;

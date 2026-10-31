@@ -86,9 +86,15 @@ describe('usable context budget', () => {
         expect(getContextConfig(undefined, 200000).usableTokens).toBe(160000);
     });
 
-    it('falls back to settings when the environment window is malformed', () => {
-        process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '200000junk';
+    it.each(['200000junk', '', '0', '-1', 'Infinity', 'NaN'])('falls back to settings when the environment window is invalid: %s', (value) => {
+        process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = value;
         expect(getContextConfig(undefined, 1000000, { windowSize: 300000 }).usableTokens).toBe(240000);
+    });
+
+    it.each(['200', '1', '999', '0.1', '0.2k'])('clamps the small positive compaction window %s to 100k', (value) => {
+        process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = value;
+        expect(getContextConfig(undefined, 1000000, { windowSize: 300000 }))
+            .toEqual({ maxTokens: 1000000, usableTokens: 80000 });
     });
 
     it.each([['50k', 80000], ['500k', 400000], ['2M', 800000]])('bounds the environment window %s', (value, expected) => {

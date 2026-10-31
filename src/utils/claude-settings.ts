@@ -554,6 +554,18 @@ export function getAutoCompactConfig(cwd: string = process.cwd()): { enabled?: b
             break;
         }
     }
+    if (enabled === undefined) {
+        try {
+            // Older /config preferences live outside the layered settings files.
+            const raw: unknown = JSON.parse(fs.readFileSync(getClaudeJsonPath(), 'utf-8'));
+            const parsed = AutoCompactConfigSchema.safeParse(raw);
+            if (parsed.success) {
+                enabled = parsed.data.autoCompactEnabled;
+            }
+        } catch {
+            // Missing, unreadable and malformed legacy preferences add no override.
+        }
+    }
     return { enabled, windowSize };
 }
 
