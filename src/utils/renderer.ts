@@ -37,6 +37,7 @@ import {
     isGradientSpec,
     parseGradientSpec
 } from './gradient';
+import { fontSafeSeparator } from './powerline';
 import { getTerminalWidth } from './terminal';
 import { sanitizeTerminalText } from './terminal-sanitize';
 import {
@@ -114,13 +115,14 @@ function renderPowerlineStatusLine(
     const config = powerlineConfig ?? {};
     const continueThemeAcrossLines = Boolean(config.continueThemeAcrossLines);
 
-    // Get separator configuration
-    const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
+    // Get separator configuration; PUA glyphs degrade to '|' without a
+    // Powerline/Nerd Font instead of rendering as mojibake
+    const separators = ((config.separators as string[] | undefined) ?? ['\uE0B0']).map(separator => fontSafeSeparator(separator));
     const invertBgs = (config.separatorInvertBackground as boolean[] | undefined) ?? separators.map(() => false);
 
     // Get caps arrays or fallback to empty arrays
-    const startCaps = (config.startCaps as string[] | undefined) ?? [];
-    const endCaps = (config.endCaps as string[] | undefined) ?? [];
+    const startCaps = ((config.startCaps as string[] | undefined) ?? []).map(cap => fontSafeSeparator(cap));
+    const endCaps = ((config.endCaps as string[] | undefined) ?? []).map(cap => fontSafeSeparator(cap));
 
     // Get the cap for this line (cycle through if more lines than caps)
     const capLineIndex = context.lineIndex ?? lineIndex;
@@ -1145,7 +1147,7 @@ export function renderStatusLine(
                 }
             }
 
-            const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
+            const sepChar = fontSafeSeparator(widget.character ?? (settings.defaultSeparator ?? '|'));
             const formattedSep = formatSeparator(sepChar);
 
             // Check if we should inherit colors from the previous widget
@@ -1273,7 +1275,7 @@ export function renderStatusLine(
     const finalElements: (string | null)[] = [];
     const padding = settings.defaultPadding ?? '';
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
-    const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
+    const defaultSep = settings.defaultSeparator ? formatSeparator(fontSafeSeparator(settings.defaultSeparator)) : '';
 
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item, and not around flex separators)

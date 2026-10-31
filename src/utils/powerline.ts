@@ -156,6 +156,44 @@ export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
     }
 }
 
+// Private-use-area glyphs (the Powerline/Nerd Font ranges) render as mojibake
+// without a matching font. The detection is a directory scan, so cache the
+// result for the process lifetime; installPowerlineFonts() resets it.
+let cachedFontStatus: PowerlineFontStatus | null = null;
+
+export function resetPowerlineFontCache(): void {
+    cachedFontStatus = null;
+}
+
+// Test seam: pin the detection result so renderer output stays deterministic
+// regardless of the machine's installed fonts.
+export function setCachedPowerlineFontStatus(status: PowerlineFontStatus): void {
+    cachedFontStatus = status;
+}
+
+export function getCachedPowerlineFontStatus(): PowerlineFontStatus {
+    cachedFontStatus ??= checkPowerlineFonts();
+    return cachedFontStatus;
+}
+
+// True when the text contains a glyph from the private-use-area ranges that
+// Powerline/Nerd Fonts remap (BMP PUA plus the astral Nerd Font planes).
+export function containsPowerlineGlyph(text: string): boolean {
+    return /[\u{E000}-\u{F8FF}\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u.test(text);
+}
+
+// Replace a PUA separator/cap glyph with a plain '|' when no Powerline font is
+// detected, so the status line never renders mojibake. Non-glyph text and
+// font-present environments pass through untouched. The fontStatus parameter
+// exists for tests; production callers use the cached detection.
+export function fontSafeSeparator(separator: string, fontStatus?: PowerlineFontStatus): string {
+    if (!separator || !containsPowerlineGlyph(separator)) {
+        return separator;
+    }
+    const status = fontStatus ?? getCachedPowerlineFontStatus();
+    return status.installed ? separator : '|';
+}
+
 /**
  * Install Powerline fonts on the system
  */
@@ -243,6 +281,9 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     if (process.env.DEBUG_FONT_INSTALL === '1') {
                         fontsInstalledThisSession = true;
                     }
+
+                    // Newly installed fonts must stop the separator fallback
+                    resetPowerlineFontCache();
 
                     return {
                         success: true,
