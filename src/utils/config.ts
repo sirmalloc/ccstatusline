@@ -12,6 +12,7 @@ import {
 
 import type { SkippedWidgetHooks } from './hooks';
 import {
+    detectVersion,
     migrateConfig,
     needsMigration
 } from './migrations';
@@ -38,13 +39,23 @@ function getDefaultSettingsPath(): string {
 
 let settingsPath = getDefaultSettingsPath();
 let lastLoadError: string | null = null;
+// Whether the last load couldn't back up a migration: its settings are in use, but the
+// file keeps the original until a backup of it can be written (see saveSettings)
+let unsavedMigration = false;
 
 export function getConfigLoadError(): string | null {
     return lastLoadError;
 }
 
+// Why the settings in use, though the user's own, differ from what the file holds
+export function getConfigLoadNotice(): string | null {
+    return unsavedMigration ? 'settings.json could not be backed up before migrating' : null;
+}
+
 export function initConfigPath(filePath?: string): void {
     settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
+    // A migration held for the previous file doesn't apply to this one
+    unsavedMigration = false;
 }
 
 export function getConfigPath(): string {
@@ -152,6 +163,47 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
     }
 }
 
+// Before a migration rewrites the file, the original is kept beside it as
+// <file>.v<N>.bak (N being the version it was migrated from), byte for byte. It
+// gets the original's permissions, since custom commands can carry credentials, and
+// is recreated because an existing file keeps its own permissions when overwritten.
+async function writeMigrationBackup(original: Buffer, fromVersion: number, paths: SettingsPaths): Promise<void> {
+    const backupPath = `${paths.settingsPath}.v${fromVersion}.bak`;
+    const mode = await getReplacedFileMode(paths.settingsPath);
+    try {
+        await unlink(backupPath);
+    } catch (error) {
+        if (getErrorCode(error) !== 'ENOENT') {
+            throw error;
+        }
+    }
+    await writeFile(backupPath, original, { mode });
+}
+
+// The bytes of settings.json and the version they'd be migrated from, or null when it
+// is missing or doesn't need migrating
+async function readUnmigratedSettings(paths: SettingsPaths): Promise<{ original: Buffer; fromVersion: number } | null> {
+    let original: Buffer;
+    try {
+        original = await readFile(paths.settingsPath);
+    } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+
+    let data: unknown;
+    try {
+        data = JSON.parse(original.toString('utf-8'));
+    } catch {
+        return null;
+    }
+    return needsMigration(data, CURRENT_VERSION)
+        ? { original, fromVersion: detectVersion(data) }
+        : null;
+}
+
 function inMemoryDefaults(): Settings {
     // Defaults held in memory only (version included via the schema default).
     // Returned on recovery without writing, so a malformed file is preserved.
@@ -177,11 +229,15 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
  * NEVER overwrites it — it returns built-in defaults in memory, records the reason
  * (see getConfigLoadError), and leaves the file untouched for the user to fix. The
  * file is written only when it is missing (first run), or when a readable config is
- * migrated to the current version AND the migrated result validates first. All writes
- * go through writeSettingsJson, which is atomic (temp file + rename).
+ * migrated to the current version AND the migrated result validates first AND the
+ * original has been backed up beside it (see writeMigrationBackup). If that backup
+ * can't be written, the migration is returned in memory only (see getConfigLoadNotice)
+ * and the next load tries again. All writes go through writeSettingsJson, which is
+ * atomic (temp file + rename).
  */
 export async function loadSettings(): Promise<Settings> {
     lastLoadError = null;
+    unsavedMigration = false;
     const paths = getSettingsPaths();
 
     try {
@@ -189,7 +245,8 @@ export async function loadSettings(): Promise<Settings> {
         if (!fs.existsSync(paths.settingsPath))
             return await writeDefaultSettings(paths);
 
-        const content = await readFile(paths.settingsPath, 'utf-8');
+        const original = await readFile(paths.settingsPath);
+        const content = original.toString('utf-8');
         let rawData: unknown;
 
         try {
@@ -200,29 +257,28 @@ export async function loadSettings(): Promise<Settings> {
             return inMemoryDefaults();
         }
 
-        // Check if this is a v1 config (no version field)
+        // A config without a version is v1, unless it holds settings that came after v1:
+        // then needsMigration reports none and it is validated as the current version
         const hasVersion = typeof rawData === 'object' && rawData !== null && 'version' in rawData;
-        let migrated = false;
-        if (!hasVersion) {
-            // Parse as v1 to validate before migration
-            const v1Result = SettingsSchema_v1.safeParse(rawData);
-            if (!v1Result.success) {
-                console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
-                lastLoadError = 'settings.json is not in a valid format';
-                return inMemoryDefaults();
+        let migratedFrom: number | null = null;
+        if (needsMigration(rawData, CURRENT_VERSION)) {
+            if (!hasVersion) {
+                // Parse as v1 to validate before migration
+                const v1Result = SettingsSchema_v1.safeParse(rawData);
+                if (!v1Result.success) {
+                    console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
+                    lastLoadError = 'settings.json is not in a valid format';
+                    return inMemoryDefaults();
+                }
             }
 
-            // Migrate v1 to the current version (persisted below, only once it validates)
+            // Migrate to the current version (persisted below, only once it validates)
+            migratedFrom = detectVersion(rawData);
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            migrated = true;
-        } else if (needsMigration(rawData, CURRENT_VERSION)) {
-            // Migrate versioned configs (v2+) to current (persisted below, only once it validates)
-            rawData = migrateConfig(rawData, CURRENT_VERSION);
-            migrated = true;
         }
 
-        // At this point, data should be in current format with version field
-        // Parse with main schema which will apply all defaults
+        // At this point, data should be in current format
+        // Parse with main schema which will apply all defaults (a missing version included)
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
             console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
@@ -230,9 +286,22 @@ export async function loadSettings(): Promise<Settings> {
             return inMemoryDefaults();
         }
 
-        // Persist a migration only after the migrated result validates, so a faulty
-        // migration can never overwrite the user's original file.
-        if (migrated) {
+        // Persist a migration only after the migrated result validates and the original
+        // is backed up, so a migration can never overwrite the user's file unrecoverably.
+        if (migratedFrom !== null) {
+            try {
+                await writeMigrationBackup(original, migratedFrom, paths);
+            } catch {
+                // Without the backup, the migration serves this run from memory and isn't
+                // written. Its update message waits as well, since counting it down rewrites
+                // the file.
+                unsavedMigration = true;
+                const { updatemessage, ...migrated } = result.data;
+                return {
+                    ...migrated,
+                    lines: upgradeLegacyWidgetTypes(migrated.lines)
+                };
+            }
             await writeSettingsJson(rawData, paths);
         }
 
@@ -250,6 +319,18 @@ export async function loadSettings(): Promise<Settings> {
 /** Saves settings and syncs widget hooks; returns the hooks the sync couldn't add, if any. */
 export async function saveSettings(settings: Settings): Promise<SkippedWidgetHooks | null> {
     const paths = getSettingsPaths();
+
+    // Replacing a file whose migration is held in memory keeps its original first, and
+    // fails without writing if that still can't be done. The file is read again, as it
+    // may have changed since the load: edited, which needs those bytes kept instead, or
+    // migrated by another run, which has kept its own backup that this mustn't replace.
+    if (unsavedMigration) {
+        const unmigrated = await readUnmigratedSettings(paths);
+        if (unmigrated) {
+            await writeMigrationBackup(unmigrated.original, unmigrated.fromVersion, paths);
+        }
+        unsavedMigration = false;
+    }
 
     // Always include version when saving
     const settingsWithVersion = {
@@ -316,17 +397,19 @@ export async function validateImportFile(filePath: string): Promise<ImportValida
         };
     }
 
-    if (needsMigration(parsed, CURRENT_VERSION)) {
-        parsed = migrateConfig(parsed, CURRENT_VERSION);
-    }
+    const migrated = needsMigration(parsed, CURRENT_VERSION) ? migrateConfig(parsed, CURRENT_VERSION) : parsed;
 
-    const result = SettingsSchema.safeParse(parsed);
+    const result = SettingsSchema.safeParse(migrated);
     if (!result.success) {
         return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
     }
 
+    // The keys the file holds that survived migration: a merge applies what the
+    // file sets, never the version and update message a migration adds, nor a
+    // default standing in for a value the v1 migration dropped as invalid
+    const migratedKeys = new Set(Object.keys(migrated as Record<string, unknown>));
     const presentKeys = Object.keys(parsed as Record<string, unknown>)
-        .filter((key): key is keyof Settings => key in result.data);
+        .filter((key): key is keyof Settings => migratedKeys.has(key) && key in result.data);
 
     return { status: 'valid', data: result.data, presentKeys };
 }
@@ -369,6 +452,12 @@ export async function saveInstallationMetadata(metadata: InstallationMetadata | 
     // file. Metadata is non-critical and is persisted on the next clean save.
     if (getConfigLoadError() !== null) {
         console.error('Skipping installation-metadata write: settings.json is unreadable (left unchanged).');
+        return;
+    }
+    // Nor when the load just failed to back it up before migrating: writing would put
+    // the migration over it with no copy of the original
+    if (getConfigLoadNotice() !== null) {
+        console.error('Skipping installation-metadata write: settings.json could not be backed up before migrating (left unchanged).');
         return;
     }
 

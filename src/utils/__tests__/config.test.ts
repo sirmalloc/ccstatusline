@@ -38,6 +38,7 @@ let applyImport: (
 ) => Settings;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
+let getConfigLoadNotice: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
@@ -54,6 +55,22 @@ function getClaudeConfigDir(): string {
     return path.join(MOCK_HOME_DIR, '.claude');
 }
 
+// A v2 settings.json whose migration backup can't be written, because a directory
+// stands where it goes. Removing the directory lets the backup be written.
+function writeV2SettingsWithBlockedBackup(): { original: string; backupPath: string } {
+    const { settingsPath, configDir } = getSettingsPaths();
+    fs.mkdirSync(configDir, { recursive: true });
+    const original = JSON.stringify({
+        version: 2,
+        lines: [[{ id: 'widget-1', type: 'git-branch', metadata: { hideNoGit: 'true' } }]],
+        colorLevel: 3
+    });
+    fs.writeFileSync(settingsPath, original, 'utf-8');
+    const backupPath = `${settingsPath}.v2.bak`;
+    fs.mkdirSync(backupPath);
+    return { original, backupPath };
+}
+
 describe('config utilities', () => {
     beforeAll(async () => {
         const configModule = await import('../config');
@@ -64,6 +81,7 @@ describe('config utilities', () => {
         applyImport = configModule.applyImport;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
+        getConfigLoadNotice = configModule.getConfigLoadNotice;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
     });
 
@@ -203,6 +221,108 @@ describe('config utilities', () => {
         expect(validation.status).toBe('invalid');
     });
 
+    it('imports a file without a version as current settings when it holds settings added after v1', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'versionless-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                lines: [[{ id: 'widget-1', type: 'model' }]],
+                powerline: { enabled: true, theme: 'nord' },
+                gitCacheTtlSeconds: 30
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        expect(validation.presentKeys).toEqual(['lines', 'powerline', 'gitCacheTtlSeconds']);
+        const merged = applyImport(DEFAULT_SETTINGS, validation.data, 'merge', validation.presentKeys);
+        expect(merged.lines).toEqual([[{ id: 'widget-1', type: 'model' }]]);
+        expect(merged.powerline.enabled).toBe(true);
+        expect(merged.powerline.theme).toBe('nord');
+        expect(merged.gitCacheTtlSeconds).toBe(30);
+        const replaced = applyImport(DEFAULT_SETTINGS, validation.data, 'replace', validation.presentKeys);
+        expect(replaced.powerline.enabled).toBe(true);
+        expect(replaced.gitCacheTtlSeconds).toBe(30);
+        expect(replaced.updatemessage).toBeUndefined();
+    });
+
+    it('migrates a v1 import and merges only the keys the file holds', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'v1-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                lines: [[
+                    { id: '1', type: 'model' },
+                    { id: '2', type: 'separator' },
+                    { id: '3', type: 'git-branch' }
+                ]],
+                defaultSeparator: '|',
+                colorLevel: 3
+            }),
+            'utf-8'
+        );
+        const current: Settings = { ...DEFAULT_SETTINGS, globalBold: true };
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        // The v1 migration still runs (it drops separators a default separator replaces)
+        expect(validation.data.lines[0]?.map(item => item.type)).toEqual(['model', 'git-branch']);
+        expect(validation.presentKeys).toEqual(['lines', 'defaultSeparator', 'colorLevel']);
+        const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
+        expect(merged.colorLevel).toBe(3);
+        expect(merged.defaultSeparator).toBe('|');
+        expect(merged.globalBold).toBe(true);
+        expect(merged.updatemessage).toBeUndefined();
+    });
+
+    it('keeps current settings a v1 import holds values the migration drops for', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'v1-import-invalid-fields.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                lines: 'not a list',
+                colorLevel: 'high',
+                defaultPadding: 7,
+                defaultSeparator: '|'
+            }),
+            'utf-8'
+        );
+        const current: Settings = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'mine', type: 'git-branch' }]],
+            colorLevel: 3,
+            defaultPadding: '  '
+        };
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        expect(validation.presentKeys).toEqual(['defaultSeparator']);
+        const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
+        expect(merged.lines).toEqual(current.lines);
+        expect(merged.colorLevel).toBe(3);
+        expect(merged.defaultPadding).toBe('  ');
+        expect(merged.defaultSeparator).toBe('|');
+    });
+
     it('preserves local installation metadata during a replace import', () => {
         const installation: InstallationMetadata = {
             method: 'pinned',
@@ -304,6 +424,276 @@ describe('config utilities', () => {
         expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
         expect(fs.existsSync(backupPath)).toBe(false);
         expect(getConfigLoadError()).toBe('settings.json is not in a valid format');
+    });
+
+    it('loads a file without a version as the current version when it holds settings added after v1', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // Powerline and the git cache TTL came after v1, so this is a current config
+        // that leaves the version out, not a v1 file to migrate.
+        const original = JSON.stringify({
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            powerline: { enabled: true, theme: 'nord' },
+            gitCacheTtlSeconds: 30
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(settings.lines).toEqual([[{ id: 'widget-1', type: 'model' }]]);
+        expect(settings.powerline.enabled).toBe(true);
+        expect(settings.powerline.theme).toBe('nord');
+        expect(settings.gitCacheTtlSeconds).toBe(30);
+        expect(settings.updatemessage).toBeUndefined();
+        expect(getConfigLoadError()).toBeNull();
+        // Not rewritten just to add a version, and nothing written beside it.
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(configDir)).toEqual(['settings.json']);
+    });
+
+    it('uses defaults in memory and preserves a file without a version whose later settings are invalid', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            powerline: { enabled: true },
+            gitCacheTtlSeconds: 'often'
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(settings.powerline.enabled).toBe(false);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(configDir)).toEqual(['settings.json']);
+        expect(getConfigLoadError()).toBe('settings.json is not in a valid format');
+    });
+
+    it('migrates a v1 file and keeps the original beside it', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({
+            lines: [[
+                { id: '1', type: 'model' },
+                { id: '2', type: 'separator' },
+                { id: '3', type: 'git-branch' }
+            ]],
+            colorLevel: 3,
+            defaultSeparator: '|'
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(settings.colorLevel).toBe(3);
+        expect(settings.lines[0]?.map(item => item.type)).toEqual(['model', 'git-branch']);
+        expect(settings.updatemessage?.message).toContain('v2.0.2');
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(`${settingsPath}.v1.bak`, 'utf-8')).toBe(original);
+    });
+
+    it('keeps the original of an older versioned file beside it when migrating', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({
+            version: 2,
+            lines: [[{ id: 'widget-1', type: 'model' }]]
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        await loadSettings();
+
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(`${settingsPath}.v2.bak`, 'utf-8')).toBe(original);
+    });
+
+    // An editor saving in a legacy encoding leaves bytes that aren't UTF-8; JSON.parse
+    // still takes the decoded text, so only a byte copy keeps the original intact
+    it('keeps the original bytes in the backup, even ones that are not UTF-8', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = Buffer.concat([
+            Buffer.from('{"version":2,"lines":[[{"id":"1","type":"custom-text","customText":"caf'),
+            Buffer.from([0xe9]),
+            Buffer.from('"}]]}')
+        ]);
+        fs.writeFileSync(settingsPath, original);
+
+        await loadSettings();
+
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(`${settingsPath}.v2.bak`).equals(original)).toBe(true);
+    });
+
+    // Custom commands can carry credentials, so the copy a migration keeps must
+    // stay as private as the file it came from
+    it.skipIf(process.platform === 'win32')('gives a migration backup the permissions of a private settings file', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: 3, lines: [[{ id: 'widget-1', type: 'model' }]] }), 'utf-8');
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.v3.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.v3.bak`, 0o644);
+
+        await loadSettings();
+
+        expect(fs.statSync(`${settingsPath}.v3.bak`).mode & 0o777).toBe(0o600);
+    });
+
+    it('uses the migration in memory and leaves the file untouched when its backup cannot be written', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
+
+        const settings = await loadSettings();
+
+        // The user's settings, migrated: v4 turned the hide flag into a hide list
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(settings.lines).toEqual([[{ id: 'widget-1', type: 'git-branch', metadata: { hide: 'no-git' } }]]);
+        expect(settings.colorLevel).toBe(3);
+        // The update message the migration adds waits until it's written, since
+        // counting it down rewrites the file
+        expect(settings.updatemessage).toBeUndefined();
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(backupPath)).toEqual([]);
+        expect(fs.readdirSync(configDir).sort()).toEqual(['settings.json', 'settings.json.v2.bak']);
+        // Not a load error, as the file is valid, and nothing on stderr, which every
+        // status line render would repeat
+        expect(getConfigLoadError()).toBeNull();
+        expect(getConfigLoadNotice()).toBe('settings.json could not be backed up before migrating');
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('writes the backup and the migration on a later load once the backup can be written', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
+        // The default is 2, so this run got the user's settings
+        expect((await loadSettings()).colorLevel).toBe(3);
+        fs.rmdirSync(backupPath);
+
+        const settings = await loadSettings();
+
+        expect(settings.updatemessage?.message).toContain('v2.0.2');
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
+    it('backs up the original before a save replaces a migration held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        fs.rmdirSync(backupPath);
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+            version?: number;
+            colorLevel?: number;
+            globalBold?: boolean;
+        };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.colorLevel).toBe(3);
+        expect(saved.globalBold).toBe(true);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
+    it('backs up the file as it is now when it was edited while its migration was held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        // Replaced in place by a config of another older version
+        const edited = JSON.stringify({
+            version: 3,
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            colorLevel: 1
+        });
+        fs.writeFileSync(settingsPath, edited, 'utf-8');
+        fs.rmdirSync(backupPath);
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(`${settingsPath}.v3.bak`, 'utf-8')).toBe(edited);
+        expect(fs.existsSync(backupPath)).toBe(false);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number; globalBold?: boolean };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.globalBold).toBe(true);
+    });
+
+    it('keeps the backup another run made when it migrated the file while a migration was held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        // Edited in place, then backed up and migrated by another run (such as a status
+        // line render) once the backup could be written
+        const editedLines = [[{ id: 'widget-1', type: 'model' }]];
+        const edited = JSON.stringify({ version: 2, lines: editedLines, colorLevel: 1 });
+        fs.rmdirSync(backupPath);
+        fs.writeFileSync(backupPath, edited, 'utf-8');
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({ version: CURRENT_VERSION, lines: editedLines, colorLevel: 1 }),
+            'utf-8'
+        );
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(edited);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number; globalBold?: boolean };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.globalBold).toBe(true);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
+    it('refuses to save over a migration held in memory while its backup still cannot be written', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const { original } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+
+        await expect(saveSettings({ ...settings, globalBold: true })).rejects.toThrow();
+
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        expect(getConfigLoadNotice()).toBe('settings.json could not be backed up before migrating');
+    });
+
+    it('does not record installation metadata over a migration it cannot back up', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original } = writeV2SettingsWithBlockedBackup();
+
+        await saveInstallationMetadata({ method: 'pinned' });
+
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+    });
+
+    it('keeps the migration backup beside a symlinked settings file', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const targetDir = path.join(MOCK_HOME_DIR, 'dotfiles', 'ccstatusline');
+        const targetPath = path.join(targetDir, 'settings.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.mkdirSync(targetDir, { recursive: true });
+        const original = JSON.stringify({
+            version: 2,
+            lines: [[{ id: 'widget-1', type: 'model' }]]
+        });
+        fs.writeFileSync(targetPath, original, 'utf-8');
+        fs.symlinkSync(targetPath, settingsPath);
+
+        await loadSettings();
+
+        expect(fs.lstatSync(settingsPath).isSymbolicLink()).toBe(true);
+        const migrated = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(`${settingsPath}.v2.bak`, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(targetDir)).toEqual(['settings.json']);
     });
 
     it('uses defaults in memory when the settings file cannot be read', async () => {

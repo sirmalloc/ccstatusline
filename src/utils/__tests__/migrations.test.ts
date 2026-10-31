@@ -35,6 +35,17 @@ describe('migrations', () => {
         expect(needsMigration({ version: null }, 4)).toBe(false);
     });
 
+    it('does not migrate a config without a version that holds settings added after v1', () => {
+        expect(needsMigration({ lines: [], powerline: { enabled: true } }, 4)).toBe(false);
+        expect(needsMigration({ gitCacheTtlSeconds: 30 }, 4)).toBe(false);
+    });
+
+    it('still migrates a config without a version that holds only v1-era settings', () => {
+        expect(needsMigration({ lines: [], flexMode: 'full', defaultSeparator: '|' }, 4)).toBe(true);
+        // Pre-v2 keys that no later version kept still read as v1
+        expect(needsMigration({ items: [], colors: {} }, 4)).toBe(true);
+    });
+
     it('returns original value for non-record migration input', () => {
         expect(migrateConfig('invalid', 3)).toBe('invalid');
         expect(migrateConfig(123, 3)).toBe(123);
