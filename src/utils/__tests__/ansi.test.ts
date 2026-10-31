@@ -50,6 +50,33 @@ describe('escape sequence parsing', () => {
         expect(getVisibleWidth('a\x1b7b\x1b8c')).toBe(3);
     });
 
+    // `tput sgr0` prints ESC ( B before its reset
+    it('hides an escape with intermediate bytes up to its final byte', () => {
+        expect(getVisibleText('\x1b[32mOK\x1b(B\x1b[m done')).toBe('OK done');
+        expect(getVisibleText('a\x1b$(Cb\x1b#8c')).toBe('abc');
+        expect(getVisibleWidth('a\x1b(Bb')).toBe(2);
+    });
+
+    it('ends an escape with intermediate bytes where its final byte is missing', () => {
+        expect(getVisibleText('a\x1b(')).toBe('a');
+        expect(getVisibleText('a\x1b(😀b')).toBe('a😀b');
+        expect(getVisibleWidth('a\x1b(😀b')).toBe(4);
+    });
+
+    it.each([
+        ['a DCS string', '\x1bPq#0;2;0;0;0\x1b\\'],
+        ['an APC string', '\x1b_Gpayload\x1b\\'],
+        ['a PM string', '\x1b^payload\x07'],
+        ['a SOS string', '\x1bXpayload\x9c']
+    ])('hides %s with its payload', (_label, sequence) => {
+        expect(getVisibleText(`a${sequence}b`)).toBe('ab');
+        expect(getVisibleWidth(`a${sequence}b`)).toBe(2);
+    });
+
+    it('ends an unterminated DCS string at the next escape', () => {
+        expect(getVisibleText('a\x1bPq#0\x1b[1mb')).toBe('ab');
+    });
+
     it('swallows a lone ESC at the end of the text', () => {
         expect(getVisibleText('ab\x1b')).toBe('ab');
         expect(getVisibleWidth('ab\x1b')).toBe(2);
@@ -119,6 +146,11 @@ describe('stripSgrCodes', () => {
         expect(stripSgrCodes('\x1b[1m\x9b38;5;208mbold\x9b0m\x1b[22m')).toBe('bold');
     });
 
+    it('removes color codes written with colons', () => {
+        expect(stripSgrCodes('\x1b[38:5:196mred\x1b[0m')).toBe('red');
+        expect(stripSgrCodes('\x1b[38:2::255:0:0mred\x1b[4:3m curly\x9b4:0m')).toBe('red curly');
+    });
+
     it('leaves other CSI sequences and hyperlinks alone', () => {
         const text = `\x1b[2K\x9b2J${OSC8_OPEN}link${OSC8_CLOSE}${C1_OSC8_OPEN}c1${C1_OSC8_CLOSE}`;
 
@@ -148,7 +180,8 @@ describe('restoreStyleAfterResets', () => {
     it.each([
         '0;40', '0;41', '0;47', '0;100', '0;107',
         '49;41', ';41', '0;48;5;49', '0;48;2;0;49;0',
-        '41;0;42', '0;41;38;5;0', '0;41;58;5;49'
+        '41;0;42', '0;41;38;5;0', '0;41;58;5;49',
+        '0;48:5:49', '0;48:2::0:49:0', '0;38:2::0:0:0;41'
     ])('keeps the explicit background after a reset in SGR %s', (params) => {
         const text = `\x1b[${params}mtext`;
 
@@ -157,7 +190,8 @@ describe('restoreStyleAfterResets', () => {
 
     it.each([
         '41;0', '107;49', '48;5;49;0', '48;2;0;49;0;49',
-        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0'
+        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0',
+        '0;38:5:196', '48:5:1;0', '48:2::0:49:0;49', '0;58:2::0:49:0'
     ])('restores the background when the final background operation clears it in SGR %s', (params) => {
         expect(restoreStyleAfterResets(`\x1b[${params}mtext`, { background: BG }))
             .toBe(`\x1b[${params}m${BG}text`);

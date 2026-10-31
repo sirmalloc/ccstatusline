@@ -10,6 +10,8 @@ const BEL = '\x07';
 const C1_CSI = '\x9b';
 const C1_OSC = '\x9d';
 const ST = '\x9c';
+// What follows ESC in a DCS, SOS, PM or APC string
+const STRING_INTRODUCERS = new Set(['P', 'X', '^', '_']);
 const ZERO_WIDTH_JOINER = 0x200d;
 const COMBINING_ENCLOSING_KEYCAP = 0x20e3;
 const VARIATION_SELECTOR_START = 0xfe00;
@@ -19,8 +21,9 @@ const VARIATION_SELECTOR_SUPPLEMENT_END = 0xe01ef;
 const REGIONAL_INDICATOR_START = 0x1f1e6;
 const REGIONAL_INDICATOR_END = 0x1f1ff;
 
-// Color codes, written with ESC [ or the 8-bit CSI
-const SGR_REGEX = /(?:\x1b\[|\x9b)[0-9;]*m/g;
+// Color codes, written with ESC [ or the 8-bit CSI, and with ; or the ITU
+// colons (38:5:196) between parameters
+const SGR_REGEX = /(?:\x1b\[|\x9b)[0-9;:]*m/g;
 // Lowest code point that can extend a display cluster (U+0300 is the first
 // \p{Mark}; ZWJ, variation selectors, the keycap and emoji modifiers are all
 // higher), so a printable ASCII character followed by anything below it is a
@@ -188,6 +191,11 @@ function computeClusterWidth(cluster: string): number {
         return 0;
     }
 
+    // The sanitizer prints a tab as one space
+    if (cluster.startsWith('\t')) {
+        return 1;
+    }
+
     const clusterStringWidth = stringWidth(cluster);
     if (shouldTreatClusterAsNarrowTextPictograph(cluster, clusterStringWidth)) {
         return 1;
@@ -338,6 +346,62 @@ function parseOsc(
     };
 }
 
+// The bytes after ESC in ESC ( B and the like: intermediate bytes, then a
+// final byte. Past the end of the input, codePointAt gives undefined, which is
+// neither.
+function isIntermediateByte(codePoint: number | undefined): boolean {
+    return codePoint !== undefined && codePoint >= 0x20 && codePoint <= 0x2f;
+}
+
+function isEscapeFinalByte(codePoint: number | undefined): boolean {
+    return codePoint !== undefined && codePoint >= 0x30 && codePoint <= 0x7e;
+}
+
+function sliceSequence(input: string, start: number, end: number): ParsedEscapeSequence {
+    return {
+        nextIndex: end,
+        sequence: input.slice(start, end)
+    };
+}
+
+// A DCS, SOS, PM or APC string, which the terminal swallows up to ST or BEL.
+// Any other ESC starts a new sequence, so an unterminated string doesn't hide
+// the text after it.
+function parseControlString(input: string, start: number): ParsedEscapeSequence {
+    for (let index = start + 2; index < input.length; index++) {
+        const current = input[index];
+        if (current === BEL || current === ST) {
+            return sliceSequence(input, start, index + 1);
+        }
+        if (current === ESC) {
+            return sliceSequence(input, start, input[index + 1] === '\\' ? index + 2 : index);
+        }
+    }
+
+    return sliceSequence(input, start, input.length);
+}
+
+// ESC and a character other than [ or ]
+function parseOtherEscape(input: string, start: number): ParsedEscapeSequence {
+    const next = input.charAt(start + 1);
+    if (STRING_INTRODUCERS.has(next)) {
+        return parseControlString(input, start);
+    }
+
+    // ESC, intermediate bytes, then a final byte: ESC ( B selects a character
+    // set (`tput sgr0` prints it), ESC # 8 fills the screen
+    if (isIntermediateByte(next.codePointAt(0))) {
+        let end = start + 2;
+        while (end < input.length && isIntermediateByte(input.codePointAt(end))) {
+            end++;
+        }
+        return sliceSequence(input, start, isEscapeFinalByte(input.codePointAt(end)) ? end + 1 : end);
+    }
+
+    // ESC 7, ESC c and the like
+    return sliceSequence(input, start, start + 2);
+}
+
 function parseEscapeSequence(input: string, index: number): ParsedEscapeSequence | null {
     const current = input[index];
     if (!current) {
@@ -353,10 +417,7 @@ function parseEscapeSequence(input: string, index: number): ParsedEscapeSequence
             return parseOsc(input, index, index + 2);
         }
         if (next) {
-            return {
-                nextIndex: index + 2,
-                sequence: input.slice(index, index + 2)
-            };
+            return parseOtherEscape(input, index);
         }
         return {
             nextIndex: input.length,
@@ -427,10 +488,13 @@ interface SgrClears {
 
 // Track each attribute's operations in order: a later explicit setting
 // overrides a reset. Skip extended color arguments so their values aren't
-// mistaken for resets or background operations.
+// mistaken for resets or background operations. Written with colons
+// (38:5:196, 48:2::255:0:0), an extended color holds its arguments in its own
+// parameter, so there is nothing after it to skip.
 function getSgrClears(sequence: string): SgrClears {
     const introducerLength = sequence.startsWith(C1_CSI) ? 1 : 2;
-    const params = sequence.slice(introducerLength, -1).split(';').map(param => Number.parseInt(param || '0', 10));
+    const fields = sequence.slice(introducerLength, -1).split(';');
+    const params = fields.map(param => Number.parseInt(param || '0', 10));
     const clears: SgrClears = { background: false, bold: false, dim: false };
     const track = (attribute: keyof SgrClears, effect: SgrEffect) => {
         if (effect) {
@@ -442,7 +506,7 @@ function getSgrClears(sequence: string): SgrClears {
         track('background', getBackgroundEffect(param));
         track('bold', getIntensityEffect(param, 1));
         track('dim', getIntensityEffect(param, 2));
-        if (param === 38 || param === 48 || param === 58) {
+        if ((param === 38 || param === 48 || param === 58) && !fields[i]?.includes(':')) {
             i += params[i + 1] === 5 ? 2 : 4;
         }
     }

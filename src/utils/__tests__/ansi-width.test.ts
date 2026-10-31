@@ -24,8 +24,12 @@ describe('getVisibleWidth', () => {
         expect(getVisibleWidth('a\u{1F3FB}')).toBe(2);
     });
 
-    it('gives ASCII control characters no width', () => {
-        expect(getVisibleWidth('a\tb')).toBe(2);
+    it('counts a tab as one column, the space it is printed as', () => {
+        expect(getVisibleWidth('a\tb')).toBe(3);
+        expect(getVisibleWidth('\t\t')).toBe(2);
+    });
+
+    it('gives other ASCII control characters no width', () => {
         expect(getVisibleWidth('a\x7fb')).toBe(2);
     });
 
