@@ -129,11 +129,11 @@ Default to using Bun instead of Node.js:
 
 ## Important Notes
 
-- **ink@6.2.0 patch**: The project uses a patch for ink@6.2.0 to fix backspace key handling on macOS
-  - Issue: ink treats `\x7f` (backspace on macOS) as delete key instead of backspace
-  - Fix: Patches `build/parse-keypress.js` to correctly map `\x7f` to backspace
+- **ink@6.2.0 patch**: The project patches ink@6.2.0 with two fixes
+  - Backspace on macOS: ink treats `\x7f` (backspace on macOS) as delete key instead of backspace; the patch makes `build/parse-keypress.js` map `\x7f` to backspace
+  - Text inserted before a sibling: `insertBeforeNode` in `build/dom.js` returns without marking the text node dirty when it inserts before an existing child, so Yoga keeps the old measured width and the line is cut until something re-measures it, such as the next key. The Custom Command and Link editors render `value.slice(0, cursor)`, the cursor cell and the rest as sibling texts, so input with the cursor at the start (an empty field included) is such an insert. It shows when the line grows past the width laid out for it, such as a paste into an empty field. The patch marks the node dirty the way `appendChildNode` does, as ink 6.8.0 does upstream
   - Applied automatically during `bun install` via `patchedDependencies` in package.json
-  - Patch file: `patches/ink@6.2.0.patch`
+  - Patch file: `patches/ink@6.2.0.patch`. To change it, run `bun patch ink@6.2.0`, edit `node_modules/ink`, run `bun patch --commit node_modules/ink`, and drop the empty `.bun-tag-*` file entry bun adds to the patch
 - **Build process**: Two-step build using `bun run build`
   1. `bun build`: Bundles src/ccstatusline.ts into dist/ccstatusline.js targeting Node.js 14+
   2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` placeholder with actual version from package.json

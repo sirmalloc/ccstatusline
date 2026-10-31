@@ -1,3 +1,24 @@
+diff --git a/build/dom.js b/build/dom.js
+index a64a9fc419b12ad5440925d4545463fc2acb1ad0..9aed5ff83891673dfd577a9b9b1cddd03167ad65 100644
+--- a/build/dom.js
++++ b/build/dom.js
+@@ -42,11 +42,12 @@ export const insertBeforeNode = (node, newChildNode, beforeChildNode) => {
+         if (newChildNode.yogaNode) {
+             node.yogaNode?.insertChild(newChildNode.yogaNode, index);
+         }
+-        return;
+     }
+-    node.childNodes.push(newChildNode);
+-    if (newChildNode.yogaNode) {
+-        node.yogaNode?.insertChild(newChildNode.yogaNode, node.yogaNode.getChildCount());
++    else {
++        node.childNodes.push(newChildNode);
++        if (newChildNode.yogaNode) {
++            node.yogaNode?.insertChild(newChildNode.yogaNode, node.yogaNode.getChildCount());
++        }
+     }
+     if (node.nodeName === 'ink-text' || node.nodeName === 'ink-virtual-text') {
+         markNodeAsDirty(node);
 diff --git a/build/parse-keypress.js b/build/parse-keypress.js
 index 1e13e819f59d259a3476510db822695576a9d93c..e100611d8661187c4ca191e89621cd5e480fcacc 100644
 --- a/build/parse-keypress.js
