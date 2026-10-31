@@ -47,6 +47,16 @@ const TOGGLE_COMPACT_ACTION = 'toggle-compact';
 
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
+// Whole minutes (rounded up) instead of minutes and seconds, for layouts that
+// only need a glance and should not change every second.
+const MINUTES_METADATA_KEY = 'minutes';
+const TOGGLE_MINUTES_ACTION = 'toggle-minutes';
+
+// While a turn is in flight the cache is being refreshed, so it can render as
+// Fresh with the full TTL instead of the separate HOT state.
+const WORKING_FRESH_METADATA_KEY = 'workingFresh';
+const TOGGLE_WORKING_FRESH_ACTION = 'toggle-working-fresh';
+
 // One editable glyph per display state, so nerd-font / ASCII users can replace
 // the emoji (which ignore the widget's color) with symbols that respect it.
 const HOT_SLOT: SymbolSlot = { id: 'symbolHot', label: 'Working', defaultSymbol: '🔥' };
@@ -241,6 +251,14 @@ function cycleTtl(item: WidgetItem): WidgetItem {
     };
 }
 
+// Off is stored as the absence of the key, so untouched items keep no metadata.
+function toggleFlag(item: WidgetItem, key: string): WidgetItem {
+    if (isMetadataFlagEnabled(item, key)) {
+        return removeMetadataKeys(item, [key]);
+    }
+    return { ...item, metadata: { ...item.metadata, [key]: 'true' } };
+}
+
 function formatTtlLabel(ttlSeconds: number): string {
     return ttlSeconds % 3600 === 0 ? `${ttlSeconds / 3600}h` : `${Math.round(ttlSeconds / 60)}m`;
 }
@@ -284,9 +302,13 @@ function getReportedTtlSeconds(context: RenderContext): number | null {
 // notation, so every timer widget reads the same way. Seconds always render:
 // they are the point of a cache countdown, and dropping a zero part the way
 // formatUsageDuration does would make the widget jump width every minute.
-function formatCountdown(remaining: number, compact: boolean): string {
+// Minutes only rounds up, so a still-warm cache never reads `0m`.
+function formatCountdown(remaining: number, compact: boolean, minutes: boolean): string {
     if (remaining <= 0) {
         return 'COLD';
+    }
+    if (minutes) {
+        return `${Math.ceil(remaining / 60)}m`;
     }
     const total = Math.floor(remaining);
     const h = Math.floor(total / 3600);
@@ -334,6 +356,12 @@ export class CacheTimerWidget implements Widget {
         if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
             modifiers.push('compact');
         }
+        if (isMetadataFlagEnabled(item, MINUTES_METADATA_KEY)) {
+            modifiers.push('minutes');
+        }
+        if (isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
+            modifiers.push('no HOT');
+        }
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -353,52 +381,65 @@ export class CacheTimerWidget implements Widget {
             return toggleMetadataFlag(item, COMPACT_METADATA_KEY);
         }
 
+        if (action === TOGGLE_MINUTES_ACTION) {
+            return toggleFlag(item, MINUTES_METADATA_KEY);
+        }
+
+        if (action === TOGGLE_WORKING_FRESH_ACTION) {
+            return toggleFlag(item, WORKING_FRESH_METADATA_KEY);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const compact = isMetadataFlagEnabled(item, COMPACT_METADATA_KEY);
+        const minutes = isMetadataFlagEnabled(item, MINUTES_METADATA_KEY);
+        const show = (text: string, glyph = ''): string => formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, text));
+        const countdown = (remaining: number, ttlSeconds: number): string => show(
+            formatCountdown(remaining, compact, minutes),
+            getStateSymbol(item, remaining, ttlSeconds)
+        );
 
         if (context.isPreview) {
-            const sample = formatCountdown(292, compact);
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), sample));
+            return show(formatCountdown(292, compact, minutes), getSlotSymbol(item, FRESH_SLOT));
         }
 
         const reportedRemaining = getReportedRemainingSeconds(context);
         if (reportedRemaining !== null) {
-            const ttlSeconds = getReportedTtlSeconds(context) ?? getTtlSeconds(item);
-            const glyph = getStateSymbol(item, reportedRemaining, ttlSeconds);
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(reportedRemaining, compact)));
+            return countdown(reportedRemaining, getReportedTtlSeconds(context) ?? getTtlSeconds(item));
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
+            return hideWhenEmpty ? null : show('n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
+        const ttlSeconds = getTtlSeconds(item);
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
+            if (!isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
+                return show('HOT', getSlotSymbol(item, HOT_SLOT));
+            }
+            // An in-flight turn is refreshing the cache: show it as just written.
+            return countdown(ttlSeconds - SAFETY_MARGIN, ttlSeconds);
         }
 
-        const { lastAssistant } = state;
-        if (!lastAssistant) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
+        if (!state.lastAssistant) {
+            return hideWhenEmpty ? null : show('n/a');
         }
 
-        const ttlSeconds = getTtlSeconds(item);
-        const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
-        const glyph = getStateSymbol(item, remaining, ttlSeconds);
-
-        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining, compact)));
+        return countdown(getRemainingSeconds(state.lastAssistant, ttlSeconds), ttlSeconds);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
             { key: 's', label: '(s)hort time', action: TOGGLE_COMPACT_ACTION },
+            { key: 'o', label: 'minutes (o)nly', action: TOGGLE_MINUTES_ACTION },
+            { key: 'w', label: '(w)orking shows fresh', action: TOGGLE_WORKING_FRESH_ACTION },
             getSymbolKeybind()
         ];
     }
