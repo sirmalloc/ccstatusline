@@ -328,7 +328,7 @@ Widget-specific shortcuts:
 - **Git Conflicts**: `z` toggles how a visible conflict-free tree renders (`⚠0` or the clean glyph); `g` edits the conflict and clean glyphs
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
 - **Session Cost Rate**: `t` switch between active time (how long Claude spent working, the default) and clock time (the whole session)
-- **Block Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Spend Limit Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Block and weekly usage widgets use `t` to toggle the time cursor in bar modes.
+- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Session and weekly usage widgets use `t` to toggle the time cursor in bar modes.
 - **Extra Usage Daily Budget**: `w` toggle counting weekdays only (Saturday and Sunday, UTC, are skipped; today always counts)
 - **Block Forecast**: `u` switch between projected used and remaining percentage
 - **Block Limit Timer / Weekly Limit Timer / Weekly Fable Limit Timer**: `s` toggle compact time
@@ -340,7 +340,7 @@ Widget-specific shortcuts:
 - **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope
 - **Cache Timer**: `t` cycle the fallback 5-minute/1-hour TTL (reported `5m`/`1h` takes precedence), `s` toggle compact time, `g` customize the working/fresh/draining/urgent/cold glyphs; Working is used only in the transcript fallback; Backspace in the glyph editor renders that state without one
 - **Sandbox Status**: `f` cycle glyph/text/word format, `n` toggle Nerd Font lock icons in glyph mode
-- **Claude Status**: `h` toggle the 48-hour incident-history strip, `l` toggle the link to the status page
+- **Claude Status**: `h` toggle the 48-hour incident-history strip
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Fast Mode**: `f` cycle format, `n` toggle Nerd Font lightning icons
 - **Current Working Dir**: `l` cycle links (`off` → file manager → VS Code → Cursor; off by default), `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)

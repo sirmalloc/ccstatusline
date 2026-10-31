@@ -26,6 +26,7 @@ import {
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
+    getCompactLabelCapableTypes,
     getMatchSegments,
     getWidget,
     getWidgetCatalog,
@@ -38,6 +39,8 @@ import {
 } from '../../widgets/shared/hideable';
 import {
     EDIT_LABEL_ACTION,
+    getCompactLabelKeybind,
+    getCompactLabelModifierText,
     getLabelKeybind,
     getLabelModifierText
 } from '../../widgets/shared/raw-or-labeled';
@@ -216,6 +219,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
             keybinds.push(getLabelKeybind());
         }
 
+        // Labeled widgets whose label has a compact preset share a single
+        // compact-label toggle here, mirroring the (h)ide… keybind.
+        if (getCompactLabelCapableTypes().has(widget.type)) {
+            keybinds.push(getCompactLabelKeybind());
+        }
+
         return keybinds;
     };
 
@@ -341,7 +350,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            settings
         });
     });
 
@@ -715,6 +725,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                                 const labelModifierText = !widget.rawValue && widgetImpl?.getLabelPrefix?.(widget) !== undefined
                                     ? getLabelModifierText(widget)
                                     : undefined;
+                                const compactModifierText = widgetImpl && getCompactLabelCapableTypes().has(widget.type)
+                                    ? getCompactLabelModifierText(widget, settings)
+                                    : undefined;
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
@@ -748,6 +761,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                                             <Text dimColor>
                                                 {' '}
                                                 {labelModifierText}
+                                            </Text>
+                                        )}
+                                        {compactModifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {compactModifierText}
                                             </Text>
                                         )}
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
