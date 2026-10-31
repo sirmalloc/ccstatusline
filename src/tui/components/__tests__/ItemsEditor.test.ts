@@ -11,8 +11,13 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
+import { getWidgetCatalog } from '../../../utils/widgets';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import { ItemsEditor } from '../ItemsEditor';
+import {
+    getDescriptionRows,
+    getPickerMaxVisible
+} from '../items-editor/list-window';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -209,6 +214,69 @@ describe('ItemsEditor', () => {
             expect(rawOutput).toContain('(raw value)');
             expect(rawOutput).not.toContain('(e)dit label…');
             expect(rawOutput).not.toContain('(label:');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('offers the shared label editor only in remote-control label formats', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(StatefulItemsEditor, {
+                initialWidgets: [{
+                    id: '1',
+                    type: 'remote-control-status',
+                    metadata: { format: 'icon-text', nerdFont: 'true', label: 'RC ' }
+                }]
+            }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+        const output = () => stripAnsi(stdout.getOutput());
+        const press = async (key: string, expected: string) => {
+            stdout.clearOutput();
+            stdin.write(key);
+            await waitFor(() => {
+                expect(output()).toContain(expected);
+            });
+        };
+
+        try {
+            await waitFor(() => {
+                expect(output()).toContain('(icon-text, nerd font)');
+            });
+            expect(output()).not.toContain('(e)dit label…');
+            expect(output()).not.toContain('(label:');
+            for (const format of ['text', 'word']) {
+                await press('f', `(${format})`);
+                expect(output()).not.toContain('(e)dit label…');
+                expect(output()).not.toContain('(label:');
+            }
+
+            await press('f', '(label-check)');
+            expect(output()).toContain('(e)dit label…');
+            expect(output()).toContain('(label: "RC ")');
+            await press('e', '(default: "remote ")');
+            await press('X', 'RC X');
+            await press('\r', '(label: "RC X")');
+            await press('f', '(label-mark)');
+            expect(output()).toContain('(e)dit label…');
+            expect(output()).toContain('(label: "RC X")');
+
+            await press('r', '(raw value)');
+            expect(output()).not.toContain('(e)dit label…');
+            expect(output()).not.toContain('(label:');
+            await press('r', '(label: "RC X")');
+            await press('e', '(default: "remote ")');
+            await press('\t', '(label-mark)');
+            expect(output()).not.toContain('(label:');
+            await press('f', '(icon)');
+            expect(output()).not.toContain('(e)dit label…');
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -471,5 +539,356 @@ describe('ItemsEditor', () => {
             stdout.destroy();
             stderr.destroy();
         }
+    });
+
+    it('starts on the given widget and reports where the cursor moves', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onSelectedIndexChange = vi.fn<(index: number) => void>();
+
+        const instance = render(
+            React.createElement(ItemsEditor, {
+                widgets: [{ id: '1', type: 'model' }, { id: '2', type: 'tokens-input' }, { id: '3', type: 'tokens-output' }],
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                initialSelectedIndex: 1,
+                onSelectedIndexChange,
+                lineNumber: 1,
+                settings: DEFAULT_SETTINGS
+            }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toMatch(/▶\s+2\. Tokens Input/);
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(onSelectedIndexChange).toHaveBeenLastCalledWith(2);
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('shows and applies the CWD link key without dropping its existing display controls', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const lastFrame = () => {
+            const output = stripAnsi(stdout.getOutput());
+            return output.slice(output.lastIndexOf('Edit Line 1'));
+        };
+        const instance = render(
+            React.createElement(StatefulItemsEditor, {
+                initialWidgets: [{
+                    id: '1',
+                    type: 'current-working-dir',
+                    metadata: { abbreviateHome: 'true', segments: '2' }
+                }]
+            }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(lastFrame()).toContain('Current Working Dir (~, segments: 2)');
+            });
+            expect(lastFrame()).toContain('(l)ink mode');
+            expect(lastFrame()).toContain('(h)ome ~');
+            expect(lastFrame()).toContain('(s)egments');
+            expect(lastFrame()).toContain('(f)ish style');
+
+            stdin.write('l');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('Current Working Dir (~, segments: 2, link: file)');
+            });
+            stdin.write('l');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('link: VS Code');
+            });
+            stdin.write('l');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('link: Cursor');
+            });
+            stdin.write('l');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('Current Working Dir (~, segments: 2)');
+                expect(lastFrame()).not.toContain('link:');
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    describe('widget picker', () => {
+        const ESC = '\x1b';
+        const ENTER = '\r';
+        const UP_ARROW = '\x1b[A';
+        const RIGHT_ARROW = '\x1b[C';
+        const allWidgetCount = getWidgetCatalog(DEFAULT_SETTINGS).length;
+
+        function getEntryRows(output: string): string[] {
+            return output.split('\n').filter(row => /^\s*(▶\s+)?\d+\. /.test(row));
+        }
+
+        function renderEditor(widgets: WidgetItem[], settings = DEFAULT_SETTINGS) {
+            const stdin = createMockStdin();
+            const stdout = createMockStdout();
+            const stderr = createMockStdout();
+            const previews: (WidgetItem[] | null)[] = [];
+            const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+
+            const instance = render(
+                React.createElement(ItemsEditor, {
+                    widgets,
+                    onUpdate,
+                    onBack: vi.fn(),
+                    onPreviewChange: (preview: WidgetItem[] | null) => { previews.push(preview); },
+                    lineNumber: 1,
+                    settings
+                }),
+                {
+                    stdin,
+                    stdout,
+                    stderr,
+                    debug: true,
+                    exitOnCtrlC: false,
+                    patchConsole: false
+                }
+            );
+
+            // Output written since the last key press
+            const screen = () => stripAnsi(stdout.getOutput());
+
+            return {
+                instance,
+                onUpdate,
+                // Sends keys without waiting; follow with waitFor on what they change
+                press: (input: string) => {
+                    stdout.clearOutput();
+                    stdin.write(input);
+                },
+                screen,
+                // The last picker frame drawn since the last key press
+                latestPickerFrame: () => {
+                    const output = screen();
+                    const start = output.lastIndexOf('ADD WIDGET');
+                    return start === -1 ? '' : output.slice(start);
+                },
+                // The line editor is drawn and listening for keys
+                ready: () => waitFor(() => {
+                    expect(screen()).toContain('1. ');
+                }),
+                latestPreview: () => previews.at(-1),
+                cleanup: () => {
+                    instance.unmount();
+                    instance.cleanup();
+                    stdin.destroy();
+                    stdout.destroy();
+                    stderr.destroy();
+                }
+            };
+        }
+
+        it('shows the highlighted widget added after the cursor until the picker is cancelled', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }]);
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                // Browsing categories highlights no widget, so the line is untouched
+                expect(editor.latestPreview() ?? null).toBeNull();
+
+                editor.press('git branch');
+                await waitFor(() => {
+                    expect(editor.latestPreview()?.map(widget => widget.type)).toEqual(['model', 'git-branch']);
+                });
+
+                // The first ESC clears the search, the second closes the picker
+                editor.press(ESC);
+                await waitFor(() => {
+                    expect(editor.latestPreview()).toBeNull();
+                });
+                editor.press(ESC);
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('Edit Line 1');
+                    expect(editor.screen()).not.toContain('ADD WIDGET');
+                });
+                expect(editor.onUpdate).not.toHaveBeenCalled();
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('shows the widget at the cursor with its type swapped when changing type', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }, { id: '2', type: 'tokens-input' }]);
+
+            try {
+                await editor.ready();
+                editor.press(RIGHT_ARROW);
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('CHANGE WIDGET TYPE');
+                });
+                editor.press('git branch');
+                await waitFor(() => {
+                    expect(editor.latestPreview()).toEqual([
+                        { id: '1', type: 'git-branch' },
+                        { id: '2', type: 'tokens-input' }
+                    ]);
+                });
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('applies exactly the previewed line, powerline background included, on Enter', async () => {
+            const powerlineSettings = {
+                ...DEFAULT_SETTINGS,
+                powerline: { ...DEFAULT_SETTINGS.powerline, enabled: true }
+            };
+            const editor = renderEditor([{ id: '1', type: 'model', backgroundColor: 'bgRed' }], powerlineSettings);
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                editor.press('git branch');
+                await waitFor(() => {
+                    expect(editor.latestPreview()?.map(widget => widget.type)).toEqual(['model', 'git-branch']);
+                });
+                const preview = editor.latestPreview();
+                expect(preview?.[1]?.backgroundColor).toEqual(expect.any(String));
+                expect(preview?.[1]?.backgroundColor).not.toBe('bgRed');
+
+                editor.press(ENTER);
+                await waitFor(() => {
+                    expect(editor.onUpdate).toHaveBeenCalledTimes(1);
+                    expect(editor.latestPreview()).toBeNull();
+                });
+                expect(editor.onUpdate).toHaveBeenCalledWith(preview);
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('shows a window of a long list and counts the entries hidden below it', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }]);
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                editor.press(ENTER);
+                await waitFor(() => {
+                    expect(editor.latestPickerFrame()).toMatch(/↓ \d+ more/);
+                });
+                const output = editor.latestPickerFrame();
+
+                const shown = getEntryRows(output).length;
+                const hiddenBelow = Number(/↓ (\d+) more/.exec(output)?.[1]);
+                expect(shown).toBeGreaterThan(0);
+                expect(shown).toBeLessThan(allWidgetCount);
+                expect(shown + hiddenBelow).toBe(allWidgetCount);
+                expect(output).not.toMatch(/↑ \d+ more/);
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        // The highlighted widget's description shows under the list, so the
+        // list gives up rows for the tallest one it holds (the mock terminal
+        // is 120 columns, less the description's indent of 2)
+        it('leaves room under the list for its tallest description', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }]);
+            const tallest = Math.max(...getWidgetCatalog(DEFAULT_SETTINGS).map(entry => getDescriptionRows(entry.description, 118)));
+            const statusLines = DEFAULT_SETTINGS.lines.filter(line => line.length > 0).length;
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                editor.press(ENTER);
+                await waitFor(() => {
+                    expect(editor.latestPickerFrame()).toMatch(/↓ \d+ more/);
+                });
+
+                expect(tallest).toBeGreaterThan(1);
+                expect(getEntryRows(editor.latestPickerFrame())).toHaveLength(getPickerMaxVisible(40, statusLines, tallest));
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('scrolls the window to keep the highlighted widget visible', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }]);
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                editor.press(ENTER);
+                await waitFor(() => {
+                    expect(editor.latestPickerFrame()).toMatch(/↓ \d+ more/);
+                });
+                // Up from the first widget wraps to the last one
+                editor.press(UP_ARROW);
+                await waitFor(() => {
+                    const highlighted = getEntryRows(editor.latestPickerFrame()).find(row => row.includes('▶'));
+                    expect(highlighted).toMatch(new RegExp(`${allWidgetCount}\\. `));
+                });
+                const output = editor.latestPickerFrame();
+                const rows = getEntryRows(output);
+
+                expect(rows.some(row => /^\s*1\. /.test(row))).toBe(false);
+                expect(output).toMatch(/↑ \d+ more/);
+                expect(output).not.toMatch(/↓ \d+ more/);
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('clears the preview when the editor is closed mid-pick', async () => {
+            const editor = renderEditor([{ id: '1', type: 'model' }]);
+
+            try {
+                await editor.ready();
+                editor.press('a');
+                await waitFor(() => {
+                    expect(editor.screen()).toContain('ADD WIDGET');
+                });
+                editor.press('git branch');
+                await waitFor(() => {
+                    expect(editor.latestPreview()?.map(widget => widget.type)).toEqual(['model', 'git-branch']);
+                });
+
+                editor.instance.unmount();
+                expect(editor.latestPreview()).toBeNull();
+            } finally {
+                editor.cleanup();
+            }
+        });
     });
 });

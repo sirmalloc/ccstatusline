@@ -87,6 +87,30 @@ describe('ContextPercentageWidget', () => {
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: 9.3%');
     });
 
+    it('leaves output tokens out of the percentage worked out from current_usage', () => {
+        const widget = new ContextPercentageWidget();
+        const item: WidgetItem = {
+            id: 'context-percentage',
+            type: 'context-percentage'
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-sonnet-4-5-20250929' },
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: {
+                        input_tokens: 10000,
+                        output_tokens: 30000,
+                        cache_creation_input_tokens: 2000,
+                        cache_read_input_tokens: 38000
+                    }
+                }
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: 25.0%');
+    });
+
     describe('Sonnet 4.5 with 1M context window', () => {
         it('should calculate percentage using 1M denominator for Sonnet 4.5 with [1m] suffix', () => {
             const result = render('claude-sonnet-4-5-20250929[1m]', 42000);

@@ -32,6 +32,7 @@ interface PrCacheHarness {
     spawnCalls: { args: string[]; command: string }[];
     advanceNow: (milliseconds: number) => void;
     setCurrentRef: (ref: string) => void;
+    addTag: (name: string) => void;
     setOriginRemoteUrl: (url: string) => void;
     setGlabAvailable: (available: boolean) => void;
     setCliAuthedForHost: (cli: 'gh' | 'glab', host: string, authed: boolean) => void;
@@ -47,6 +48,7 @@ function createHarness(): PrCacheHarness {
     const spawnCalls: { args: string[]; command: string }[] = [];
     let now = 1_700_000_000_000;
     let currentRef = 'feature/cache-a';
+    const tags = new Set<string>();
     let originRemoteUrl: string | null = null;
     let glabAvailable = false;
     const authedHosts: Record<'gh' | 'glab', Set<string>> = {
@@ -79,8 +81,13 @@ function createHarness(): PrCacheHarness {
                 }
                 return `${originRemoteUrl}\n`;
             }
-            if (cmd === 'git' && gitArgs[0] === 'symbolic-ref')
-                return `${currentRef}\n`;
+            if (cmd === 'git' && gitArgs[0] === 'symbolic-ref') {
+                // As git does: the full ref, or with --short the branch name,
+                // which becomes `heads/<name>` when a tag has the same name
+                if (!gitArgs.includes('--short'))
+                    return `refs/heads/${currentRef}\n`;
+                return `${tags.has(currentRef) ? 'heads/' : ''}${currentRef}\n`;
+            }
             if (cmd === 'git' && gitArgs[0] === 'rev-parse')
                 return 'abc123\n';
             if (cmd === 'ssh' && commandArgs[0] === '-G') {
@@ -182,6 +189,9 @@ function createHarness(): PrCacheHarness {
         },
         setCurrentRef: (ref: string) => {
             currentRef = ref;
+        },
+        addTag: (name: string) => {
+            tags.add(name);
         },
         setOriginRemoteUrl: (url: string) => {
             originRemoteUrl = url;
@@ -735,6 +745,35 @@ describe('git-review-cache', () => {
         }
     });
 
+    // With a tag of the same name, `git symbolic-ref --short HEAD` says
+    // `heads/<branch>`, a branch no PR is on
+    it('pins gh to the branch\'s own name when a tag has the same name', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.addTag('feature/cache-a');
+        harness.ghResponses.push('');
+        harness.ghResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr' && call.args.includes('--repo'));
+        expect(pinned.map(call => call.args.slice(-2))).toEqual([['--', 'feature/cache-a']]);
+    });
+
+    it('pins glab to the branch\'s own name when a tag has the same name', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.addTag('feature/cache-a');
+        harness.glabResponses.push('');
+        harness.glabResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr' && call.args.includes('--repo'));
+        expect(pinned.map(call => call.args.slice(-2))).toEqual([['--', 'feature/cache-a']]);
+    });
+
     it('passes the SSH host after --, so a host named like an option stays a host', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('git@-oProxyCommand=x:owner/repo.git');
@@ -1072,5 +1111,48 @@ describe('git-review-cache', () => {
             call => call.cmd === 'glab' && call.args[0] === 'mr'
         );
         expect(glabMrCalls).toHaveLength(1);
+    });
+
+    it('keys the cache through the render context runGit without spawning git for the ref', () => {
+        const harness = createHarness();
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+        harness.execCalls.length = 0;
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'symbolic-ref --short HEAD' ? 'feature/cache-a' : null;
+            }
+        };
+
+        expect(getCachedGitReviewData('/tmp/repo', { context: { data: { cwd: '/tmp/repo' } } }, deps)).toBeNull();
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD']);
+        expect(harness.execCalls.filter(call => call.cmd === 'git')).toEqual([]);
+        // Same cache file (and so the same lock the refresh child releases)
+        // as the uncached lookup.
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
+    });
+
+    it('falls back to rev-parse through runGit on a detached HEAD', () => {
+        const harness = createHarness();
+        harness.setCurrentRef('');
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'rev-parse --short HEAD' ? 'abc123' : null;
+            }
+        };
+
+        getCachedGitReviewData('/tmp/repo', { context: {} }, deps);
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD', 'rev-parse --short HEAD']);
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
     });
 });
