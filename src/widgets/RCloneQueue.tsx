@@ -1,11 +1,11 @@
-import fs from 'fs';
 import {
     Box,
     Text,
     useInput
 } from 'ink';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import React, { useState } from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
@@ -138,7 +138,7 @@ export function parseQueueLength(logText: string): number | null {
         const match = TO_UPLOAD_RE.exec(line);
         const raw = match?.[1];
         if (raw !== undefined) {
-            return parseInt(raw, 10);
+            return Number.parseInt(raw, 10);
         }
     }
 

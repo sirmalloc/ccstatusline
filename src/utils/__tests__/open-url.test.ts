@@ -1,5 +1,5 @@
-import { spawnSync } from 'child_process';
-import * as os from 'os';
+import { spawnSync } from 'node:child_process';
+import * as os from 'node:os';
 import {
     beforeEach,
     describe,
@@ -10,7 +10,7 @@ import {
 
 import { openExternalUrl } from '../open-url';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()

@@ -2,20 +2,23 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import { getForkStatus } from '../utils/git-remote';
 
-import { makeModifierText } from './shared/editor-display';
+import { isHidden } from './shared/hideable';
 import {
-    isMetadataFlagEnabled,
-    toggleMetadataFlag
-} from './shared/metadata';
+    getSymbol,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
 
-const HIDE_WHEN_NOT_FORK_KEY = 'hideWhenNotFork';
-const TOGGLE_HIDE_ACTION = 'toggle-hide';
+const DEFAULT_SYMBOL = '⑂';
+const NOT_FORK_HIDEABLE_STATE: HideableState = { key: 'not-fork', label: 'when repo is not a fork' };
 
 export class GitIsForkWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -24,51 +27,40 @@ export class GitIsForkWidget implements Widget {
     getCategory(): string { return 'Git'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [];
-
-        if (isMetadataFlagEnabled(item, HIDE_WHEN_NOT_FORK_KEY)) {
-            modifiers.push('hide when not fork');
-        }
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === TOGGLE_HIDE_ACTION) {
-            return toggleMetadataFlag(item, HIDE_WHEN_NOT_FORK_KEY);
-        }
+    getHideableStates(): HideableState[] {
+        return [NOT_FORK_HIDEABLE_STATE];
+    }
 
-        return null;
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getSymbolKeybind()];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideWhenNotFork = isMetadataFlagEnabled(item, HIDE_WHEN_NOT_FORK_KEY);
+        const symbol = getSymbol(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            return item.rawValue ? 'true' : 'isFork: true';
+            return item.rawValue ? 'true' : symbol;
         }
 
         const forkStatus = getForkStatus(context);
 
         if (forkStatus.isFork) {
-            return item.rawValue ? 'true' : 'isFork: true';
+            return item.rawValue ? 'true' : symbol;
         }
 
         // Not a fork
-        if (hideWhenNotFork) {
+        if (isHidden(item, NOT_FORK_HIDEABLE_STATE.key)) {
             return null;
         }
 
         return item.rawValue ? 'false' : 'isFork: false';
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide when not fork', action: TOGGLE_HIDE_ACTION }
-        ];
     }
 
     supportsRawValue(): boolean { return true; }

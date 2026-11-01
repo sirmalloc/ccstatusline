@@ -4,11 +4,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 import {
     formatUsageDuration,
     formatUsageResetAt,
@@ -17,6 +22,7 @@ import {
 } from '../utils/usage';
 
 import { makeModifierText } from './shared/editor-display';
+import { isHidden } from './shared/hideable';
 import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
@@ -25,12 +31,14 @@ import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
+import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     TIMEZONE_EDITOR_ACTION,
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageLocale,
@@ -54,12 +62,8 @@ import {
     toggleUsageWeekday
 } from './shared/usage-display';
 
-function makeTimerProgressBar(percent: number, width: number): string {
-    const clampedPercent = Math.max(0, Math.min(100, percent));
-    const filledWidth = Math.floor((clampedPercent / 100) * width);
-    const emptyWidth = width - filledWidth;
-    return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
-}
+const LABEL = 'Weekly Reset: ';
+const BAR_LABEL = 'Weekly Reset ';
 
 const WEEKLY_PREVIEW_DURATION_MS = 36.5 * 60 * 60 * 1000;
 const WEEKLY_RESET_PREVIEW_AT = '2026-03-15T08:30:00.000Z';
@@ -131,12 +135,20 @@ export class WeeklyResetTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining until weekly usage reset'; }
     getDisplayName(): string { return 'Weekly Reset Timer'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(item: WidgetItem): string {
+        const displayMode = getUsageDisplayMode(item);
+        return isUsageProgressMode(displayMode) || isUsageSliderMode(displayMode) ? BAR_LABEL : LABEL;
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
             modifierText: getWeeklyResetModifierText(item)
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [USAGE_NO_DATA_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -177,6 +189,7 @@ export class WeeklyResetTimerWidget implements Widget {
         const compact = isUsageCompact(item);
         const dateMode = isUsageDateMode(item);
         const useDays = !isWeeklyResetHoursOnly(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -184,15 +197,15 @@ export class WeeklyResetTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(previewPercent);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
-                return formatRawOrLabeledValue(item, 'Weekly Reset ', sliderDisplay);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
             }
 
             if (dateMode) {
@@ -208,38 +221,41 @@ export class WeeklyResetTimerWidget implements Widget {
                 const fallback = weekday
                     ? (compact ? 'Sun 08:30Z' : 'Sun 08:30 UTC')
                     : (compact ? '03-15 08:30Z' : '2026-03-15 08:30 UTC');
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt ?? fallback);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt ?? fallback);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
         }
 
         const usageData = context.usageData ?? {};
         const window = resolveWeeklyUsageWindow(usageData);
 
         if (!window) {
+            if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
             if (usageData.error) {
                 return getUsageErrorMessage(usageData.error);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', USAGE_TIMER_LOADING_MESSAGE);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), USAGE_TIMER_LOADING_MESSAGE);
         }
 
         if (isUsageProgressMode(displayMode)) {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const slider = makeSliderBar(percent);
             const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${percent.toFixed(1)}%`
+                ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
-            return formatRawOrLabeledValue(item, 'Weekly Reset ', sliderDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
         }
 
         if (dateMode) {
@@ -247,12 +263,12 @@ export class WeeklyResetTimerWidget implements Widget {
             const locale = getUsageLocale(item);
             const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact, timezone, locale, isUsage12HourClock(item), isUsageWeekdayEnabled(item));
             if (resetAt) {
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt);
             }
         }
 
         const remainingTime = formatUsageDuration(window.remainingMs, compact, useDays);
-        return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(item), remainingTime);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -267,7 +283,7 @@ export class WeeklyResetTimerWidget implements Widget {
         const mode = item ? getUsageDisplayMode(item) : 'time';
         const isBarMode = isUsageProgressMode(mode) || isUsageSliderMode(mode);
         if (!item || (!isBarMode && !isUsageDateMode(item))) {
-            keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
+            keybinds.push({ key: 'o', label: '(o)nly hours', action: 'toggle-hours' });
         }
 
         return keybinds;
@@ -287,4 +303,5 @@ export class WeeklyResetTimerWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

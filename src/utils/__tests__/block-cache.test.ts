@@ -1,5 +1,5 @@
-import * as fs from 'fs';
 import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -262,6 +262,21 @@ describe('getCachedBlockMetrics integration', () => {
         expect(result).toBeNull();
     });
 
+    it('should recalculate when the cached block starts in the future', async () => {
+        const { getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+
+        // Written while the system clock ran ahead, before it was set back
+        const futureStartTime = new Date();
+        futureStartTime.setHours(futureStartTime.getHours() + 2);
+
+        writeBlockCache(futureStartTime);
+
+        const result = getCachedBlockMetrics();
+
+        // Should return null because the block hasn't started and no real JSONL files exist
+        expect(result).toBeNull();
+    });
+
     it('should recalculate when no cache exists', async () => {
         const { getCachedBlockMetrics } = await import('../jsonl');
 
@@ -287,5 +302,116 @@ describe('getCachedBlockMetrics integration', () => {
 
         // Should return null because cache is fresh but scoped to a different profile
         expect(result).toBeNull();
+    });
+});
+
+describe('getCachedBlockMetrics negative caching', () => {
+    let tempDir: string;
+    let originalClaudeConfigDir: string | undefined;
+
+    function readRawCache(): { startTime?: string; emptyUntil?: string; configDir?: string } {
+        return JSON.parse(fs.readFileSync(getBlockCachePath(), 'utf-8')) as { startTime?: string; emptyUntil?: string; configDir?: string };
+    }
+
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-empty-'));
+        vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
+        originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        // A config directory with no transcripts, so a scan finds no block.
+        process.env.CLAUDE_CONFIG_DIR = path.join(tempDir, '.claude-nonexistent');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        if (originalClaudeConfigDir === undefined) {
+            delete process.env.CLAUDE_CONFIG_DIR;
+        } else {
+            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('records that a scan found no block', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        const cached = readRawCache();
+        expect(typeof cached.emptyUntil).toBe('string');
+        expect(cached.configDir).toBe(path.resolve(process.env.CLAUDE_CONFIG_DIR ?? ''));
+
+        // The record bounds how late a new block can be reported, so it has to
+        // stand long enough to be worth having and short enough to go unnoticed.
+        const standsForMs = new Date(cached.emptyUntil ?? '').getTime() - Date.now();
+        expect(standsForMs).toBeGreaterThan(0);
+        expect(standsForMs).toBeLessThanOrEqual(5 * 60 * 1000);
+    });
+
+    it('does not scan again while the record stands', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+
+        expect(getCachedBlockMetrics()).toBeNull();
+        const first = readRawCache().emptyUntil;
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        // A second scan would have written a later instant.
+        expect(readRawCache().emptyUntil).toBe(first);
+    });
+
+    it('scans again once the record lapses', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+        const cachePath = getBlockCachePath();
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        const lapsed = new Date(Date.now() - 1000).toISOString();
+        fs.writeFileSync(cachePath, JSON.stringify({
+            emptyUntil: lapsed,
+            configDir: path.resolve(process.env.CLAUDE_CONFIG_DIR ?? '')
+        }));
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        expect(readRawCache().emptyUntil).not.toBe(lapsed);
+    });
+
+    it('scans again when a record reaches further out than one interval', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+        const cachePath = getBlockCachePath();
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        // Written while the system clock ran ahead, before it was set back
+        const farAhead = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        fs.writeFileSync(cachePath, JSON.stringify({
+            emptyUntil: farAhead,
+            configDir: path.resolve(process.env.CLAUDE_CONFIG_DIR ?? '')
+        }));
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        expect(readRawCache().emptyUntil).not.toBe(farAhead);
+    });
+
+    it('ignores a record belonging to another config directory', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+        const otherProfile = path.join(tempDir, '.claude-other');
+        const cachePath = getBlockCachePath();
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        const foreign = new Date(Date.now() + 60_000).toISOString();
+        fs.writeFileSync(cachePath, JSON.stringify({ emptyUntil: foreign, configDir: path.resolve(otherProfile) }));
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        // The foreign record was not trusted, so a scan ran and replaced it.
+        expect(readRawCache().configDir).toBe(path.resolve(process.env.CLAUDE_CONFIG_DIR ?? ''));
+    });
+
+    it('prefers a live block over a stale no-block record', async () => {
+        const { getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+        const startTime = new Date();
+        startTime.setHours(startTime.getHours() - 2);
+        writeBlockCache(startTime);
+
+        const result = getCachedBlockMetrics();
+
+        expect(result?.startTime.getTime()).toBe(startTime.getTime());
     });
 });

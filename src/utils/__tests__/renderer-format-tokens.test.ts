@@ -35,9 +35,9 @@ describe('formatTokens', () => {
     });
 
     it('uses whole-number k and rolls up to M at decimals=0', () => {
-        expect(formatTokens(711000, 0)).toBe('711k');
-        expect(formatTokens(999499, 0)).toBe('999k');
-        expect(formatTokens(999500, 0)).toBe('1.0M');
-        expect(formatTokens(1000000, 0)).toBe('1.0M');
+        expect(formatTokens(711000, {}, 0)).toBe('711k');
+        expect(formatTokens(999499, {}, 0)).toBe('999k');
+        expect(formatTokens(999500, {}, 0)).toBe('1.0M');
+        expect(formatTokens(1000000, {}, 0)).toBe('1.0M');
     });
 });

@@ -1,8 +1,10 @@
+import type { NumberFormat } from '../../types/NumberFormat';
 import type { RenderContext } from '../../types/RenderContext';
 import {
     getContextWindowTurnCacheTokens,
     type TurnCacheTokens
 } from '../../utils/context-window';
+import { formatPercent } from '../../utils/number-format';
 import { formatTokens } from '../../utils/renderer';
 
 // Resolves the cache token triple for either scope:
@@ -46,7 +48,12 @@ export function getCacheWritePercentage(tokens: TurnCacheTokens): number | null 
 
 // Combines a token count with its context share: "88.0k (84.5%)".
 // Falls back to the bare token count when the percentage is undefined.
-export function formatTokensWithPercentage(tokenCount: number, percentage: number | null): string {
-    const tokens = formatTokens(tokenCount);
-    return percentage === null ? tokens : `${tokens} (${percentage.toFixed(1)}%)`;
+export function formatTokensWithPercentage(
+    tokenCount: number,
+    percentage: number | null,
+    tokenFormat: NumberFormat = {},
+    percentFormat: NumberFormat = {}
+): string {
+    const tokens = formatTokens(tokenCount, tokenFormat);
+    return percentage === null ? tokens : `${tokens} (${formatPercent(percentage, percentFormat)})`;
 }

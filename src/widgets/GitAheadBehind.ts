@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -12,13 +13,11 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 
-import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    NO_UPSTREAM_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -29,6 +28,8 @@ import {
 const AHEAD_SLOT: SymbolSlot = { id: 'symbolAhead', label: 'Ahead', defaultSymbol: '↑' };
 const BEHIND_SLOT: SymbolSlot = { id: 'symbolBehind', label: 'Behind', defaultSymbol: '↓' };
 
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when not diverged (↑0↓0)', defaultEnabled: true };
+
 export class GitAheadBehindWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows commits ahead/behind upstream (↑2↓3)'; }
@@ -36,23 +37,14 @@ export class GitAheadBehindWidget implements Widget {
     getCategory(): string { return 'Git'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE, NO_UPSTREAM_HIDEABLE_STATE, ZERO_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
         const aheadSymbol = getSlotSymbol(item, AHEAD_SLOT);
         const behindSymbol = getSlotSymbol(item, BEHIND_SLOT);
 
@@ -63,17 +55,20 @@ export class GitAheadBehindWidget implements Widget {
         }
 
         if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '(no git)';
+            return isHidden(item, NO_GIT_HIDEABLE_STATE.key) ? null : '(no git)';
         }
 
         const result = getGitAheadBehind(context);
         if (!result) {
-            return hideNoGit ? null : '(no upstream)';
+            return isHidden(item, NO_UPSTREAM_HIDEABLE_STATE.key) ? null : '(no upstream)';
         }
 
-        // Hide if both are zero
         if (result.ahead === 0 && result.behind === 0) {
-            return null;
+            if (isHidden(item, ZERO_HIDEABLE_STATE.key, ZERO_HIDEABLE_STATE.defaultEnabled)) {
+                return null;
+            }
+
+            return item.rawValue ? '0,0' : `${aheadSymbol}0${behindSymbol}0`;
         }
 
         if (item.rawValue) {
@@ -90,10 +85,7 @@ export class GitAheadBehindWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            ...getHideNoGitKeybinds(),
-            getSymbolKeybind()
-        ];
+        return [getSymbolKeybind()];
     }
 
     renderEditor(props: WidgetEditorProps) {

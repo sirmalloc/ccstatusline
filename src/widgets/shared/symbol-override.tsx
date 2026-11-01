@@ -13,7 +13,9 @@ import type {
 import { getVisibleWidth } from '../../utils/ansi';
 import { shouldInsertInput } from '../../utils/input-guards';
 
+import { BlinkingCursor } from './BlinkingCursor';
 import { removeMetadataKeys } from './metadata';
+import { getGraphemes } from './text-cursor';
 
 export const SYMBOL_OVERRIDE_ACTION = 'edit-symbol-override';
 
@@ -47,6 +49,12 @@ export function formatSymbolPrefix(item: WidgetItem, defaultSymbol: string): str
     return symbol.length > 0 ? `${symbol} ` : '';
 }
 
+/** Joins a symbol to text, optionally reserving room for an overhanging glyph. */
+export function joinSymbol(symbol: string, text: string, minimumSymbolWidth = 0): string {
+    const gap = ' '.repeat(Math.max(0, minimumSymbolWidth - getVisibleWidth(symbol)) + 1);
+    return symbol.length > 0 ? `${symbol}${gap}${text}` : text;
+}
+
 export function getSlotSymbol(item: WidgetItem, slot: SymbolSlot): string {
     if (slot.id === 'character') {
         return getSymbol(item, slot.defaultSymbol);
@@ -61,7 +69,6 @@ export function setSlotSymbol(item: WidgetItem, slot: SymbolSlot, value: string)
     if (slot.id === 'character') {
         if (value === slot.defaultSymbol) {
             const { character, ...rest } = item;
-            void character;
             return rest;
         }
 
@@ -89,22 +96,6 @@ export function renderSymbolSlotsEditor(props: WidgetEditorProps, slots: SymbolS
     return <SymbolSlotsEditor {...props} slots={slots} />;
 }
 
-// Helper to get grapheme segments if Intl.Segmenter is available
-function getFirstGrapheme(str: string): string {
-    if (str.length === 0) {
-        return '';
-    }
-
-    if ('Segmenter' in Intl) {
-        const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-        const segments = Array.from(segmenter.segment(str));
-        return segments[0]?.segment ?? '';
-    }
-
-    // Fallback: just take first character
-    return Array.from(str)[0] ?? '';
-}
-
 const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> = ({ widget, slots, onComplete, onCancel }) => {
     const [values, setValues] = useState<string[]>(() => slots.map(slot => getSlotSymbol(widget, slot)));
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -119,6 +110,12 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             setSelectedIndex(selectedIndex - 1 < 0 ? slots.length - 1 : selectedIndex - 1);
         } else if (key.downArrow && slots.length > 1) {
             setSelectedIndex(selectedIndex + 1 > slots.length - 1 ? 0 : selectedIndex + 1);
+        } else if (key.tab && key.shift) {
+            // Widgets with several glyphs are mostly blanked whole to save
+            // width on the status line, which is one Backspace per row
+            // otherwise. Blanked rows toggle back so the key is reversible.
+            const allBlank = values.every(value => value.length === 0);
+            setValues(values.map((_, index) => (allBlank ? slots[index]?.defaultSymbol ?? '' : '')));
         } else if (key.tab) {
             setValues(values.map((value, index) => (
                 index === selectedIndex ? slots[selectedIndex]?.defaultSymbol ?? '' : value
@@ -127,7 +124,7 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             setValues(values.map((value, index) => (index === selectedIndex ? '' : value)));
         } else if (shouldInsertInput(input, key)) {
             // Take only the first grapheme (handles multi-byte emojis correctly)
-            const grapheme = getFirstGrapheme(input);
+            const grapheme = getGraphemes(input)[0] ?? '';
             setValues(values.map((value, index) => (index === selectedIndex ? grapheme : value)));
         }
     });
@@ -137,13 +134,18 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             <Text bold>Glyphs</Text>
             <Text dimColor>
                 {slots.length > 1
-                    ? '↑↓ row, type to set, Tab default, Backspace none, Enter save, ESC cancel'
+                    ? '↑↓ row, type to set, Tab default, Backspace none, Shift+Tab toggle all none/default, Enter save, ESC cancel'
                     : 'Type any character or emoji, Tab default, Backspace none, Enter save, ESC cancel'}
             </Text>
             <Box marginTop={1} flexDirection='column'>
                 {slots.map((slot, index) => {
                     const isSelected = index === selectedIndex;
                     const value = values[index] ?? '';
+                    // Nerd Font glyphs can draw into a second cell even when their
+                    // terminal width is one. Keep that cell inside the highlight.
+                    const displayValue = value
+                        ? value + ' '.repeat(Math.max(0, 2 - getVisibleWidth(value)))
+                        : '(none)';
                     const labelPadding = ' '.repeat(Math.max(labelWidth - getVisibleWidth(slot.label), 0));
                     return (
                         <Box key={slot.id} flexDirection='row' flexWrap='nowrap'>
@@ -152,15 +154,17 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
                                     {isSelected ? '▶ ' : '  '}
                                 </Text>
                             </Box>
-                            <Text color={isSelected ? 'green' : undefined}>
-                                {`${labelPadding}${slot.label}: `}
+                            <Text>
+                                <Text color={isSelected ? 'green' : undefined}>
+                                    {`${labelPadding}${slot.label}: `}
+                                </Text>
+                                {isSelected ? (
+                                    <BlinkingCursor inverse dimColor={!value}>{displayValue}</BlinkingCursor>
+                                ) : (
+                                    <Text inverse dimColor={!value}>{displayValue}</Text>
+                                )}
+                                <Text dimColor>{` (default: ${slot.defaultSymbol})`}</Text>
                             </Text>
-                            {value ? (
-                                <Text inverse>{value}</Text>
-                            ) : (
-                                <Text inverse dimColor>(none)</Text>
-                            )}
-                            <Text dimColor>{` (default: ${slot.defaultSymbol})`}</Text>
                         </Box>
                     );
                 })}

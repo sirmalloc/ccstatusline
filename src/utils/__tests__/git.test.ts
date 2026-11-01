@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -12,19 +12,28 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
+import * as executablePath from '../executable-path';
 import {
     clearGitCache,
+    execGit,
     getGitChangeCounts,
+    getGitConflictCount,
     getGitFileStatusCounts,
     getGitStatus,
     isInsideGitWorkTree,
     resolveGitCwd,
-    runGit
+    runGit,
+    runGitArgs
 } from '../git';
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 
-import { expectGitExecOptions } from './git-test-helpers';
+import { mockExecutableResolution } from './executable-path-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from './git-test-helpers';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -32,7 +41,7 @@ vi.mock('child_process', () => ({
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
-    mockImplementation: (impl: () => never) => void;
+    mockImplementation: (impl: () => string) => void;
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
@@ -81,6 +90,9 @@ function readGitCacheJson(home: string): { cwd?: unknown; entries?: Record<strin
     };
 }
 
+mockExecutableResolution();
+isolateGitWorkingDirectory();
+
 describe('git utils', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -107,6 +119,47 @@ describe('git utils', () => {
                 fs.rmSync(tempPath, { recursive: true, force: true });
             }
         }
+    });
+
+    describe('getGitConflictCount', () => {
+        it('preserves whitespace in paths and deduplicates stages', () => {
+            const filenames = ['a b.txt', 'a  b.txt', 'tab\tname.txt', 'line\nname.txt', 'trailing.txt '];
+            mockExecFileSync.mockReturnValueOnce(filenames.flatMap(filename => [1, 2, 3].map(stage => `100644 hash ${stage}\t${filename}\0`)).join(''));
+
+            expect(getGitConflictCount({})).toBe(filenames.length);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
+            expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ encoding: 'latin1' }));
+        });
+
+        it('keeps byte-preserving results separate from UTF-8 memory and persistent cache entries', () => {
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root } };
+            const args = ['ls-files', '--unmerged', '-z'];
+            const bytes = Buffer.from('100644 hash 1\tfile-\xfe.txt\0' + '100644 hash 2\tfile-\xff.txt\0', 'latin1');
+            mockExecFileSync.mockReturnValueOnce(bytes.toString('utf8'));
+            mockExecFileSync.mockReturnValueOnce(bytes.toString('latin1'));
+
+            expect(runGitArgs(args, context)).toBe(bytes.toString('utf8'));
+            expect(getGitConflictCount(context)).toBe(2);
+            expect(getGitConflictCount(context)).toBe(2);
+            clearGitCache();
+            expect(getGitConflictCount(context)).toBe(2);
+            expect(runGitArgs(args, context)).toBe(bytes.toString('utf8'));
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        it('returns zero when there are no conflicts', () => {
+            mockExecFileSync.mockReturnValueOnce('');
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
+
+        it('returns zero when git fails', () => {
+            mockExecFileSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
     });
 
     describe('resolveGitCwd', () => {
@@ -162,7 +215,47 @@ describe('git utils', () => {
         });
     });
 
+    describe('execGit', () => {
+        it('uses the resolved executable for both filter discovery and hardened status', () => {
+            const { root } = createGitRepo();
+            fs.writeFileSync(path.join(root, '.git', 'config'), '[filter "custom"]\n\tclean = custom-filter\n');
+            const executable = 'C:\\Git\\cmd\\git.exe';
+            vi.spyOn(executablePath, 'resolveExecutable').mockReturnValue(executable);
+            mockExecFileSync.mockReturnValueOnce('local\0filter.custom.clean\ncustom-filter\0');
+            mockExecFileSync.mockReturnValueOnce(' M file\n');
+
+            expect(execGit(['status', '--porcelain'], root)).toBe(' M file\n');
+
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+            for (const call of mockExecFileSync.mock.calls) {
+                expect(call[0]).toBe(executable);
+                expect((call[1] as string[]).slice(0, GIT_HARDENING_ARGS.length)).toEqual(GIT_HARDENING_ARGS);
+            }
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toContain('config');
+            expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
+                'filter.custom.clean=',
+                'filter.custom.process=',
+                'status',
+                '--ignore-submodules=dirty'
+            ]));
+        });
+    });
+
     describe('runGit', () => {
+        it('runs git from its place on PATH, never the current directory', () => {
+            const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => `C:\\Git\\cmd\\${name}.exe`);
+            try {
+                mockExecFileSync.mockReturnValue('main\n');
+
+                expect(runGit('symbolic-ref --short HEAD', { data: { cwd: '/tmp/repo' } })).toBe('main');
+
+                expect(resolve).toHaveBeenCalledWith('git');
+                expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('C:\\Git\\cmd\\git.exe');
+            } finally {
+                resolve.mockRestore();
+            }
+        });
+
         it('runs git command with resolved cwd and trims trailing whitespace', () => {
             mockExecFileSync.mockReturnValueOnce('feature/worktree\n');
             const context: RenderContext = { data: { cwd: '/tmp/repo' } };
@@ -171,7 +264,7 @@ describe('git utils', () => {
 
             expect(result).toBe('feature/worktree');
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['symbolic-ref', '--short', 'HEAD']);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'symbolic-ref', '--short', 'HEAD']);
             expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/repo');
         });
 
@@ -248,6 +341,54 @@ describe('git utils', () => {
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
 
+        // The TTL has to start when git's answer became available. Measuring
+        // from before the run would leave a command slower than the TTL (status
+        // in a large repository) expired on arrival, so every widget sharing it
+        // would run it again.
+        it('gives a slow command a full TTL measured from when it finished', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // The command occupies 6s, longer than the TTL under test.
+                nowSpy.mockReturnValue(7000);
+                return ' M src/app.ts\0';
+            });
+
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+
+            nowSpy.mockReturnValue(11000);
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('gives a slow failure a full TTL measured from when git gave up', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // Killed at the 5s command timeout, just past the TTL under test.
+                nowSpy.mockReturnValue(6001);
+                throw new Error('spawnSync git ETIMEDOUT');
+            });
+
+            expect(runGit('diff --shortstat', context)).toBeNull();
+
+            nowSpy.mockReturnValue(10000);
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
         it('keeps persistent cache entries when TTL is zero and repo mtimes match', () => {
             const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
             useTempHome();
@@ -285,6 +426,45 @@ describe('git utils', () => {
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
 
+        it('follows a worktree .git file to its HEAD and index', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-worktree-'));
+            tempPaths.push(root);
+            const linkedGitDir = path.join(root, 'main-repo', '.git', 'worktrees', 'feature');
+            const worktree = path.join(root, 'feature');
+            fs.mkdirSync(linkedGitDir, { recursive: true });
+            fs.mkdirSync(worktree);
+            fs.writeFileSync(path.join(linkedGitDir, 'HEAD'), 'ref: refs/heads/feature\n', 'utf-8');
+            fs.writeFileSync(path.join(linkedGitDir, 'index'), '', 'utf-8');
+            fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${linkedGitDir}\n`, 'utf-8');
+            const context: RenderContext = { data: { cwd: worktree }, gitCacheTtlSeconds: 60 };
+            mockExecFileSync.mockReturnValueOnce('old-value\n');
+
+            expect(runGit('status --porcelain -z', context)).toBe('old-value');
+
+            clearGitCache();
+            touch(path.join(linkedGitDir, 'index'), Date.now() + 10000);
+            nowSpy.mockReturnValue(2000);
+            mockExecFileSync.mockReturnValueOnce('new-value\n');
+
+            expect(runGit('status --porcelain -z', context)).toBe('new-value');
+        });
+
+        // A .git file is read from every folder above the session's directory,
+        // so a repository can plant one
+        it('reads a .git file holding a long run of whitespace in linear time', () => {
+            useTempHome();
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-planted-'));
+            tempPaths.push(root);
+            fs.writeFileSync(path.join(root, '.git'), `gitdir:${' '.repeat(100_000)}\nx\ny`, 'utf-8');
+            mockExecFileSync.mockReturnValueOnce('main\n');
+
+            const started = Date.now();
+            expect(runGit('symbolic-ref --short HEAD', { data: { cwd: root } })).toBe('main');
+            expect(Date.now() - started).toBeLessThan(1000);
+        });
+
         it('falls back to git when the persistent cache file is malformed', () => {
             vi.spyOn(Date, 'now').mockReturnValue(1000);
             const home = useTempHome();
@@ -300,6 +480,131 @@ describe('git utils', () => {
 
             expect(runGit('symbolic-ref --short HEAD', context)).toBe('new-value');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        it('leaves no temp file behind when the cache write cannot be renamed into place', () => {
+            vi.spyOn(Date, 'now').mockReturnValue(1000);
+            const home = useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockReturnValueOnce('feature/leak\n');
+
+            expect(runGit('symbolic-ref --short HEAD', context)).toBe('feature/leak');
+
+            // Make the cache path a directory so the final rename always fails,
+            // exercising the cleanup-on-error path in writePersistentCache.
+            const cachePath = getOnlyGitCachePath(home);
+            fs.rmSync(cachePath);
+            fs.mkdirSync(cachePath);
+
+            clearGitCache();
+            mockExecFileSync.mockReturnValueOnce('feature/leak\n');
+
+            expect(runGit('symbolic-ref --short HEAD', context)).toBe('feature/leak');
+            // The blocking directory is still in place and no temp file leaked.
+            expect(fs.statSync(cachePath).isDirectory()).toBe(true);
+            const cacheDir = path.dirname(cachePath);
+            expect(fs.readdirSync(cacheDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        });
+
+        it('keeps separate persistent caches for different cwds in the same repo', () => {
+            vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const subdir = path.join(root, 'src');
+            fs.mkdirSync(subdir);
+            const rootContext: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            const subdirContext: RenderContext = { data: { cwd: subdir }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockReturnValueOnce('root-conflicts\n');
+            mockExecFileSync.mockReturnValueOnce('subdir-conflicts\n');
+
+            expect(runGit('ls-files --unmerged', rootContext)).toBe('root-conflicts');
+            expect(runGit('ls-files --unmerged', subdirContext)).toBe('subdir-conflicts');
+
+            // A fresh process (second session) must still hit both entries.
+            clearGitCache();
+            expect(runGit('ls-files --unmerged', rootContext)).toBe('root-conflicts');
+            expect(runGit('ls-files --unmerged', subdirContext)).toBe('subdir-conflicts');
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+    });
+
+    describe('runGit outside a repository', () => {
+        const ORIGINAL_GIT_DIR = process.env.GIT_DIR;
+
+        // The host running the tests may have a stray .git or HEAD above the
+        // temp dir (e.g. in $HOME), so hide repo markers above the fixture.
+        function useIsolatedDirectory(): string {
+            useTempHome();
+            const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-no-repo-')));
+            tempPaths.push(dir);
+            const isHiddenMarker = (target: fs.PathLike): boolean => {
+                const targetPath = String(target);
+                return ['.git', 'HEAD'].includes(path.basename(targetPath))
+                    && !targetPath.startsWith(`${dir}${path.sep}`);
+            };
+            const enoent = (target: fs.PathLike): Error => Object.assign(new Error(`ENOENT: ${String(target)}`), { code: 'ENOENT' });
+            const realLstatSync = fs.lstatSync;
+            const realStatSync = fs.statSync;
+            vi.spyOn(fs, 'lstatSync').mockImplementation((target: fs.PathLike) => {
+                if (isHiddenMarker(target)) {
+                    throw enoent(target);
+                }
+                return realLstatSync(target);
+            });
+            vi.spyOn(fs, 'statSync').mockImplementation((target: fs.PathLike) => {
+                if (isHiddenMarker(target)) {
+                    throw enoent(target);
+                }
+                return realStatSync(target);
+            });
+            return dir;
+        }
+
+        afterEach(() => {
+            if (ORIGINAL_GIT_DIR === undefined) {
+                delete process.env.GIT_DIR;
+            } else {
+                process.env.GIT_DIR = ORIGINAL_GIT_DIR;
+            }
+        });
+
+        it('returns null without spawning git when no repository encloses cwd', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            const context: RenderContext = { data: { cwd: dir } };
+
+            expect(isInsideGitWorkTree(context)).toBe(false);
+            expect(runGit('remote get-url -- origin', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(0);
+        });
+
+        it('still spawns git when GIT_DIR is set', () => {
+            process.env.GIT_DIR = '/somewhere/else/.git';
+            const dir = useIsolatedDirectory();
+            mockExecFileSync.mockReturnValueOnce('true\n');
+
+            expect(isInsideGitWorkTree({ data: { cwd: dir } })).toBe(true);
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('still spawns git for a malformed .git file', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            fs.writeFileSync(path.join(dir, '.git'), 'not a gitfile\n', 'utf-8');
+
+            expect(isInsideGitWorkTree({ data: { cwd: dir } })).toBe(false);
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('still spawns git in a directory that looks like a bare repository', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            fs.writeFileSync(path.join(dir, 'HEAD'), 'ref: refs/heads/main\n', 'utf-8');
+            mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git\n');
+
+            expect(runGit('remote get-url -- origin', { data: { cwd: dir } })).toBe('git@github.com:owner/repo.git');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
         });
     });
 

@@ -105,6 +105,10 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 # or [Google Fonts](https://fonts.google.com/specimen/JetBrains+Mono)
 ```
 
+### Helper Executables
+
+Git, JJ, GitHub/GitLab CLI, SSH, and the UTF-8 code-page helper are resolved from absolute directories in `PATH`. Empty and relative PATH entries are skipped, so a helper executable placed only in the current project directory is not selected. Install the tools you use in an absolute directory listed in `PATH`.
+
 ### Path Handling
 
 `ccstatusline` automatically handles Windows-specific paths:
@@ -112,6 +116,7 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 - Current Working Directory widget displays Windows-style paths correctly
 - Full support for mapped network drives and UNC paths
 - Handles Windows drive letters (C:, D:, etc.)
+- Current Working Dir link mode builds Windows `file:///C:/...` and UNC `file://server/share/...` targets with reserved characters encoded
 
 ## Windows Troubleshooting
 
@@ -119,13 +124,15 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 
 **Issue**: Status lines wrap because terminal width cannot be detected
 
+Claude Code 2.1.153 and later pass the terminal width to the status line in `COLUMNS`, which ccstatusline reads on Windows too. With an older Claude Code, update it or set an explicit width before launching it:
+
 ```powershell
 # Set an explicit width before launching Claude Code
 $env:CCSTATUSLINE_WIDTH="160"
 claude
 ```
 
-`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. This is useful on Windows because native width probing is disabled when ccstatusline runs outside WSL.
+`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before `COLUMNS` and automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. Without either variable, Windows has no width: native width probing is disabled when ccstatusline runs outside WSL.
 
 **Issue**: Powerline symbols showing as question marks or boxes
 

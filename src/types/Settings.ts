@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
 import { ColorLevelSchema } from './ColorLevel';
-import { FlexModeSchema } from './FlexMode';
+import { GlobalNumberFormatSchema } from './NumberFormat';
 import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 // Which side(s) of a widget the default padding is applied to
 export const DefaultPaddingSideSchema = z.enum(['both', 'left', 'right']);
@@ -34,8 +34,6 @@ export const InstallationMetadataSchema = z.discriminatedUnion('method', [
 // Schema for v1 settings (before version field was added)
 export const SettingsSchema_v1 = z.object({
     lines: z.array(z.array(WidgetItemSchema)).optional(),
-    flexMode: FlexModeSchema.optional(),
-    compactThreshold: z.number().optional(),
     colorLevel: ColorLevelSchema.optional(),
     defaultSeparator: z.string().optional(),
     defaultPadding: z.string().optional(),
@@ -63,8 +61,6 @@ export const SettingsSchema = z.object({
             [],
             []
         ]), // Ensure max 3 lines
-    flexMode: FlexModeSchema.default('full-minus-40'),
-    compactThreshold: z.number().min(1).max(99).default(60),
     colorLevel: ColorLevelSchema.default(2),
     defaultSeparator: z.string().optional(),
     defaultPadding: z.string().optional(),
@@ -73,7 +69,14 @@ export const SettingsSchema = z.object({
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
+    numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
+    // How long a "no TTY" result is reused for the same session, in seconds.
+    // Detected widths are re-probed each render so terminal resizes take effect.
+    // NOTE: 0 disables the cache (always probe). This deliberately differs from
+    // gitCacheTtlSeconds above, where 0 means "never expire".
+    terminalWidthCacheTtlSeconds: z.number().min(0).max(300).default(5),
+    customCommandCacheTtlSeconds: z.number().min(0).max(60).default(0),
     minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,

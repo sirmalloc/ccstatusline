@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,11 +10,16 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
 }));
@@ -30,6 +35,7 @@ const widget = new GitUnstagedFilesWidget();
 
 function render(options: {
     cwd?: string;
+    hide?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
     rawValue?: boolean;
@@ -42,11 +48,14 @@ function render(options: {
         id: 'git-unstaged-files',
         type: 'git-unstaged-files',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hide ? { hide: options.hide } : (options.hideNoGit ? { hide: 'no-git' } : undefined)
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('GitUnstagedFilesWidget', () => {
     beforeEach(() => {
@@ -68,7 +77,7 @@ describe('GitUnstagedFilesWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('M:2');
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['status', '--porcelain', '-z']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'status', '--ignore-submodules=dirty', '--porcelain', '-z']);
     });
 
     it('renders raw unstaged file count', () => {
@@ -83,6 +92,20 @@ describe('GitUnstagedFilesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('M:0');
+    });
+
+    it('hides zero count when the zero state is enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('keeps non-zero counts visible with the zero state enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce(' M a.ts\0 D b.ts\0');
+
+        expect(render({ hide: 'zero' })).toBe('M:2');
     });
 
     it('renders no git when probe returns false', () => {

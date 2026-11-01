@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,9 +10,10 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjRevisionWidget } from '../JjRevision';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -36,11 +37,13 @@ function render(options: {
         id: 'jj-revision',
         type: 'jj-revision',
         rawValue: options.rawValue,
-        metadata: options.hideNoJj ? { hideNoJj: 'true' } : undefined
+        metadata: options.hideNoJj ? { hide: 'no-jj' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('JjRevisionWidget', () => {
     beforeEach(() => {
@@ -61,15 +64,17 @@ describe('JjRevisionWidget', () => {
 
         expect(render({ cwd: '/tmp/repo' })).toBe(' kkmpptxz');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            '--color=never',
             'log',
             '--no-graph',
             '-r',
@@ -80,6 +85,7 @@ describe('JjRevisionWidget', () => {
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });

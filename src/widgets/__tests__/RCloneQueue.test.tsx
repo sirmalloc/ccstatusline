@@ -1,8 +1,8 @@
-import fs from 'fs';
 import { render } from 'ink';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { PassThrough } from 'node:stream';
-import os from 'os';
-import path from 'path';
 import stripAnsi from 'strip-ansi';
 import {
     afterEach,

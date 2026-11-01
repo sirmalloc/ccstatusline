@@ -3,11 +3,12 @@ import {
     Text,
     useInput
 } from 'ink';
-import * as os from 'os';
-import * as path from 'path';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import React, { useState } from 'react';
 
 import { shouldInsertInput } from '../../utils/input-guards';
+import { BlinkingCursor } from '../../widgets/shared/BlinkingCursor';
 
 interface ExportConfigDialogProps {
     onExport: (filePath: string) => void;
@@ -38,7 +39,7 @@ export function ExportConfigDialog({ onExport, onCancel }: ExportConfigDialogPro
             <Box marginTop={1}>
                 <Text>Path: </Text>
                 <Text>{inputValue}</Text>
-                <Text inverse> </Text>
+                <BlinkingCursor inverse>{' '}</BlinkingCursor>
             </Box>
             <Box marginTop={1}>
                 <Text dimColor>Enter to confirm, Escape to cancel</Text>

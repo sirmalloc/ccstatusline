@@ -1,21 +1,14 @@
 #!/usr/bin/env node
 import chalk from 'chalk';
 
-import { runTUI } from './tui';
-import type {
-    SkillsMetrics,
-    SpeedMetrics,
-    TokenMetrics
-} from './types';
+import type { SkillsMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
+import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
-import {
-    ZERO_COMPACTION_STATS,
-    getCompactionStats
-} from './utils/compaction';
+import { ZERO_COMPACTION_STATS } from './utils/compaction';
 import {
     getConfigLoadError,
     initConfigPath,
@@ -27,11 +20,7 @@ import {
     refreshGitReviewCacheFromCli
 } from './utils/git-review-cache';
 import { handleHookInput } from './utils/hook-handler';
-import {
-    getSessionDuration,
-    getSpeedMetricsCollection,
-    getTokenMetrics
-} from './utils/jsonl';
+import { getTranscriptAnalysis } from './utils/jsonl';
 import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index';
 import {
     buildConfigWarningBadge,
@@ -41,6 +30,8 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { computeSessionForecastIfNeeded } from './utils/session-forecast-prefetch';
+import { getDefaultSessionUsageHistoryDeps } from './utils/session-usage-history';
 import { getSkillsMetrics } from './utils/skills';
 import {
     getWidgetSpeedWindowSeconds,
@@ -50,11 +41,38 @@ import {
     getPackageVersion,
     getTerminalWidth
 } from './utils/terminal';
+import { sanitizeTerminalText } from './utils/terminal-sanitize';
+import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
+import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
+
+// Captured before --config is parsed out of process.argv, so the dev reload
+// supervisor can relaunch with exactly the arguments it was started with
+const LAUNCH_ARGS = process.argv.slice(2);
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
+}
+
+const DISPATCHABLE_HOOK_EVENT_NAMES = new Set(['PreToolUse', 'UserPromptSubmit']);
+
+// syncWidgetHooks() builds the configured hook command as `${statusCommand} --hook`.
+// When statusCommand is itself a wrapped command (e.g. `bash -c '... ccstatusline'`),
+// that concatenation puts --hook outside the wrapper's quotes, so when Claude Code
+// executes the already-malformed configured command, the flag never reaches this
+// process's argv and the hook payload arrives on the piped-input path instead.
+// StatusJSONSchema is a looseObject that accepts this shape too, so without this
+// check the hook JSON would render as (garbled) status output.
+function isDispatchableHookPayload(data: unknown): boolean {
+    if (typeof data !== 'object' || data === null) {
+        return false;
+    }
+    const { hook_event_name: hookEventName, session_id: sessionId } = data as Record<string, unknown>;
+    return typeof hookEventName === 'string'
+        && DISPATCHABLE_HOOK_EVENT_NAMES.has(hookEventName)
+        && typeof sessionId === 'string'
+        && sessionId.length > 0;
 }
 
 async function readStdin(): Promise<string | null> {
@@ -86,20 +104,7 @@ async function readStdin(): Promise<string | null> {
     }
 }
 
-async function ensureWindowsUtf8CodePage() {
-    if (process.platform !== 'win32') {
-        return;
-    }
-
-    try {
-        const { execFileSync } = await import('child_process');
-        execFileSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true });
-    } catch {
-        // Ignore failures to preserve statusline output even in restricted shells.
-    }
-}
-
-async function renderMultipleLines(data: StatusJSON) {
+async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unknown>) {
     const settings = await loadSettings();
     const configError = getConfigLoadError();
 
@@ -117,6 +122,12 @@ async function renderMultipleLines(data: StatusJSON) {
 
     const speedWidgetTypes = new Set(['output-speed', 'input-speed', 'total-speed']);
     const hasSpeedItems = lines.some(line => line.some(item => speedWidgetTypes.has(item.type)));
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
+    const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const hasAccountEmailWidget = lines.some(line => line.some(item => item.type === 'claude-account-email'));
+    const needsTranscriptThinkingEffort = hasThinkingEffortWidget
+        && (!data.effort || !('level' in data.effort));
     const requestedSpeedWindows = new Set<number>();
     for (const line of lines) {
         for (const item of line) {
@@ -126,55 +137,67 @@ async function renderMultipleLines(data: StatusJSON) {
         }
     }
 
-    let tokenMetrics: TokenMetrics | null = null;
-    if (data.transcript_path) {
-        tokenMetrics = await getTokenMetrics(data.transcript_path);
-    }
-
-    let sessionDuration: string | null = null;
-    if (hasSessionClock && !hasSessionDurationInStatusJson(data) && data.transcript_path) {
-        sessionDuration = await getSessionDuration(data.transcript_path);
-    }
-
-    const usageData = await prefetchUsageDataIfNeeded(lines, data);
-
-    let speedMetrics: SpeedMetrics | null = null;
-    let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
-    if (hasSpeedItems && data.transcript_path) {
-        const speedMetricsCollection = await getSpeedMetricsCollection(data.transcript_path, {
+    const transcriptAnalysisPromise = data.transcript_path
+        ? getTranscriptAnalysis(data.transcript_path, {
+            includeSessionDuration: hasSessionClock && !hasSessionDurationInStatusJson(data),
+            includeSpeedMetrics: hasSpeedItems,
             includeSubagents: true,
-            windowSeconds: Array.from(requestedSpeedWindows)
-        });
+            speedWindowSeconds: Array.from(requestedSpeedWindows),
+            includeCompactionStats: hasCompactionWidget,
+            includeThinkingEffort: needsTranscriptThinkingEffort,
+            includeSessionName: hasSessionNameWidget
+        })
+        : Promise.resolve(null);
+    const [transcriptAnalysis, usageData, claudeStatusData, accountEmail] = await Promise.all([
+        transcriptAnalysisPromise,
+        prefetchUsageDataIfNeeded(lines, data),
+        prefetchClaudeStatusIfNeeded(lines),
+        hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
+    ]);
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
 
-        speedMetrics = speedMetricsCollection.sessionAverage;
-        windowedSpeedMetrics = speedMetricsCollection.windowed;
-    }
+    const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
+    const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;
+    const speedMetrics = transcriptAnalysis?.speedMetricsCollection?.sessionAverage ?? null;
+    const windowedSpeedMetrics = transcriptAnalysis?.speedMetricsCollection?.windowed ?? null;
 
     let skillsMetrics: SkillsMetrics | null = null;
     if (data.session_id) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
-    // Compaction stats — parse compact_boundary markers in this session's transcript
-    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const compactionData = hasCompactionWidget
-        ? (data.transcript_path ? await getCompactionStats(data.transcript_path) : ZERO_COMPACTION_STATS)
+        ? (transcriptAnalysis?.compactionData ?? ZERO_COMPACTION_STATS)
         : null;
 
     // Create render context
     const context: RenderContext = {
         data,
+        rawData,
         tokenMetrics,
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        sessionForecast,
+        claudeStatusData,
+        accountEmail,
         sessionDuration,
+        transcriptSessionName: hasSessionNameWidget
+            ? (transcriptAnalysis?.sessionName ?? null)
+            : undefined,
+        transcriptThinkingEffort: needsTranscriptThinkingEffort
+            ? (transcriptAnalysis?.thinkingEffort ?? null)
+            : undefined,
         skillsMetrics,
         compactionData,
-        terminalWidth: getTerminalWidth(),
+        terminalWidth: getTerminalWidth({
+            sessionId: data.session_id,
+            ttlSeconds: settings.terminalWidthCacheTtlSeconds
+        }),
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
+        customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds,
         gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 
@@ -211,7 +234,9 @@ async function renderMultipleLines(data: StatusJSON) {
                 }
 
                 // Replace all spaces with non-breaking spaces to prevent VSCode trimming
-                let outputLine = line.replace(/ /g, '\u00A0');
+                // The renderer's own output is colors and links; this is the last
+                // stop before the terminal for anything else (separators, settings)
+                let outputLine = sanitizeTerminalText(line).replace(/ /g, '\u00A0');
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
@@ -239,7 +264,7 @@ async function renderMultipleLines(data: StatusJSON) {
         && settings.updatemessage.remaining
         && settings.updatemessage.remaining > 0) {
         // Display the message
-        console.log(settings.updatemessage.message);
+        console.log(sanitizeTerminalText(settings.updatemessage.message));
 
         // Decrement the remaining count
         const newRemaining = settings.updatemessage.remaining - 1;
@@ -248,7 +273,6 @@ async function renderMultipleLines(data: StatusJSON) {
         if (newRemaining <= 0) {
             // Remove the entire updatemessage block
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         } else {
             // Update the remaining count
@@ -322,20 +346,33 @@ async function main() {
 
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
-        await ensureWindowsUtf8CodePage();
+        ensureWindowsUtf8CodePage();
 
         // We're receiving piped input
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                // Parse and validate JSON in one step
-                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                const parsed: unknown = JSON.parse(input);
+
+                // A wrapped statusLine command may have dropped --hook before this
+                // process saw argv (see isDispatchableHookPayload above). Detect that
+                // shape here and dispatch it the same way the explicit --hook mode
+                // does, instead of falling through to status validation/rendering.
+                if (isDispatchableHookPayload(parsed)) {
+                    handleHookInput(input);
+                    return;
+                }
+
+                // Widgets read the validated copy; custom commands get the JSON
+                // as it arrived. Validation fails for anything but an object.
+                const rawData = parsed as Record<string, unknown>;
+                const result = StatusJSONSchema.safeParse(rawData);
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
                 }
 
-                await renderMultipleLines(result.data);
+                await renderMultipleLines(result.data, rawData);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
@@ -346,13 +383,26 @@ async function main() {
         }
     } else {
         // Interactive mode - run TUI
+        // With CCSTATUSLINE_DEV_RELOAD=1 this process only supervises: it runs
+        // the TUI in child processes and restarts one whenever ctrl+r asks
+        if (process.env.CCSTATUSLINE_DEV_RELOAD === '1') {
+            const { getDevReloadMode, superviseDevReload } = await import('./utils/dev-reload');
+            if (getDevReloadMode(process.env) === 'supervisor') {
+                process.exit(await superviseDevReload(LAUNCH_ARGS));
+            }
+        }
+
         // Remove updatemessage before running TUI
         const settings = await loadSettings();
         if (settings.updatemessage) {
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         }
+        // Imported lazily: the TUI pulls in ink/React/yoga-layout, which the
+        // status line render path never touches. Claude Code re-runs this
+        // binary every couple of seconds, so keeping that graph off the
+        // render path is worth the dynamic import here.
+        const { runTUI } = await import('./tui');
         runTUI();
     }
 }
