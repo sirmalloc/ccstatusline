@@ -4,10 +4,7 @@ import {
 } from 'ink';
 import React from 'react';
 
-import type {
-    InstallationMetadata,
-    Settings
-} from '../../types/Settings';
+import type { InstallationMetadata } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
@@ -32,10 +29,9 @@ export interface MainMenuProps {
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
+    onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
-    settings: Settings | null;
     installation?: InstallationMetadata;
-    previewIsTruncated?: boolean;
 }
 
 interface MainMenuItem {
@@ -213,28 +209,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     isClaudeInstalled,
     hasChanges,
     initialSelection = 0,
+    onSelectionChange,
     powerlineFontStatus,
-    settings,
-    installation,
-    previewIsTruncated
+    installation
 }) => {
     const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
 
-    // Check if we should show the truncation warning
-    const showTruncationWarning
-        = previewIsTruncated && settings?.flexMode === 'full-minus-40';
-
     return (
         <Box flexDirection='column'>
-            {showTruncationWarning && (
-                <Box marginBottom={1}>
-                    <Text color='yellow'>
-                        ⚠ Some lines are truncated, see Terminal Options → Terminal Width
-                        for info
-                    </Text>
-                </Box>
-            )}
-
             <Text bold>Main Menu</Text>
 
             <List
@@ -248,6 +230,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                     onSelect(value, index);
                 }}
                 initialSelection={initialSelection}
+                onSelectionChange={(_, index) => onSelectionChange?.(index)}
             />
         </Box>
     );
