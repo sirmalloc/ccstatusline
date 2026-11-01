@@ -114,11 +114,16 @@ export function getRemoteInfo(remoteName: string, context: RenderContext): Remot
     };
 }
 
+const REMOTE_REF_PREFIX = 'refs/remotes/';
+
 function getTrackingRemoteName(context: RenderContext): string | null {
-    const upstreamRef = runGit('rev-parse --abbrev-ref --symbolic-full-name @{upstream}', context);
-    if (!upstreamRef) {
+    // The full ref, since --abbrev-ref turns it into "remotes/<remote>/<name>"
+    // when a branch or tag is named "<remote>/<name>"
+    const fullRef = runGit('rev-parse --symbolic-full-name @{upstream}', context);
+    if (!fullRef?.startsWith(REMOTE_REF_PREFIX)) {
         return null;
     }
+    const upstreamRef = fullRef.slice(REMOTE_REF_PREFIX.length);
 
     const remotes = listRemotes(context)
         .slice()

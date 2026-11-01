@@ -195,9 +195,9 @@ describe('RemoteControlStatusWidget', () => {
     describe('render() - format icon, Nerd Font', () => {
         const NERD_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true' } };
 
-        it('renders disconnected glyph (U+F6AC) when OFF', () => {
+        it('renders nf-md-wifi_off (U+F05AA) when OFF', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
-            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\uF6AC');
+            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\u{F05AA}');
         });
 
         it('renders connected glyph (U+F1EB) when ON', () => {
@@ -206,8 +206,76 @@ describe('RemoteControlStatusWidget', () => {
         });
     });
 
+    describe('render() - Nerd Font glyph slots', () => {
+        const WIFI = '\u{F05A9}';
+        const OFF_GLYPH = '⊘';
+        const SLOT_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true', symbolOn: WIFI, symbolOff: OFF_GLYPH } };
+
+        it('renders the On override when ON', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(WIFI);
+        });
+
+        it('renders the Off override when OFF', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(OFF_GLYPH);
+        });
+
+        it('uses the overrides in icon-text and collapses the space for a blank glyph', () => {
+            const widget = new RemoteControlStatusWidget();
+            const iconText: WidgetItem = { ...SLOT_ITEM, metadata: { ...SLOT_ITEM.metadata, format: 'icon-text' } };
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            const blankOff: WidgetItem = { ...iconText, metadata: { ...iconText.metadata, symbolOff: '' } };
+            expect(widget.render(iconText, makeContext(), DEFAULT_SETTINGS)).toBe(`${OFF_GLYPH} off`);
+            expect(widget.render(blankOff, makeContext(), DEFAULT_SETTINGS)).toBe('off');
+        });
+
+        it('hides the widget when the glyph for the current state is blanked in icon format', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            const blankOff: WidgetItem = { ...SLOT_ITEM, metadata: { ...SLOT_ITEM.metadata, symbolOff: '' } };
+            expect(new RemoteControlStatusWidget().render(blankOff, makeContext(), DEFAULT_SETTINGS)).toBeNull();
+        });
+
+        it('ignores the overrides when Nerd Font is off', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            const item: WidgetItem = { ...ITEM, metadata: { symbolOn: WIFI, symbolOff: OFF_GLYPH } };
+            expect(new RemoteControlStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe('📡 ◉');
+        });
+
+        it('offers the glyph keybind only while the Nerd Font icons are visible', () => {
+            const widget = new RemoteControlStatusWidget();
+            const glyphKeybind = { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' };
+
+            expect(widget.getCustomKeybinds(SLOT_ITEM)).toContainEqual(glyphKeybind);
+            expect(widget.getCustomKeybinds(ITEM)).not.toContainEqual(glyphKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'word', nerdFont: 'true' } }))
+                .not.toContainEqual(glyphKeybind);
+        });
+    });
+
     describe('render() - format icon-text', () => {
         const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'icon-text' } };
+
+        it('reserves space for the built-in Nerd Font icons before the word', () => {
+            const widget = new RemoteControlStatusWidget();
+            const item: WidgetItem = { ...FORMAT_ITEM, metadata: { format: 'icon-text', nerdFont: 'true' } };
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            expect(widget.render(item, makeContext(), DEFAULT_SETTINGS)).toBe('\uF1EB  on');
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            expect(widget.render(item, makeContext(), DEFAULT_SETTINGS)).toBe('\u{F05AA}  off');
+        });
+
+        it.each([
+            { glyph: '+', expected: '+ on' },
+            { glyph: '📡', expected: '📡 on' },
+            { glyph: '', expected: 'on' }
+        ])('keeps custom glyph spacing for "$glyph"', ({ glyph, expected }) => {
+            const item: WidgetItem = {
+                ...FORMAT_ITEM,
+                metadata: { format: 'icon-text', nerdFont: 'true', symbolOn: glyph }
+            };
+            expect(new RemoteControlStatusWidget().render(item, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe(expected);
+        });
 
         it('renders 📡 off when OFF', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
@@ -276,6 +344,33 @@ describe('RemoteControlStatusWidget', () => {
         });
     });
 
+    describe('editable labels', () => {
+        it.each([
+            { format: 'label-check', on: '✅', off: '❌' },
+            { format: 'label-mark', on: '✓', off: '✗' }
+        ])('uses the shared label override in $format', ({ format, on, off }) => {
+            const widget = new RemoteControlStatusWidget();
+            const item: WidgetItem = { ...ITEM, metadata: { format, label: 'RC: ' } };
+            expect(widget.getLabelPrefix(item)).toBe('remote ');
+            for (const enabled of [false, true]) {
+                vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled });
+                const value = enabled ? on : off;
+                expect(widget.render(item, makeContext(), DEFAULT_SETTINGS)).toBe(`RC: ${value}`);
+                expect(widget.render({ ...item, rawValue: true }, makeContext(), DEFAULT_SETTINGS)).toBe(value);
+                expect(widget.render({ ...item, metadata: { format, label: '' } }, makeContext(), DEFAULT_SETTINGS)).toBe(value);
+            }
+            expect(widget.render(item, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe(`RC: ${on}`);
+        });
+
+        it.each(['icon', 'icon-text', 'text', 'word'])('does not offer or apply a label override in %s', (format) => {
+            const widget = new RemoteControlStatusWidget();
+            const item: WidgetItem = { ...ITEM, metadata: { format } };
+            expect(widget.getLabelPrefix(item)).toBeUndefined();
+            expect(widget.render({ ...item, metadata: { format, label: 'RC: ' } }, makeContext(), DEFAULT_SETTINGS))
+                .toBe(widget.render(item, makeContext(), DEFAULT_SETTINGS));
+        });
+    });
+
     describe('render() - session id passthrough', () => {
         it('forwards the session id from the status JSON to the lookup helper', () => {
             new RemoteControlStatusWidget().render(ITEM, makeContext(), DEFAULT_SETTINGS);
@@ -317,7 +412,7 @@ describe('RemoteControlStatusWidget', () => {
             {
                 name: 'icon with Nerd Font',
                 item: { ...RAW_ITEM, metadata: { nerdFont: 'true' } },
-                off: '\uF6AC',
+                off: '\u{F05AA}',
                 on: '\uF1EB'
             },
             {
