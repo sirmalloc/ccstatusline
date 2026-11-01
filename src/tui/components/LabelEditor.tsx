@@ -11,7 +11,8 @@ import {
     getLabel,
     setLabel
 } from '../../widgets/shared/raw-or-labeled';
-import { useTextCursor } from '../../widgets/shared/text-cursor';
+
+import { useTextCursor } from './widget-editors/text-cursor';
 
 export interface LabelEditorProps {
     widget: WidgetItem;

@@ -11,9 +11,9 @@ import {
     vi
 } from 'vitest';
 
-import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import { useCursorBlink } from '../cursor-blink';
-import { useTextCursor } from '../text-cursor';
+import { useTextCursor } from '../widget-editors/text-cursor';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;

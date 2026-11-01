@@ -12,23 +12,19 @@ import {
 import type {
     WidgetEditorProps,
     WidgetItem
-} from '../../../types/Widget';
+} from '../../../../types/Widget';
 import {
     filterLocaleOptions,
     getLocaleOptions
-} from '../../../utils/locales';
+} from '../../../../utils/locales';
 import {
     filterTimezoneOptions,
     getTimezoneOptions
-} from '../../../utils/timezones';
-import {
-    LOCALE_EDITOR_ACTION,
-    UsageLocaleEditor
-} from '../locale-editor';
-import {
-    TIMEZONE_EDITOR_ACTION,
-    UsageTimezoneEditor
-} from '../timezone-editor';
+} from '../../../../utils/timezones';
+import { LOCALE_EDITOR_ACTION } from '../../../../widgets/shared/locale-editor';
+import { TIMEZONE_EDITOR_ACTION } from '../../../../widgets/shared/timezone-editor';
+import { UsageLocaleEditor } from '../UsageLocaleEditor';
+import { UsageTimezoneEditor } from '../UsageTimezoneEditor';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;

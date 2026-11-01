@@ -5,8 +5,8 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import type { MatchSegment } from '../../utils/fuzzy';
-import { shouldInsertInput } from '../../utils/input-guards';
+import type { MatchSegment } from '../../../utils/fuzzy';
+import { shouldInsertInput } from '../../../utils/input-guards';
 
 const MAX_VISIBLE_OPTIONS = 10;
 

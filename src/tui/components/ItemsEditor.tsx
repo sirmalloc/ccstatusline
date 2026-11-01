@@ -63,6 +63,7 @@ import {
     getPickerInsertIndex,
     placePickerSelection
 } from './items-editor/picker-selection';
+import { renderWidgetEditor } from './widget-editors';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -482,12 +483,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
-        return customEditorWidget.impl.renderEditor({
+        const editor = customEditorWidget.impl.renderEditor({
             widget: customEditorWidget.widget,
             onComplete: handleEditorComplete,
             onCancel: handleEditorCancel,
             action: customEditorWidget.action
         });
+        return editor ? renderWidgetEditor(editor) : null;
     }
 
     if (showClearConfirm) {

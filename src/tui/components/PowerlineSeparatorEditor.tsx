@@ -10,7 +10,8 @@ import {
     getPlainInput,
     shouldInsertInput
 } from '../../utils/input-guards';
-import { BlinkingCursor } from '../../widgets/shared/BlinkingCursor';
+
+import { BlinkingCursor } from './BlinkingCursor';
 
 export type EditorMode = 'separator' | 'startCap' | 'endCap';
 

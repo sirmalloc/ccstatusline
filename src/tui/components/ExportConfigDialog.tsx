@@ -8,7 +8,8 @@ import * as path from 'node:path';
 import React, { useState } from 'react';
 
 import { shouldInsertInput } from '../../utils/input-guards';
-import { BlinkingCursor } from '../../widgets/shared/BlinkingCursor';
+
+import { BlinkingCursor } from './BlinkingCursor';
 
 interface ExportConfigDialogProps {
     onExport: (filePath: string) => void;

@@ -9,6 +9,7 @@ import {
 } from 'vitest';
 
 import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
+import { renderWidgetEditor } from '../../../tui/components/widget-editors';
 import type { WidgetItem } from '../../../types/Widget';
 import { OutputSpeedWidget } from '../../OutputSpeed';
 
@@ -55,13 +56,14 @@ function renderEditor(widget: WidgetItem, onComplete = vi.fn(), onCancel = vi.fn
     const stdin = createMockStdin();
     const stdout = createMockStdout();
     const stderr = createMockStdout();
+    const descriptor = new OutputSpeedWidget().renderEditor({
+        widget,
+        onComplete,
+        onCancel,
+        action: 'edit-window'
+    });
     const instance = render(
-        new OutputSpeedWidget().renderEditor({
-            widget,
-            onComplete,
-            onCancel,
-            action: 'edit-window'
-        }),
+        renderWidgetEditor(descriptor),
         {
             stdin,
             stdout,
