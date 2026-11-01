@@ -60,6 +60,11 @@ export interface Widget {
     // Gates the items editor's precision keybind; widgets that omit it are
     // treated as non-numeric.
     supportsNumberFormat?(): boolean;
+    // The label prepended when raw value is off, for the item's current mode.
+    // Declaring it opts the widget into the items editor's label override,
+    // which stores the replacement in metadata.label. Return undefined when
+    // the current mode has no editable label.
+    getLabelPrefix?(item: WidgetItem): string | undefined;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
     /**

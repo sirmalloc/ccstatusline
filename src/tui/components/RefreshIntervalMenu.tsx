@@ -86,9 +86,9 @@ export function validateRefreshIntervalInput(value: string): string | null {
         return null;
     }
 
-    const parsed = parseInt(value, 10);
+    const parsed = Number.parseInt(value, 10);
 
-    if (isNaN(parsed)) {
+    if (Number.isNaN(parsed)) {
         return 'Please enter a valid number';
     }
 
@@ -104,9 +104,9 @@ export function validateRefreshIntervalInput(value: string): string | null {
 }
 
 function validateTtlInput(value: string, label: string, maximum = 60): string | null {
-    const parsed = parseInt(value, 10);
+    const parsed = Number.parseInt(value, 10);
 
-    if (value === '' || isNaN(parsed)) {
+    if (value === '' || Number.isNaN(parsed)) {
         return 'Please enter a valid number';
     }
 
@@ -219,7 +219,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                 if (error) {
                     setValidationError(error);
                 } else {
-                    const value = parseInt(refreshInput, 10);
+                    const value = Number.parseInt(refreshInput, 10);
                     onUpdate(value);
                     setEditingRefreshInterval(false);
                     setValidationError(null);
@@ -252,7 +252,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                 if (error) {
                     setValidationError(error);
                 } else {
-                    const value = parseInt(ttlInput, 10);
+                    const value = Number.parseInt(ttlInput, 10);
                     field.onSave(value);
                     setEditingTtlField(null);
                     setValidationError(null);

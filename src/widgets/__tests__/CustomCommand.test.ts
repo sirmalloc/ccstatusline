@@ -1,5 +1,5 @@
-import type { SpawnSyncReturns } from 'child_process';
-import { spawnSync } from 'child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -14,7 +14,12 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
+import { StatusJSONSchema } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
+import {
+    getVisibleText,
+    getVisibleWidth
+} from '../../utils/ansi';
 import type { CustomCommandRequest } from '../../utils/custom-command';
 import { clearCustomCommandCache } from '../../utils/custom-command';
 import { CustomCommandWidget } from '../CustomCommand';
@@ -22,7 +27,7 @@ import { CustomCommandWidget } from '../CustomCommand';
 // Mock the process boundary: echo back whatever is handed to stdin, the way
 // `cat` would. The widget output then IS the JSON it sent, so we can assert
 // exactly what the custom command received, without spawning a subprocess.
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -52,6 +57,21 @@ function echoStdin(): void {
     });
 }
 
+function respondWith(stdout: string): void {
+    mockSpawnSync.mockImplementation(() => ({
+        pid: 4242,
+        output: [],
+        stdout: JSON.stringify({ status: 'ok', stdout }),
+        stderr: '',
+        status: 0,
+        signal: null
+    }));
+}
+
+function hasLoneSurrogate(text: string): boolean {
+    return Array.from(text).some(char => /^[\uD800-\uDFFF]$/.test(char));
+}
+
 function useTempHome(): void {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-widget-home-'));
     tempPaths.push(home);
@@ -66,8 +86,6 @@ describe('CustomCommandWidget', () => {
     const settings: Settings = {
         version: 3,
         lines: [],
-        flexMode: 'full',
-        compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -150,8 +168,30 @@ describe('CustomCommandWidget', () => {
         expect(model?.display_name).toBe('Sonnet');
     });
 
+    it('pipes Claude Code\'s JSON as it arrived, not the validated copy', () => {
+        const rawData = {
+            model: { id: 'claude-opus-4-6', display_name: 'Opus', family: 'opus' },
+            workspace: { current_dir: '/p', project_dir: '/p', added_dirs: ['/extra'], git_worktree: 'wt' },
+            cost: { total_cost_usd: '1.5' }
+        };
+        const context: RenderContext = { ...createContext(142), data: StatusJSONSchema.parse(rawData), rawData };
+
+        const output = widget.render(createItem(), context, settings);
+
+        expect(JSON.parse(output ?? '{}')).toEqual({ ...rawData, terminal_width: 142 });
+    });
+
     it('omits terminal_width when the width is unknown', () => {
         expect(renderParsed(null)).not.toHaveProperty('terminal_width');
+    });
+
+    it.each([
+        ['color codes around an empty value', '\x1b[32m\x1b[0m'],
+        ['a link with no text', '\x1b]8;;https://example.com\x1b\\\x1b]8;;\x1b\\']
+    ])('renders nothing when preserved output is only %s', (_case, stdout) => {
+        respondWith(stdout);
+
+        expect(widget.render({ ...createItem(), preserveColors: true }, createContext(200), settings)).toBeNull();
     });
 
     it('runs the command on every render when no cache TTL is configured', () => {
@@ -178,5 +218,62 @@ describe('CustomCommandWidget', () => {
         widget.render(createItem(), createContext(200, 5), settings);
 
         expect(mockSpawnSync.mock.calls).toHaveLength(2);
+    });
+    describe('maxWidth truncation', () => {
+        const SGR_ORANGE = '\x1b[38;5;208m';
+        const SGR_RESET = '\x1b[0m';
+
+        const renderWith = (stdout: string, item: Partial<WidgetItem>): string | null => {
+            respondWith(stdout);
+            return widget.render({ ...createItem(), ...item }, createContext(200), settings);
+        };
+
+        it('truncates coloured preserveColors output by visible width and closes the colour', () => {
+            const output = renderWith(`${SGR_ORANGE}feature/login-refactor${SGR_RESET}`, { preserveColors: true, maxWidth: 20 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature/login-ref...');
+            expect(getVisibleWidth(output)).toBe(20);
+            expect(output.startsWith(SGR_ORANGE)).toBe(true);
+            expect(output.endsWith(SGR_RESET)).toBe(true);
+        });
+
+        it('closes an 8-bit colour the truncation cut off', () => {
+            const output = renderWith('\x9b38;5;208mfeature/login-refactor\x9b0m', { preserveColors: true, maxWidth: 20 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature/login-ref...');
+            expect(output.endsWith(SGR_RESET)).toBe(true);
+        });
+
+        it('never cuts preserveColors output in the middle of an escape sequence', () => {
+            const output = renderWith(`${SGR_ORANGE}feature/login-refactor${SGR_RESET}`, { preserveColors: true, maxWidth: 10 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature...');
+            expect(output.startsWith(SGR_ORANGE)).toBe(true);
+        });
+
+        it('leaves coloured output that fits alone', () => {
+            const stdout = `${SGR_ORANGE}main${SGR_RESET}`;
+
+            expect(renderWith(stdout, { preserveColors: true, maxWidth: 20 })).toBe(stdout);
+        });
+
+        it('truncates wide characters by display columns', () => {
+            const output = renderWith('中'.repeat(20), { maxWidth: 20 }) ?? '';
+
+            expect(getVisibleWidth(output)).toBeLessThanOrEqual(20);
+            expect(output).toBe(`${'中'.repeat(8)}...`);
+        });
+
+        it('never splits a surrogate pair', () => {
+            const output = renderWith('😀'.repeat(15), { maxWidth: 20 }) ?? '';
+
+            expect(hasLoneSurrogate(output)).toBe(false);
+            expect(getVisibleWidth(output)).toBeLessThanOrEqual(20);
+            expect(output).toBe(`${'😀'.repeat(8)}...`);
+        });
+
+        it('still truncates plain output with an ellipsis', () => {
+            expect(renderWith('feature/login-refactor', { maxWidth: 20 })).toBe('feature/login-ref...');
+        });
     });
 });

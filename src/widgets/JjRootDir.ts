@@ -1,54 +1,22 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
-import {
-    isInsideJjRepo,
-    runJjArgs
-} from '../utils/jj';
+import type { WidgetItem } from '../types/Widget';
+import { runJjArgs } from '../utils/jj';
 
-import {
-    NO_JJ_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { JjWidgetBase } from './shared/jj-widget-base';
 
-export class JjRootDirWidget implements Widget {
+export class JjRootDirWidget extends JjWidgetBase {
+    protected readonly previewValue = 'my-repo';
+    protected readonly noJjText = 'no jj';
+
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows the jujutsu repository root directory name'; }
     getDisplayName(): string { return 'JJ Root Dir'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected getValue(context: RenderContext): string | null {
+        return runJjArgs(['root'], context);
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_JJ_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return 'my-repo';
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : 'no jj';
-        }
-
-        const rootDir = runJjArgs(['root'], context);
-        if (rootDir) {
-            return this.getRootDirName(rootDir);
-        }
-
-        return hideNoJj ? null : 'no jj';
-    }
-
-    private getRootDirName(rootDir: string): string {
+    protected formatValue(_item: WidgetItem, rootDir: string): string {
         const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
         const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
         const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
@@ -57,5 +25,4 @@ export class JjRootDirWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(): boolean { return true; }
 }

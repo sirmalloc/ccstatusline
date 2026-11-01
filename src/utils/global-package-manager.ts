@@ -1,8 +1,8 @@
 import {
     execFile,
     execFileSync
-} from 'child_process';
-import * as fs from 'fs';
+} from 'node:child_process';
+import * as fs from 'node:fs';
 
 import type { PackageCommandAvailability } from './claude-settings';
 import {
@@ -132,7 +132,11 @@ function getDirectoryName(filePath: string): string {
 }
 
 function getComparablePath(filePath: string): string {
-    return filePath.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+    const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    return isWindowsStylePath(normalized) || normalized.startsWith('/mnt/')
+        ? normalized.toLowerCase()
+        : normalized;
 }
 
 function getUniqueResolvedDirs(resolvedPaths: string[]): string[] {

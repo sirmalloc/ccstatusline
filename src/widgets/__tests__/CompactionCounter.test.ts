@@ -14,7 +14,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { ZERO_COMPACTION_STATS } from '../../utils/compaction';
 import { CompactionCounterWidget } from '../CompactionCounter';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()

@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -14,7 +14,11 @@ import type {
 import { CACHE_EMPTY_HIDEABLE_STATE } from './shared/cache-scope';
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
-import { removeMetadataKeys } from './shared/metadata';
+import {
+    isMetadataFlagEnabled,
+    removeMetadataKeys,
+    toggleMetadataFlag
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
@@ -23,15 +27,23 @@ import {
     type SymbolSlot
 } from './shared/symbol-override';
 
+const LABEL = 'Cache: ';
+
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
-// The expiry itself is never exposed (the transcript only records token counts),
-// so this is a best-effort countdown from the last turn; the TTL is configurable
-// to match whichever tier the user cares about.
+// Recent Claude Code reports the real expiry in status JSON as
+// prompt_cache.expires_at, which is used when present. The transcript-derived
+// countdown below stays as the fallback for older versions, where the expiry is
+// not exposed and the configured TTL is the only thing to count down from.
 const TTL_METADATA_KEY = 'ttlSeconds';
 const DEFAULT_TTL_SECONDS = 300;
 const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
 const TOGGLE_TTL_ACTION = 'toggle-ttl';
+
+// Same key, action and metadata flag as the reset timers, so short time works
+// the same way on every timer widget.
+const COMPACT_METADATA_KEY = 'compact';
+const TOGGLE_COMPACT_ACTION = 'toggle-compact';
 
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
@@ -50,6 +62,7 @@ interface TranscriptEntry {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     message?: {
+        content?: string | { type?: string; text?: string }[];
         usage?: {
             cache_read_input_tokens?: number;
             cache_creation_input_tokens?: number;
@@ -66,6 +79,31 @@ function hasCacheActivity(entry: TranscriptEntry): boolean {
         return true;
     }
     return (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) > 0;
+}
+
+// User-role rows Claude Code writes without sending an API request: the
+// marker left when a request is interrupted (Esc), and the bookkeeping rows of
+// local slash commands (/cost, /model, ...), which are answered in-process.
+// Prompt commands start with <command-message> instead and do reach the model.
+const INTERRUPT_MARKER_PREFIX = '[Request interrupted by user';
+const LOCAL_COMMAND_PREFIXES = ['<command-name>', '<local-command-stdout>', '<local-command-stderr>', '<local-command-caveat>'];
+
+// Whether this user row closes the exchange instead of starting or continuing
+// a request. Rows with unrecognized content are assumed to be requests.
+function endsTurnWithoutResponse(entry: TranscriptEntry): boolean {
+    const content = entry.message?.content;
+    let text: string | undefined;
+    if (typeof content === 'string') {
+        text = content;
+    } else if (Array.isArray(content) && content.length === 1 && content[0]?.type === 'text') {
+        text = content[0].text;
+    }
+    if (typeof text !== 'string') {
+        return false;
+    }
+    const trimmed = text.trimStart();
+    return trimmed.startsWith(INTERRUPT_MARKER_PREFIX)
+        || LOCAL_COMMAND_PREFIXES.some(prefix => trimmed.startsWith(prefix));
 }
 
 // A single transcript record can exceed the initial tail read (pasted prompts
@@ -101,8 +139,9 @@ type TranscriptState = { isWorking: true } | { isWorking: false; lastAssistant: 
  * Find the cache state from the newest main-chain rows in the transcript tail.
  * A trailing user-role row (a prompt or a tool result, both recorded as role
  * 'user' by Claude Code) means a turn is in flight and the cache is being
- * refreshed, so report { isWorking: true }. Once an assistant row has ended
- * the turn, the countdown anchors on the newest assistant row whose request
+ * refreshed, so report { isWorking: true }. Interrupt markers and local
+ * slash-command rows are the exception: nothing is sent for them, so like an
+ * assistant row they end the turn. Once the turn has ended, the countdown anchors on the newest assistant row whose request
  * actually read or wrote the cache.
  * The tail read grows until a relevant record fits in view, so a trailing
  * record larger than the initial read still resolves to a state.
@@ -157,8 +196,16 @@ function scanTailForState(tail: string): TranscriptState | null {
                 }
                 continue;
             }
-            if (entry.type === 'user' && !turnFinished) {
-                return { isWorking: true };
+            if (entry.type === 'user') {
+                // An interrupted request or a local command sends nothing,
+                // so the exchange is over but refreshed no cache.
+                if (endsTurnWithoutResponse(entry)) {
+                    turnFinished = true;
+                    continue;
+                }
+                if (!turnFinished) {
+                    return { isWorking: true };
+                }
             }
         } catch {
             continue;
@@ -203,13 +250,50 @@ function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
-function formatCountdown(remaining: number): string {
+/**
+ * Seconds left according to Claude Code's own prompt_cache.expires_at, or null
+ * when the field is absent (older Claude Code) or the session has not cached
+ * anything yet. Reported expiry beats any countdown inferred from timestamps:
+ * it survives a resumed session, and it is right even when the last turn read a
+ * cache entry written much earlier.
+ */
+function getReportedRemainingSeconds(context: RenderContext): number | null {
+    const cache = context.data?.prompt_cache;
+    if (!cache || cache.caching_observed === false) {
+        return null;
+    }
+    if (cache.warm === false) {
+        return 0;
+    }
+    const expiresAt = cache.expires_at;
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) {
+        return null;
+    }
+    return expiresAt - Date.now() / 1000;
+}
+
+function getReportedTtlSeconds(context: RenderContext): number | null {
+    switch (context.data?.prompt_cache?.ttl) {
+        case '5m': return 300;
+        case '1h': return 3600;
+        default: return null;
+    }
+}
+
+// Labeled like the reset timers ('4m 52s' / '4m52s') rather than clock
+// notation, so every timer widget reads the same way. Seconds always render:
+// they are the point of a cache countdown, and dropping a zero part the way
+// formatUsageDuration does would make the widget jump width every minute.
+function formatCountdown(remaining: number, compact: boolean): string {
     if (remaining <= 0) {
         return 'COLD';
     }
-    const m = Math.floor(remaining / 60);
-    const s = Math.floor(remaining % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    const total = Math.floor(remaining);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const parts = [h > 0 && `${h}${compact ? 'h' : 'hr'}`, (h > 0 || m > 0) && `${m}m`, `${s}s`];
+    return parts.filter(Boolean).join(compact ? '' : ' ');
 }
 
 // The glyph for the current drain state (excluding HOT, handled in render).
@@ -237,6 +321,7 @@ export class CacheTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining on the prompt cache TTL (5m by default, 1h configurable)'; }
     getDisplayName(): string { return 'Cache Timer'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
@@ -244,6 +329,10 @@ export class CacheTimerWidget implements Widget {
         const ttlSeconds = getTtlSeconds(item);
         if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
+        }
+
+        if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
+            modifiers.push('compact');
         }
         return {
             displayText: this.getDisplayName(),
@@ -260,42 +349,56 @@ export class CacheTimerWidget implements Widget {
             return cycleTtl(item);
         }
 
+        if (action === TOGGLE_COMPACT_ACTION) {
+            return toggleMetadataFlag(item, COMPACT_METADATA_KEY);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
+        const compact = isMetadataFlagEnabled(item, COMPACT_METADATA_KEY);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
+            const sample = formatCountdown(292, compact);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), sample));
+        }
+
+        const reportedRemaining = getReportedRemainingSeconds(context);
+        if (reportedRemaining !== null) {
+            const ttlSeconds = getReportedTtlSeconds(context) ?? getTtlSeconds(item);
+            const glyph = getStateSymbol(item, reportedRemaining, ttlSeconds);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(reportedRemaining, compact)));
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
         }
 
         const { lastAssistant } = state;
         if (!lastAssistant) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         const ttlSeconds = getTtlSeconds(item);
         const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
         const glyph = getStateSymbol(item, remaining, ttlSeconds);
 
-        return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(glyph, formatCountdown(remaining)));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining, compact)));
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
+            { key: 's', label: '(s)hort time', action: TOGGLE_COMPACT_ACTION },
             getSymbolKeybind()
         ];
     }

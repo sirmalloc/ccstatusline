@@ -8,6 +8,7 @@ import {
     vi
 } from 'vitest';
 
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     RefreshIntervalMenu,
     buildConfigureStatusLineItems,
@@ -35,7 +36,10 @@ class MockTtyStream extends PassThrough {
     }
 }
 
-interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+interface CapturedWriteStream extends NodeJS.WriteStream {
+    clearOutput: () => void;
+    getOutput: () => string;
+}
 
 function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
@@ -50,16 +54,27 @@ function createMockStdout(): CapturedWriteStream {
     });
 
     return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        clearOutput() {
+            chunks.length = 0;
+        },
         getOutput() {
             return chunks.join('');
         }
     });
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
+// Sends one key and waits for the redraw it causes to show the expected text
+async function press(stdin: NodeJS.ReadStream, stdout: CapturedWriteStream, key: string, expected: string | RegExp): Promise<void> {
+    stdout.clearOutput();
+    stdin.write(key);
+    await waitFor(() => {
+        expect(stdout.getOutput()).toMatch(expected);
     });
+}
+
+// The menu row marker, the row's icon, then its label
+function selected(label: string): RegExp {
+    return new RegExp(`▶\\s+\\S+\\s+${label}`);
 }
 
 describe('validateRefreshIntervalInput', () => {
@@ -239,25 +254,21 @@ describe('RefreshIntervalMenu', () => {
         );
 
         try {
-            await flushInk();
-            for (let index = 0; index < 3; index++) {
-                stdin.write('\u001B[B');
-                await flushInk();
+            await waitFor(() => {
+                expect(stdout.getOutput()).toMatch(selected('Refresh Interval'));
+            });
+            for (const label of ['Git Cache TTL', 'Custom Command Cache TTL', 'Terminal Width Cache TTL']) {
+                await press(stdin, stdout, '\u001B[B', selected(label));
             }
-            stdin.write('\r');
-            await flushInk();
-
-            expect(stdout.getOutput()).toContain('Enter Terminal Width cache TTL in seconds (0-300):');
+            await press(stdin, stdout, '\r', 'Enter Terminal Width cache TTL in seconds (0-300):');
             expect(stdout.getOutput()).toContain('no TTY detected');
 
-            stdin.write('\u007F');
-            await flushInk();
-            stdin.write('300');
-            await flushInk();
+            await press(stdin, stdout, '\u007F', 'Enter Terminal Width cache TTL');
+            await press(stdin, stdout, '300', '300');
             stdin.write('\r');
-            await flushInk();
-
-            expect(onTerminalWidthCacheTtlUpdate).toHaveBeenCalledWith(300);
+            await waitFor(() => {
+                expect(onTerminalWidthCacheTtlUpdate).toHaveBeenCalledWith(300);
+            });
             expect(onGitCacheTtlUpdate).not.toHaveBeenCalled();
             expect(onCustomCommandCacheTtlUpdate).not.toHaveBeenCalled();
             expect(onUpdate).not.toHaveBeenCalled();
@@ -300,17 +311,16 @@ describe('RefreshIntervalMenu', () => {
         );
 
         try {
-            await flushInk();
-            stdin.write('\r');
-            await flushInk();
-
-            expect(stdout.getOutput()).toContain('Enter refresh interval in seconds (1-60):');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toMatch(selected('Refresh Interval'));
+            });
+            await press(stdin, stdout, '\r', 'Enter refresh interval in seconds (1-60):');
             expect(stdout.getOutput()).not.toContain('10s');
 
             stdin.write('\r');
-            await flushInk();
-
-            expect(onUpdate).toHaveBeenCalledWith(null);
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalledWith(null);
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -351,19 +361,17 @@ describe('RefreshIntervalMenu', () => {
         );
 
         try {
-            await flushInk();
-            stdin.write('\u001B[B');
-            await flushInk();
-            stdin.write('\r');
-            await flushInk();
-
-            expect(stdout.getOutput()).toContain('Enter Git cache TTL in seconds (0-60):');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toMatch(selected('Refresh Interval'));
+            });
+            await press(stdin, stdout, '\u001B[B', selected('Git Cache TTL'));
+            await press(stdin, stdout, '\r', 'Enter Git cache TTL in seconds (0-60):');
             expect(stdout.getOutput()).toContain('unstaged and untracked working-tree changes');
 
             stdin.write('\r');
-            await flushInk();
-
-            expect(onGitCacheTtlUpdate).toHaveBeenCalledWith(0);
+            await waitFor(() => {
+                expect(onGitCacheTtlUpdate).toHaveBeenCalledWith(0);
+            });
             expect(onUpdate).not.toHaveBeenCalled();
         } finally {
             instance.unmount();
@@ -404,23 +412,19 @@ describe('RefreshIntervalMenu', () => {
         );
 
         try {
-            await flushInk();
-            stdin.write('\u001B[B');
-            await flushInk();
-            stdin.write('\u001B[B');
-            await flushInk();
-            stdin.write('\r');
-            await flushInk();
-
-            expect(stdout.getOutput()).toContain('Enter custom command cache TTL in seconds (0-60):');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toMatch(selected('Refresh Interval'));
+            });
+            await press(stdin, stdout, '\u001B[B', selected('Git Cache TTL'));
+            await press(stdin, stdout, '\u001B[B', selected('Custom Command Cache TTL'));
+            await press(stdin, stdout, '\r', 'Enter custom command cache TTL in seconds (0-60):');
             expect(stdout.getOutput()).toContain('how often they spawn a shell');
 
-            stdin.write('7');
-            await flushInk();
+            await press(stdin, stdout, '7', 'Enter custom command cache TTL');
             stdin.write('\r');
-            await flushInk();
-
-            expect(onCustomCommandCacheTtlUpdate).toHaveBeenCalledWith(7);
+            await waitFor(() => {
+                expect(onCustomCommandCacheTtlUpdate).toHaveBeenCalledWith(7);
+            });
             expect(onGitCacheTtlUpdate).not.toHaveBeenCalled();
         } finally {
             instance.unmount();

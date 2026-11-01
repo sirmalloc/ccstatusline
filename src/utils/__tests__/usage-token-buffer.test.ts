@@ -1,5 +1,5 @@
-import * as childProcess from 'child_process';
-import { createRequire } from 'module';
+import * as childProcess from 'node:child_process';
+import { createRequire } from 'node:module';
 import type { Mock } from 'vitest';
 import {
     afterEach,
@@ -12,7 +12,7 @@ import {
 
 import { getUsageToken } from '../usage-fetch';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()

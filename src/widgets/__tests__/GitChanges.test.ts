@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,11 +10,15 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitChangesWidget } from '../GitChanges';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -46,6 +50,9 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('GitChangesWidget', () => {
     beforeEach(() => {

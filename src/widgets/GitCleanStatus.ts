@@ -1,22 +1,12 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    getGitStatus,
-    isInsideGitWorkTree
-} from '../utils/git';
+import { getGitStatus } from '../utils/git';
 
-import {
-    NO_GIT_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { GitStatusWidgetBase } from './shared/git-status-widget';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -27,30 +17,16 @@ import {
 const CLEAN_SLOT: SymbolSlot = { id: 'symbolClean', label: 'Clean', defaultSymbol: '✓' };
 const DIRTY_SLOT: SymbolSlot = { id: 'symbolDirty', label: 'Dirty', defaultSymbol: '✗' };
 
-export class GitCleanStatusWidget implements Widget {
+export class GitCleanStatusWidget extends GitStatusWidgetBase {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows ✓ when the working tree is clean and ✗ when it is dirty'; }
     getDisplayName(): string { return 'Git Clean Status'; }
-    getCategory(): string { return 'Git'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected renderPreview(item: WidgetItem): string {
+        return item.rawValue ? 'clean' : getSlotSymbol(item, CLEAN_SLOT);
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_GIT_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return item.rawValue ? 'clean' : getSlotSymbol(item, CLEAN_SLOT);
-        }
-
-        if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '(no git)';
-        }
-
+    protected renderInWorkTree(item: WidgetItem, context: RenderContext): string {
         const clean = this.isClean(context);
         if (item.rawValue) {
             return clean ? 'clean' : 'dirty';
@@ -73,5 +49,4 @@ export class GitCleanStatusWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
 }

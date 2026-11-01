@@ -30,6 +30,11 @@ describe('migrations', () => {
         expect(needsMigration({}, 3)).toBe(true);
     });
 
+    it('does not migrate a config whose version is present but not a number', () => {
+        expect(needsMigration({ version: '4' }, 4)).toBe(false);
+        expect(needsMigration({ version: null }, 4)).toBe(false);
+    });
+
     it('returns original value for non-record migration input', () => {
         expect(migrateConfig('invalid', 3)).toBe('invalid');
         expect(migrateConfig(123, 3)).toBe(123);
@@ -55,8 +60,8 @@ describe('migrations', () => {
         }, 2) as Record<string, unknown>;
 
         expect(migrated.version).toBe(2);
-        expect(migrated.flexMode).toBe('full');
-        expect(migrated.compactThreshold).toBe(70);
+        expect(migrated.flexMode).toBeUndefined();
+        expect(migrated.compactThreshold).toBeUndefined();
         expect(migrated.colorLevel).toBe(3);
         expect(migrated.defaultSeparator).toBe('|');
         expect(migrated.defaultPadding).toBe(' ');
@@ -103,10 +108,10 @@ describe('v3 to v4 hide flag migration', () => {
     }
 
     it('bumps the version without touching unrelated data', () => {
-        const migrated = migrateConfig({ version: 3, flexMode: 'full' }, 4) as Record<string, unknown>;
+        const migrated = migrateConfig({ version: 3, colorLevel: 3 }, 4) as Record<string, unknown>;
 
         expect(migrated.version).toBe(4);
-        expect(migrated.flexMode).toBe('full');
+        expect(migrated.colorLevel).toBe(3);
         expect(migrated.updatemessage).toBeUndefined();
     });
 

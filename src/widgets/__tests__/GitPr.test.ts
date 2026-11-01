@@ -148,7 +148,10 @@ describe('GitPrWidget', () => {
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
         );
-        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', { includeChecks: false });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', {
+            includeChecks: false,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 
     it('should request checks when a CI widget shares the render context', () => {
@@ -156,7 +159,10 @@ describe('GitPrWidget', () => {
 
         render({ cwd: '/tmp/repo', needsChecks: true }, { getCachedGitReviewData });
 
-        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/repo', { includeChecks: true });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/repo', {
+            includeChecks: true,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 
     it('should truncate long titles', () => {
@@ -167,6 +173,27 @@ describe('GitPrWidget', () => {
 
         const result = render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => longPr });
         expect(result).toContain('This is a very long pull requ\u2026');
+    });
+
+    it.each([
+        {
+            name: 'without splitting an emoji',
+            title: 'Update the release workflow 🚀 for tagged builds',
+            expected: 'Update the release workflow \u2026'
+        },
+        {
+            name: 'by display width for wide characters',
+            title: '修复状态栏在窄终端下的显示问题并且添加更多的测试用例以及文档说明',
+            expected: '修复状态栏在窄终端下的显示问\u2026'
+        },
+        {
+            name: 'not at all when wide characters fit the width',
+            title: '修复状态栏在窄终端下的显示问题',
+            expected: '修复状态栏在窄终端下的显示问题'
+        }
+    ])('should truncate long titles $name', ({ title, expected }) => {
+        const result = render({ cwd: '/tmp/repo', hide: 'status' }, { getCachedGitReviewData: () => ({ ...SAMPLE_PR, title }) });
+        expect(result).toBe(`${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} ${expected}`);
     });
 
     it('should render MERGED status', () => {

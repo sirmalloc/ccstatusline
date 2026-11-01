@@ -53,6 +53,14 @@ describe('ContextPercentageWidget', () => {
         }).modifierText).toBe('(remaining)');
     });
 
+    it('reports the default label for the current used/remaining mode', () => {
+        const widget = new ContextPercentageWidget();
+        const base: WidgetItem = { id: 'context-percentage', type: 'context-percentage' };
+
+        expect(widget.getLabelPrefix(base)).toBe('Ctx Used: ');
+        expect(widget.getLabelPrefix({ ...base, metadata: { inverse: 'true' } })).toBe('Ctx Left: ');
+    });
+
     it('prefers context_window percentage over token metrics when both exist', () => {
         const widget = new ContextPercentageWidget();
         const item: WidgetItem = {
@@ -77,6 +85,30 @@ describe('ContextPercentageWidget', () => {
         };
 
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: 9.3%');
+    });
+
+    it('leaves output tokens out of the percentage worked out from current_usage', () => {
+        const widget = new ContextPercentageWidget();
+        const item: WidgetItem = {
+            id: 'context-percentage',
+            type: 'context-percentage'
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-sonnet-4-5-20250929' },
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: {
+                        input_tokens: 10000,
+                        output_tokens: 30000,
+                        cache_creation_input_tokens: 2000,
+                        cache_read_input_tokens: 38000
+                    }
+                }
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: 25.0%');
     });
 
     describe('Sonnet 4.5 with 1M context window', () => {

@@ -66,7 +66,6 @@ export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): Wid
             backgroundColor,
             bold,
             dim,
-            numberFormat,
             ...restWidget
         } = widget;
         return restWidget;
@@ -80,7 +79,6 @@ export function clearAllWidgetStyling(widgets: WidgetItem[]): WidgetItem[] {
             backgroundColor,
             bold,
             dim,
-            numberFormat,
             ...restWidget
         } = widget;
         return restWidget;

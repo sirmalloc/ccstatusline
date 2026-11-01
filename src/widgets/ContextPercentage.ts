@@ -31,6 +31,7 @@ export class ContextPercentageWidget implements Widget {
     getDescription(): string { return 'Shows percentage of context window used or remaining'; }
     getDisplayName(): string { return 'Context %'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(item: WidgetItem): string { return isContextInverse(item) ? 'Ctx Left: ' : 'Ctx Used: '; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers = [
             getContextInverseModifierText(item),
@@ -51,14 +52,13 @@ export class ContextPercentageWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
-        const label = isInverse ? 'Ctx Left: ' : 'Ctx Used: ';
         const sliderMode = getContextSliderMode(item);
         const contextPercentageMetrics = calculateContextPercentageMetrics(context);
         const format = resolveNumberFormat('percent', item, settings);
 
         const formatContextPercentage = (displayPercentage: number): string => {
             const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
-            return formatRawOrLabeledValue(item, label, sliderResult ?? formatPercent(displayPercentage, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderResult ?? formatPercent(displayPercentage, format));
         };
 
         if (context.isPreview) {

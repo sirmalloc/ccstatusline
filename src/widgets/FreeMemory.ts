@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
-import os from 'os';
+import { execSync } from 'node:child_process';
+import os from 'node:os';
 
 import type { NumberFormat } from '../types/NumberFormat';
 import type { RenderContext } from '../types/RenderContext';
@@ -10,18 +10,26 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    effectiveDecimals,
     renderMagnitude,
     resolveNumberFormat
 } from '../utils/number-format';
+
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Mem: ';
 
 function formatBytes(bytes: number, format: NumberFormat): string {
     const GB = 1024 ** 3;
     const MB = 1024 ** 2;
     const KB = 1024;
+    // Promote to the next unit once the smaller-unit value would round up to
+    // "1024" at the displayed precision (e.g. 1023.6M -> "1.0G", not "1024M").
+    const rollover = 1024 - 0.5 / 10 ** effectiveDecimals(format, 0);
 
-    if (bytes >= GB)
+    if (bytes >= MB * rollover)
         return `${renderMagnitude(bytes / GB, format, 1)}G`;
-    if (bytes >= MB)
+    if (bytes >= KB * rollover)
         return `${renderMagnitude(bytes / MB, format, 0)}M`;
     if (bytes >= KB)
         return `${renderMagnitude(bytes / KB, format, 0)}K`;
@@ -43,7 +51,7 @@ function getUsedMemoryMacOS(): number | null {
         const pageSizeString = pageSizeMatch?.[1];
         if (!pageSizeString)
             return null;
-        const pageSize = parseInt(pageSizeString, 10);
+        const pageSize = Number.parseInt(pageSizeString, 10);
 
         // Parse page counts
         let activePages = 0;
@@ -53,11 +61,11 @@ function getUsedMemoryMacOS(): number | null {
             const activeMatch = /Pages active:\s+(\d+)/.exec(line);
             const activeValue = activeMatch?.[1];
             if (activeValue)
-                activePages = parseInt(activeValue, 10);
+                activePages = Number.parseInt(activeValue, 10);
             const wiredMatch = /Pages wired down:\s+(\d+)/.exec(line);
             const wiredValue = wiredMatch?.[1];
             if (wiredValue)
-                wiredPages = parseInt(wiredValue, 10);
+                wiredPages = Number.parseInt(wiredValue, 10);
         }
 
         return (activePages + wiredPages) * pageSize;
@@ -71,6 +79,7 @@ export class FreeMemoryWidget implements Widget {
     getDescription(): string { return 'Shows system memory usage (used/total)'; }
     getDisplayName(): string { return 'Memory Usage'; }
     getCategory(): string { return 'Environment'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -79,7 +88,7 @@ export class FreeMemoryWidget implements Widget {
         const format = resolveNumberFormat('memory', item, settings);
         if (context.isPreview) {
             const value = `${formatBytes(12.4 * 1024 ** 3, format)}/${formatBytes(16 * 1024 ** 3, format)}`;
-            return item.rawValue ? value : `Mem: ${value}`;
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const total = os.totalmem();
@@ -95,7 +104,7 @@ export class FreeMemoryWidget implements Widget {
 
         const value = `${formatBytes(used, format)}/${formatBytes(total, format)}`;
 
-        return item.rawValue ? value : `Mem: ${value}`;
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
     }
 
     supportsRawValue(): boolean { return true; }
