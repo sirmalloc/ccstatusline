@@ -13,6 +13,11 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import {
+    gitCommandOf,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitShaWidget } from '../GitSha';
@@ -44,7 +49,7 @@ beforeEach(() => {
     clearGitCache();
     mockExecFileSync.mockImplementation((_command, args, options) => {
         const repo = REPOS[options?.cwd ?? ''];
-        const command = args.join(' ');
+        const command = gitCommandOf(args);
         if (repo && command === 'rev-parse --is-inside-work-tree') {
             return 'true\n';
         }
@@ -106,11 +111,14 @@ const WIDGETS: WidgetCase[] = [
         shows: { dirty: ['+*?'], clean: [null], staged: ['+'], unstaged: ['*'], untracked: ['?'], conflict: ['!+*'], empty: ['?'] }
     },
     {
-        type: 'git-sha', widget: new GitShaWidget(), name: 'Git SHA', color: 'gray', raw: false, glyphs: false,
+        type: 'git-sha', widget: new GitShaWidget(), name: 'Git SHA', color: 'brightBlack', raw: false, glyphs: false,
         preview: ['a1b2c3d'],
         shows: { dirty: ['abc1234'], clean: ['def5678'], staged: ['1111111'], unstaged: ['2222222'], untracked: ['3333333'], conflict: ['4444444'], empty: ['(no commit)'] }
     }
 ];
+
+mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe.each(WIDGETS)('$type', ({ type, widget, name, color, raw, glyphs, preview: [previewText, previewRaw], shows }) => {
     it('shows its sample in the preview, raw too when it has a raw mode', () => {

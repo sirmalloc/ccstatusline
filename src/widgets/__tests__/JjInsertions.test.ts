@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjInsertionsWidget } from '../JjInsertions';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
@@ -39,6 +40,8 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+mockExecutableResolution();
+
 describe('JjInsertionsWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -54,14 +57,15 @@ describe('JjInsertionsWidget', () => {
 
         expect(render({ cwd: '/my/project' })).toBe('+7');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/my/project'
         });
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--color=never', 'diff', '--stat']);
     });
 
     it('should render no jj when not in repo', () => {

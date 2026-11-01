@@ -17,6 +17,7 @@ import {
     CCSTATUSLINE_COMMANDS,
     buildStatusLineCommand,
     classifyInstallation,
+    getAutoCompactConfig,
     getClaudeCodeVersion,
     getClaudeJsonPath,
     getClaudeSettingsPath,
@@ -62,6 +63,11 @@ function writeRawClaudeSettings(content: string): void {
 
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
+    // Every home lookup in this file resolves into the temp directory: an
+    // install test must never touch the developer's real configs, even when
+    // a code change (or a mutation-testing mutant) breaks the settings parse
+    // and the code path materialises defaults.
+    vi.spyOn(os, 'homedir').mockReturnValue(testClaudeConfigDir);
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
     config.initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
@@ -69,6 +75,13 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     config.initConfigPath();
+    // Tests may delete CLAUDE_CONFIG_DIR (the default-path resolution test);
+    // restore it so later tests and other files don't reach the real home
+    if (ORIGINAL_CLAUDE_CONFIG_DIR === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+        process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+    }
     if (testClaudeConfigDir) {
         fs.rmSync(testClaudeConfigDir, { recursive: true, force: true });
     }
@@ -80,6 +93,72 @@ afterAll(() => {
     } else {
         process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
     }
+});
+
+describe('getAutoCompactConfig', () => {
+    function writeLayer(relativePath: string, value: unknown): void {
+        const file = path.join(testClaudeConfigDir, relativePath);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(value));
+    }
+
+    it('reads token counts from the overridden Claude config directory', () => {
+        writeLayer('settings.json', { autoCompactWindow: 200000, autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 200000 });
+    });
+
+    it.each([true, false])('falls back to the legacy toggle %s without taking its window', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: enabled, autoCompactWindow: 100000 });
+        writeLayer('settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled, windowSize: 300000 });
+    });
+
+    it('reads the legacy preference from the home directory without a config override', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+        writeLayer('.claude.json', { autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(false);
+    });
+
+    it.each([true, false])('prioritizes an explicit settings toggle %s over the legacy preference', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: !enabled });
+        writeLayer('settings.json', { autoCompactEnabled: enabled });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(enabled);
+    });
+
+    it.each(['{ invalid JSON', 'null', '{"autoCompactEnabled":"false"}', '{}'])('ignores invalid legacy preferences: %s', (content) => {
+        fs.writeFileSync(getClaudeJsonPath(), content);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: undefined, windowSize: undefined });
+    });
+
+    it('merges each field independently with local settings above project and user settings', () => {
+        writeLayer('settings.json', { autoCompactWindow: 800000, autoCompactEnabled: false });
+        writeLayer('settings.local.json', { autoCompactWindow: 600000 });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 400000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.local.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: true, windowSize: 200000 });
+    });
+
+    it('ignores malformed fields individually and never rewrites malformed JSON', () => {
+        writeLayer('settings.json', { autoCompactWindow: 500000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: '60', autoCompactEnabled: false });
+        const localFile = path.join(testClaudeConfigDir, 'project/.claude/settings.local.json');
+        fs.writeFileSync(localFile, '{ invalid JSON');
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 500000 });
+        expect(fs.readFileSync(localFile, 'utf-8')).toBe('{ invalid JSON');
+    });
+
+    it.each([80, 0, -1, 1000001, 200000.5, null, '200000'])('ignores an invalid window of %s', (window) => {
+        writeLayer('settings.json', { autoCompactWindow: window });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBeUndefined();
+    });
+
+    it('refreshes settings and does not leak values between projects', () => {
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(200000);
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(300000);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'other')).windowSize).toBeUndefined();
+    });
 });
 
 describe('isKnownCommand', () => {
@@ -353,6 +432,19 @@ describe('installStatusLine refreshInterval', () => {
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
+
+    it('should preserve existing refreshInterval when version is unsupported', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        }));
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
+        expect(readInstalledRefreshInterval()).toBe(5);
+    });
 });
 
 describe('refreshInterval', () => {
@@ -489,6 +581,23 @@ describe('backup and error handling behavior', () => {
         expect(orig.statusLine?.command).toBe('old-command');
     });
 
+    // settings.json can hold secrets (env, apiKeyHelper), so its backups must
+    // not be readable by anyone who can't read it
+    it.skipIf(process.platform === 'win32')('gives .bak and .orig backups the permissions of a private settings file', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.bak`, 0o644);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.orig`).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.bak`).mode & 0o777).toBe(0o600);
+    });
+
     it('loadClaudeSettings should return empty object when settings file is missing', async () => {
         await expect(loadClaudeSettings()).resolves.toEqual({});
     });
@@ -518,25 +627,16 @@ describe('backup and error handling behavior', () => {
         }
     });
 
-    it('installStatusLine should warn and recover when existing settings are invalid', async () => {
+    it('installStatusLine should abort without touching existing settings that cannot be parsed', async () => {
         writeRawClaudeSettings('{ invalid json');
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        try {
-            await installStatusLine({ commandMode: 'auto-npx' });
+        const settingsPath = getClaudeSettingsPath();
 
-            const settingsPath = getClaudeSettingsPath();
-            const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
-            expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
-            expect(installed.statusLine?.padding).toBe(0);
-            expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
-            expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');
+        const installPromise = installStatusLine({ commandMode: 'auto-npx' });
+        await expect(installPromise).rejects.toThrow(settingsPath);
 
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `Warning: Could not read existing Claude settings. A backup exists at ${settingsPath}.orig.`
-            );
-        } finally {
-            consoleErrorSpy.mockRestore();
-        }
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+        expect(fs.existsSync(`${settingsPath}.bak`)).toBe(false);
+        expect(fs.existsSync(`${settingsPath}.orig`)).toBe(false);
     });
 
     it('uninstallStatusLine should warn and return without modifying invalid settings', async () => {
@@ -653,7 +753,7 @@ describe('backup and error handling behavior', () => {
     it.each([
         {
             name: 'fails validation',
-            content: JSON.stringify({ flexMode: 'not-a-mode', lines: [[{ id: 'skills-1', type: 'skills' }]] })
+            content: JSON.stringify({ colorLevel: 'not-a-level', lines: [[{ id: 'skills-1', type: 'skills' }]] })
         },
         {
             name: 'is not valid JSON',

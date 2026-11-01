@@ -13,13 +13,20 @@ function getSkillsDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline', 'skills');
 }
 
-export function getSkillsFilePath(sessionId: string): string {
+// Claude Code's session ids are UUIDs. The id arrives in the hook and status
+// payloads, so anything that could name another folder gets no log.
+const SAFE_SESSION_ID = /^[A-Za-z0-9_-]+$/;
+
+export function getSkillsFilePath(sessionId: string): string | null {
+    if (!SAFE_SESSION_ID.test(sessionId)) {
+        return null;
+    }
     return path.join(getSkillsDir(), `skills-${sessionId}.jsonl`);
 }
 
 export function getSkillsMetrics(sessionId: string): SkillsMetrics {
     const filePath = getSkillsFilePath(sessionId);
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
         return EMPTY;
     }
 

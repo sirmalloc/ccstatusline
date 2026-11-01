@@ -11,9 +11,7 @@ interface Migration {
 }
 
 type V1MigratedField
-    = | 'flexMode'
-        | 'compactThreshold'
-        | 'colorLevel'
+    = | 'colorLevel'
         | 'defaultSeparator'
         | 'defaultPadding'
         | 'inheritSeparatorColors'
@@ -32,14 +30,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const V1_FIELD_RULES: V1FieldRule[] = [
-    {
-        key: 'flexMode',
-        isValid: value => typeof value === 'string'
-    },
-    {
-        key: 'compactThreshold',
-        isValid: value => typeof value === 'number'
-    },
     {
         key: 'colorLevel',
         isValid: value => typeof value === 'number'
@@ -416,5 +406,10 @@ export function migrateConfig(data: unknown, targetVersion: number): unknown {
  * Check if a migration is needed
  */
 export function needsMigration(data: unknown, targetVersion: number): boolean {
+    // A version that is present but not a number is invalid, not v1: migrating it as v1
+    // would rebuild the config from its v1 fields and drop everything else
+    if (isRecord(data) && 'version' in data && typeof data.version !== 'number')
+        return false;
+
     return detectVersion(data) < targetVersion;
 }

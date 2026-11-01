@@ -1,4 +1,7 @@
-import { execSync } from 'node:child_process';
+import {
+    execFileSync,
+    execSync
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -190,18 +193,16 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
             fs.mkdirSync(fontDir, { recursive: true });
         }
 
-        // Create temporary directory for font download
-        const tempDir = path.join(os.tmpdir(), `ccstatusline-powerline-fonts-${Date.now()}`);
+        // A new folder only this account can use for the download: os.tmpdir()
+        // is shared on Linux, and a folder another account created first would
+        // let it swap install.sh between the clone and running it
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-powerline-fonts-'));
 
         try {
-            // Clean up if temp directory exists
-            if (fs.existsSync(tempDir)) {
-                fs.rmSync(tempDir, { recursive: true, force: true });
-            }
-
             // Clone Powerline fonts repository
-            execSync(
-                `git clone --depth=1 https://github.com/powerline/fonts.git "${tempDir}"`,
+            execFileSync(
+                'git',
+                ['clone', '--depth=1', 'https://github.com/powerline/fonts.git', tempDir],
                 {
                     stdio: 'pipe',
                     encoding: 'utf8',
@@ -218,10 +219,10 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     fs.chmodSync(installScript, 0o755);
 
                     // Run install script
-                    execSync(`cd "${tempDir}" && ./install.sh`, {
+                    execFileSync(installScript, [], {
+                        cwd: tempDir,
                         stdio: 'pipe',
                         encoding: 'utf8',
-                        shell: '/bin/bash',
                         windowsHide: true
                     });
 

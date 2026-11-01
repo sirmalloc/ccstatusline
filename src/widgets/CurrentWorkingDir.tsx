@@ -15,8 +15,16 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import type { IdeLinkMode } from '../utils/hyperlink';
+import {
+    IDE_LINK_MODES,
+    buildFileUrl,
+    buildIdeFileUrl,
+    renderOsc8Link
+} from '../utils/hyperlink';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { BlinkingCursor } from './shared/BlinkingCursor';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     SYMBOL_OVERRIDE_ACTION,
@@ -26,6 +34,15 @@ import {
 } from './shared/symbol-override';
 
 const LABEL = 'cwd: ';
+const LINK_KEY = 'linkTo';
+const CYCLE_LINK_ACTION = 'cycle-link';
+const CWD_LINK_MODES = ['file', ...IDE_LINK_MODES] as const;
+type CwdLinkMode = (typeof CWD_LINK_MODES)[number];
+const LINK_MODE_LABELS: Record<CwdLinkMode, string> = {
+    file: 'file',
+    vscode: 'VS Code',
+    cursor: 'Cursor'
+};
 
 export class CurrentWorkingDirWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -37,6 +54,7 @@ export class CurrentWorkingDirWidget implements Widget {
         const segments = item.metadata?.segments ? Number.parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
+        const linkMode = this.getLinkMode(item);
         const modifiers: string[] = [];
 
         if (abbreviateHome) {
@@ -49,6 +67,10 @@ export class CurrentWorkingDirWidget implements Widget {
             modifiers.push(`segments: ${segments}`);
         }
 
+        if (linkMode) {
+            modifiers.push(`link: ${LINK_MODE_LABELS[linkMode]}`);
+        }
+
         return {
             displayText: this.getDisplayName(),
             modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
@@ -56,6 +78,10 @@ export class CurrentWorkingDirWidget implements Widget {
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === CYCLE_LINK_ACTION) {
+            return this.cycleLinkMode(item);
+        }
+
         if (action === 'toggle-abbreviate-home') {
             const currentAbbreviateHome = item.metadata?.abbreviateHome === 'true';
             const newAbbreviateHome = !currentAbbreviateHome;
@@ -115,31 +141,24 @@ export class CurrentWorkingDirWidget implements Widget {
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
         const symbolPrefix = formatSymbolPrefix(item, '');
+        const linkMode = this.getLinkMode(item);
 
         if (context.isPreview) {
             let previewPath: string;
+            const fullPreviewPath = '/Users/example/Documents/Projects/my-project';
 
             if (fishStyle) {
                 previewPath = '~/D/P/my-project';
-            } else if (abbreviateHome && segments && segments > 0) {
-                if (segments === 1) {
-                    previewPath = '~/.../my-project';
-                } else {
-                    previewPath = '~/.../Projects/my-project';
-                }
-            } else if (abbreviateHome) {
-                previewPath = '~/Documents/Projects/my-project';
-            } else if (segments && segments > 0) {
-                if (segments === 1) {
-                    previewPath = '.../project';
-                } else {
-                    previewPath = '.../example/project';
-                }
             } else {
-                previewPath = '/Users/example/Documents/Projects/my-project';
+                previewPath = abbreviateHome ? '~/Documents/Projects/my-project' : fullPreviewPath;
+                if (segments && segments > 0) {
+                    previewPath = this.keepLastSegments(previewPath, segments);
+                }
             }
 
-            return `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), previewPath)}`;
+            const text = `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), previewPath)}`;
+            const linkTarget = linkMode ? this.buildLinkTarget(fullPreviewPath, linkMode) : null;
+            return linkTarget ? renderOsc8Link(linkTarget, text) : text;
         }
 
         const cwd = context.data?.cwd;
@@ -158,25 +177,13 @@ export class CurrentWorkingDirWidget implements Widget {
 
             // Then apply segments truncation
             if (segments && segments > 0) {
-                // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
-                const useBackslash = displayPath.includes('\\') && !displayPath.includes('/');
-                const outSep = useBackslash ? '\\' : '/';
-                const pathParts = displayPath.split(/[\\/]+/);
-
-                // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
-                const filteredParts = pathParts.filter(part => part !== '');
-
-                if (filteredParts.length > segments) {
-                    // Take the last N segments and join with the detected separator
-                    const selectedSegments = filteredParts.slice(-segments);
-                    // Preserve ~ prefix when combined with segments
-                    const prefix = displayPath.startsWith('~') ? `~${outSep}` : '';
-                    displayPath = prefix + '...' + outSep + selectedSegments.join(outSep);
-                }
+                displayPath = this.keepLastSegments(displayPath, segments);
             }
         }
 
-        return `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), displayPath)}`;
+        const text = `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), displayPath)}`;
+        const linkTarget = linkMode ? this.buildLinkTarget(cwd, linkMode) : null;
+        return linkTarget ? renderOsc8Link(linkTarget, text) : text;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -184,6 +191,7 @@ export class CurrentWorkingDirWidget implements Widget {
             { key: 'h', label: '(h)ome ~', action: 'toggle-abbreviate-home' },
             { key: 's', label: '(s)egments', action: 'edit-segments' },
             { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' },
+            { key: 'l', label: '(l)ink mode', action: CYCLE_LINK_ACTION },
             getSymbolKeybind()
         ];
     }
@@ -197,6 +205,76 @@ export class CurrentWorkingDirWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+
+    private getLinkMode(item: WidgetItem): CwdLinkMode | null {
+        const configuredMode = item.metadata?.[LINK_KEY];
+        return configuredMode && CWD_LINK_MODES.includes(configuredMode as CwdLinkMode)
+            ? configuredMode as CwdLinkMode
+            : null;
+    }
+
+    private cycleLinkMode(item: WidgetItem): WidgetItem {
+        const currentMode = this.getLinkMode(item);
+        const currentIndex = currentMode ? CWD_LINK_MODES.indexOf(currentMode) : -1;
+        const nextMode = currentIndex === CWD_LINK_MODES.length - 1
+            ? null
+            : (CWD_LINK_MODES[currentIndex + 1] ?? null);
+        const {
+            [LINK_KEY]: removedLink,
+            ...restMetadata
+        } = item.metadata ?? {};
+
+        return {
+            ...item,
+            metadata: nextMode
+                ? { ...restMetadata, [LINK_KEY]: nextMode }
+                : (Object.keys(restMetadata).length > 0 ? restMetadata : undefined)
+        };
+    }
+
+    private buildLinkTarget(path: string, linkMode: CwdLinkMode): string | null {
+        try {
+            if (linkMode === 'file') {
+                return buildFileUrl(path);
+            }
+
+            return this.isAbsoluteFilePath(path)
+                ? buildIdeFileUrl(path, linkMode satisfies IdeLinkMode)
+                : null;
+        } catch {
+            // The cwd comes from session input. A malformed Unicode path should
+            // keep the widget visible without enabling a broken link.
+            return null;
+        }
+    }
+
+    private isAbsoluteFilePath(path: string): boolean {
+        return path.startsWith('/')
+            || /^[A-Za-z]:[\\/]/.test(path)
+            || /^\\\\[^\\]/.test(path);
+    }
+
+    private keepLastSegments(path: string, segments: number): string {
+        // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
+        const useBackslash = path.includes('\\') && !path.includes('/');
+        const outSep = useBackslash ? '\\' : '/';
+        const pathParts = path.split(/[\\/]+/);
+
+        // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
+        const filteredParts = pathParts.filter(part => part !== '');
+
+        // Preserve ~ prefix when combined with segments; it stands for the home
+        // directory, so it isn't one of the segments
+        const prefix = filteredParts[0] === '~' ? `~${outSep}` : '';
+        const pathSegments = prefix ? filteredParts.slice(1) : filteredParts;
+
+        if (pathSegments.length <= segments) {
+            return path;
+        }
+
+        // Take the last N segments and join with the detected separator
+        return prefix + '...' + outSep + pathSegments.slice(-segments).join(outSep);
+    }
 
     private abbreviateHomeDir(path: string): string {
         const homeDir = os.homedir();
@@ -288,7 +366,7 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
                 <Box>
                     <Text>Enter number of segments to display (blank for full path): </Text>
                     <Text>{segmentsInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

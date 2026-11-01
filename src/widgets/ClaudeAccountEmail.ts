@@ -26,7 +26,15 @@ export class ClaudeAccountEmailWidget implements Widget {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'you@example.com');
         }
 
-        const email = getClaudeAccountEmail();
+        // .claude.json's oauthAccount is written at login and can still name a
+        // previous account after the credentials change (#538). A failed
+        // lookup for an existing login must not fall back to that snapshot.
+        if (context.accountEmail?.status === 'unavailable') {
+            return null;
+        }
+        const email = context.accountEmail?.status === 'available'
+            ? context.accountEmail.email
+            : getClaudeAccountEmail();
         if (email === null) {
             return null;
         }

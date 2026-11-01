@@ -9,7 +9,10 @@ import {
     vi
 } from 'vitest';
 
-import { DEFAULT_SETTINGS } from '../../../types/Settings';
+import {
+    DEFAULT_SETTINGS,
+    SettingsSchema
+} from '../../../types/Settings';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     PowerlineSeparatorEditor,
@@ -282,6 +285,75 @@ describe('PowerlineSeparatorEditor', () => {
             expect(updatedSettings).toBeDefined();
             expect(updatedSettings?.powerline[capKey]).toHaveLength(4);
             expect(updatedSettings?.powerline[capKey][1]).toBe(expectedDefaultCap);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it.each([
+        ['t', 't'],
+        ['→', '\x1b[C']
+    ])('keeps separator inversion saveable when %s edits a separator past a short inversion list', async (_key, input) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSeparatorEditorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineSeparatorEditor, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        separators: ['\uE0B0', '\uE0B0', '\uE0B0'],
+                        // The schema default, left as is when separators are added by hand
+                        separatorInvertBackground: [false]
+                    }
+                },
+                mode: 'separator',
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  1:');
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  2:');
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  3:');
+            });
+
+            stdin.write(input);
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings?.powerline.separatorInvertBackground).toEqual([false, false, true]);
+            // What ctrl+s writes must load back
+            const saved: unknown = JSON.parse(JSON.stringify(updatedSettings));
+            expect(SettingsSchema.safeParse(saved).success).toBe(true);
         } finally {
             instance.unmount();
             instance.cleanup();

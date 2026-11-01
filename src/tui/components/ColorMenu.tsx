@@ -16,7 +16,10 @@ import {
     getAvailableColorsForUI
 } from '../../utils/colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
-import { shouldInsertInput } from '../../utils/input-guards';
+import {
+    getPlainInput,
+    shouldInsertInput
+} from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -68,6 +71,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         // If no items, any key goes back
         if (hasNoItems) {
             onBack();
@@ -228,19 +232,25 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             } else {
                 onBack();
             }
-        } else if (input === 'h' || input === 'H') {
+        } else if (key.return) {
+            // Back is chosen here rather than through SelectInput's onSelect, which
+            // number keys fire too
+            if (highlightedItemId === 'back') {
+                onBack();
+            }
+        } else if (shortcut === 'h' || shortcut === 'H') {
             // Enter hex input mode (only in truecolor mode)
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 3) {
                 setHexInputMode(true);
                 setHexInput('');
             }
-        } else if (input === 'a' || input === 'A') {
+        } else if (shortcut === 'a' || shortcut === 'A') {
             // Enter ansi256 input mode (only in 256 color mode)
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 2) {
                 setAnsi256InputMode(true);
                 setAnsi256Input('');
             }
-        } else if (input === 'g' || input === 'G') {
+        } else if (shortcut === 'g' || shortcut === 'G') {
             // Enter gradient selection mode (foreground only, needs a real color palette)
             if (highlightedItemId && highlightedItemId !== 'back' && !editingBackground && settings.colorLevel >= 2) {
                 setGradientMode(true);
@@ -249,18 +259,23 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 setGradientStartHex('');
                 setGradientHexInput('');
             }
-        } else if ((input === 's' || input === 'S') && !key.ctrl) {
+        } else if (shortcut === 's' || shortcut === 'S') {
             // Toggle show separators (only if not in powerline mode and no default separator)
             if (!settings.powerline.enabled && !settings.defaultSeparator) {
                 setShowSeparators(!showSeparators);
-                // The highlighted item ID will be maintained, and we'll recalculate
-                // the initial index when rendering the SelectInput
+                // The highlighted item ID is kept, and the SelectInput recalculates its
+                // initial index. Hiding the highlighted separator takes it off the list,
+                // so the highlight moves to the first widget instead.
+                const highlightedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                if (showSeparators && highlightedWidget?.type === 'separator') {
+                    setHighlightedItemId(colorableWidgets.find(widget => widget.type !== 'separator')?.id ?? null);
+                }
             }
-        } else if (input === 'f' || input === 'F') {
+        } else if (shortcut === 'f' || shortcut === 'F') {
             if (colorableWidgets.length > 0) {
                 setEditingBackground(!editingBackground);
             }
-        } else if (input === 'b' || input === 'B') {
+        } else if (shortcut === 'b' || shortcut === 'B') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Toggle bold for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
@@ -269,7 +284,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     onUpdate(newItems);
                 }
             }
-        } else if (input === 'd' || input === 'D') {
+        } else if (shortcut === 'd' || shortcut === 'D') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Cycle dim for the highlighted item: off -> whole -> parens -> off
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
@@ -278,7 +293,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     onUpdate(newItems);
                 }
             }
-        } else if (input === 'r' || input === 'R') {
+        } else if (shortcut === 'r' || shortcut === 'R') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Reset all styling (color, background, and bold) for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
@@ -287,7 +302,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     onUpdate(newItems);
                 }
             }
-        } else if (input === 'c' || input === 'C') {
+        } else if (shortcut === 'c' || shortcut === 'C') {
             // Show clear all confirmation
             setShowClearConfirm(true);
         } else if (key.leftArrow || key.rightArrow) {
@@ -364,13 +379,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         };
     });
     menuItems.push({ label: '← Back', value: 'back' });
-
-    const handleSelect = (selected: { value: string }) => {
-        if (selected.value === 'back') {
-            onBack();
-        }
-        // Enter no longer cycles colors - use left/right arrow keys instead
-    };
 
     const handleHighlight = (item: { value: string }) => {
         setHighlightedItemId(item.value);
@@ -642,7 +650,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     <SelectInput
                         key={`${showSeparators}-${highlightedItemId}`}
                         items={menuItems}
-                        onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         initialIndex={Math.max(0, menuItems.findIndex(item => item.value === highlightedItemId))}
                         indicatorComponent={({ isSelected }) => (

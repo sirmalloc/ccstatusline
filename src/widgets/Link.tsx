@@ -16,6 +16,9 @@ import type {
 } from '../types/Widget';
 import { renderOsc8Link } from '../utils/hyperlink';
 import { shouldInsertInput } from '../utils/input-guards';
+import { isSafeHyperlinkUrl } from '../utils/terminal-sanitize';
+
+import { BlinkingCursor } from './shared/BlinkingCursor';
 
 function isValidHttpUrl(url: string): boolean {
     try {
@@ -103,7 +106,8 @@ export class LinkWidget implements Widget {
             return displayText;
         }
 
-        return renderOsc8Link(url, displayText);
+        // The parsed form percent-encodes what a link can't carry as is
+        return renderOsc8Link(isSafeHyperlinkUrl(url) ? url : new URL(url).href, displayText);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -188,7 +192,7 @@ const LinkEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel,
             <Text>
                 {prompt}
                 {activeValue.slice(0, activeCursor)}
-                <Text backgroundColor='gray' color='black'>{activeValue[activeCursor] ?? ' '}</Text>
+                <BlinkingCursor>{activeValue[activeCursor] ?? ' '}</BlinkingCursor>
                 {activeValue.slice(activeCursor + 1)}
             </Text>
             {isUrlMode ? (

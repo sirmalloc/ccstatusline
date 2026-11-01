@@ -187,6 +187,50 @@ describe('update checker', () => {
         expect(execFileSpy.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ shell: true }));
     });
 
+    // The version is shown in install commands and, for npm on Windows, runs
+    // through cmd.exe, so only a plain release version is accepted
+    it.each(['2.3.0 & calc', '2.3.0"', '^2.3.0', 'latest', '2.3'])('treats the registry version %j as a registry failure', async (latestVersion) => {
+        const result = await checkForUpdates({
+            currentVersion: '2.2.13',
+            installedCommand: CCSTATUSLINE_COMMANDS.NPM,
+            commandAvailability: ALL_AVAILABLE,
+            latestVersionFetcher: () => Promise.resolve(latestVersion)
+        });
+
+        expect(result).toEqual({
+            status: 'registry-failure',
+            currentVersion: '2.2.13',
+            installation: {
+                method: 'auto-update',
+                packageManager: 'npm'
+            },
+            errorMessage: 'npm registry returned an invalid version'
+        });
+    });
+
+    it.each(['2.3.0', '2.3.0-beta.1', '10.0.0+build.5'])('accepts the registry version %j', async (latestVersion) => {
+        const result = await checkForUpdates({
+            currentVersion: '2.2.13',
+            installedCommand: null,
+            commandAvailability: ALL_AVAILABLE,
+            latestVersionFetcher: () => Promise.resolve(latestVersion)
+        });
+
+        expect(result.status).toBe('update-available');
+    });
+
+    it('refuses to install a version that is not a plain release version', async () => {
+        const execFileSpy = vi.spyOn(childProcess, 'execFile').mockImplementation(((...args: unknown[]) => {
+            const callback = args[3] as (error: Error | null) => void;
+            callback(null);
+            return {};
+        }) as typeof childProcess.execFile);
+
+        await expect(runGlobalPackageInstall('npm', '2.3.0 & calc', { platform: 'win32' }))
+            .rejects.toThrow('Not a release version');
+        expect(execFileSpy).not.toHaveBeenCalled();
+    });
+
     it('does not offer global actions for auto-update installs', () => {
         initConfigPath();
         const result = buildUpdateCheckResult({

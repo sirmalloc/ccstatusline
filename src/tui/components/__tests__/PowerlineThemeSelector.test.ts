@@ -9,8 +9,19 @@ import {
     vi
 } from 'vitest';
 
-import { DEFAULT_SETTINGS } from '../../../types/Settings';
+import type { RenderContext } from '../../../types/RenderContext';
+import {
+    DEFAULT_SETTINGS,
+    type Settings
+} from '../../../types/Settings';
+import type { WidgetItem } from '../../../types/Widget';
 import { getPowerlineThemes } from '../../../utils/colors';
+import { advanceGlobalPowerlineThemeIndex } from '../../../utils/powerline-theme-index';
+import {
+    calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
+    renderStatusLine
+} from '../../../utils/renderer';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     PowerlineThemeSelector,
@@ -43,6 +54,39 @@ function createMockStdin(): NodeJS.ReadStream {
 
 function createMockStdout(): NodeJS.WriteStream {
     return new MockTtyStream() as unknown as NodeJS.WriteStream;
+}
+
+function text(id: string, customText: string, merge?: boolean): WidgetItem {
+    return { id, type: 'custom-text', customText, merge };
+}
+
+function nordAuroraSettings(lines: WidgetItem[][], continueThemeAcrossLines: boolean): Settings {
+    return {
+        ...DEFAULT_SETTINGS,
+        colorLevel: 2,
+        lines,
+        powerline: {
+            ...DEFAULT_SETTINGS.powerline,
+            enabled: true,
+            theme: 'nord-aurora',
+            continueThemeAcrossLines
+        }
+    };
+}
+
+// Renders every line as the status line does, carrying the theme index across lines
+function renderLines(settings: Settings): string[] {
+    const context: RenderContext = { isPreview: true, terminalWidth: 200 };
+    const preRenderedLines = preRenderAllWidgets(settings.lines, settings, context);
+    const maxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+    let globalPowerlineThemeIndex = 0;
+
+    return settings.lines.map((line, lineIndex) => {
+        const preRenderedWidgets = preRenderedLines[lineIndex] ?? [];
+        const rendered = renderStatusLine(line, settings, { ...context, lineIndex, globalPowerlineThemeIndex }, preRenderedWidgets, maxWidths);
+        globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
+        return rendered;
+    });
 }
 
 describe('PowerlineThemeSelector helpers', () => {
@@ -88,6 +132,33 @@ describe('PowerlineThemeSelector helpers', () => {
             color: 'ansi256:235',
             backgroundColor: 'ansi256:214'
         });
+    });
+
+    it('keeps a merged group on the one theme color the renderer gives it', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA', true), text('b', 'BBB'), text('c', 'CCC')]], false);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[0]?.[1]?.backgroundColor).toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
+    });
+
+    it('continues the theme colors across lines when Continue Theme is on', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA'), text('b', 'BBB')], [text('c', 'CCC'), text('d', 'DDD')]], true);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[1]?.[0]?.backgroundColor).not.toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
+    });
+
+    it('restarts the theme colors on each line when Continue Theme is off', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA'), text('b', 'BBB')], [text('c', 'CCC'), text('d', 'DDD')]], false);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[1]?.[0]?.backgroundColor).toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
     });
 
     it('returns null when the requested theme cannot be customized', () => {

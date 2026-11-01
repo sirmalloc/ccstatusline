@@ -18,7 +18,11 @@ let testHomeDir = '';
 let consoleLogSpy: MockInstance<typeof console.log>;
 
 function readSkillsLog(sessionId: string): Record<string, unknown>[] {
-    return fs.readFileSync(getSkillsFilePath(sessionId), 'utf-8')
+    const skillsPath = getSkillsFilePath(sessionId);
+    if (!skillsPath) {
+        throw new Error(`no skills log for ${sessionId}`);
+    }
+    return fs.readFileSync(skillsPath, 'utf-8')
         .trim()
         .split('\n')
         .map(line => JSON.parse(line) as Record<string, unknown>);
@@ -45,6 +49,18 @@ describe('handleHookInput', () => {
         handleHookInput(JSON.stringify({ session_id: 'session-1', hook_event_name: 'PreToolUse' }));
 
         expect(consoleLogSpy).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(testHomeDir, '.cache', 'ccstatusline'))).toBe(false);
+    });
+
+    it('writes nothing for a session id that would leave the skills folder', () => {
+        handleHookInput(JSON.stringify({
+            session_id: 'x/../../../escape',
+            hook_event_name: 'PreToolUse',
+            tool_name: 'Skill',
+            tool_input: { skill: 'commit' }
+        }));
+
+        expect(fs.existsSync(path.join(testHomeDir, '.cache', 'escape.jsonl'))).toBe(false);
         expect(fs.existsSync(path.join(testHomeDir, '.cache', 'ccstatusline'))).toBe(false);
     });
 

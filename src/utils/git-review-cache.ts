@@ -16,6 +16,18 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
+import type { RenderContext } from '../types/RenderContext';
+
+import {
+    getVisibleWidth,
+    truncateStyledText
+} from './ansi';
+import { resolveExecutable } from './executable-path';
+import { runGit } from './git';
+import {
+    GIT_HARDENING_ARGS,
+    withGitHardeningEnv
+} from './git-hardening';
 import { parseRemoteUrl } from './git-remote';
 
 export type GitReviewProvider = 'gh' | 'glab';
@@ -40,6 +52,13 @@ export interface GitReviewData {
 }
 
 export interface GitReviewFetchOptions { includeChecks?: boolean }
+
+export interface GitReviewCachedOptions extends GitReviewFetchOptions {
+    // The widget's render context. When given, the branch/HEAD lookup that
+    // keys the cache goes through git.ts's cached runGit (shared with the
+    // git-branch and git-sha widgets) instead of spawning git every render.
+    context?: RenderContext;
+}
 
 interface StoredGitReviewCache {
     version: 1;
@@ -134,6 +153,7 @@ export interface GitReviewCacheDeps {
     writeFileSync: typeof writeFileSync;
     getHomedir: typeof os.homedir;
     now: typeof Date.now;
+    runGit?: typeof runGit;
 }
 
 const DEFAULT_GIT_REVIEW_CACHE_DEPS: GitReviewCacheDeps = {
@@ -150,7 +170,8 @@ const DEFAULT_GIT_REVIEW_CACHE_DEPS: GitReviewCacheDeps = {
     unlinkSync,
     writeFileSync,
     getHomedir: os.homedir,
-    now: Date.now
+    now: Date.now,
+    runGit
 };
 
 function getCacheDir(deps: GitReviewCacheDeps): string {
@@ -163,7 +184,7 @@ function getGitReviewCacheDir(deps: GitReviewCacheDeps): string {
 
 function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): string {
     try {
-        return deps.execFileSync('git', args, {
+        return deps.execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -175,8 +196,13 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
     }
 }
 
+const BRANCH_REF_PREFIX = 'refs/heads/';
+
 function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
+    // The full ref, since --short turns it into "heads/<name>" when a tag has
+    // the same name, and no PR is on a branch by that name
+    const ref = runGitForCache(['symbolic-ref', 'HEAD'], cwd, deps);
+    const branch = ref.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     return branch.length > 0 ? branch : null;
 }
 
@@ -187,6 +213,26 @@ function getCacheRef(cwd: string, deps: GitReviewCacheDeps): string {
     }
 
     const head = runGitForCache(['rev-parse', '--short', 'HEAD'], cwd, deps);
+    if (head.length > 0) {
+        return `head:${head}`;
+    }
+
+    return 'unknown';
+}
+
+// Same ref as getCacheRef (which the refresh child still uses to derive the
+// lock path it may release), read through the render's cached git commands.
+function getCacheRefFromContext(context: RenderContext, cwd: string, deps: GitReviewCacheDeps): string {
+    if (!deps.runGit) {
+        return getCacheRef(cwd, deps);
+    }
+
+    const branch = deps.runGit('symbolic-ref --short HEAD', context)?.trim() ?? '';
+    if (branch.length > 0) {
+        return `branch:${branch}`;
+    }
+
+    const head = deps.runGit('rev-parse --short HEAD', context)?.trim() ?? '';
     if (head.length > 0) {
         return `head:${head}`;
     }
@@ -299,7 +345,8 @@ function isSshRemoteUrl(url: string): boolean {
 
 function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
     try {
-        const output = deps.execFileSync('ssh', ['-G', host], {
+        // After `--`, a host named like an option (`-oProxyCommand=…`) stays a host
+        const output = deps.execFileSync(resolveExecutable('ssh'), ['-G', '--', host], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
@@ -394,7 +441,7 @@ function getRemainingTimeout(deadline: number, deps: GitReviewCacheDeps): number
 
 function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['--version'], {
+        deps.execFileSync(resolveExecutable(cli), ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
@@ -407,7 +454,7 @@ function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitRevie
 
 function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
+        deps.execFileSync(resolveExecutable(cli), ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
             windowsHide: true
@@ -448,20 +495,25 @@ function isCiFieldUnavailableError(error: unknown): boolean {
         || text.includes('resource not accessible by integration');
 }
 
+// `branch` goes after `--`: a branch named like a flag (a planted HEAD can name
+// one `--web`) must stay an argument
 function queryGhPr(
     cwd: string,
     args: string[],
+    branch: string | null,
     fields: string,
     deadline: number,
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
     const output = deps.execFileSync(
-        'gh',
-        [...args, '--json', fields],
+        resolveExecutable('gh'),
+        [...args, '--json', fields, ...(branch ? ['--', branch] : [])],
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd,
+            // gh runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -482,27 +534,28 @@ function fetchFromGh(
     deps: GitReviewCacheDeps
 ): GitReviewData | null {
     const args = ['pr', 'view'];
+    let branch: string | null = null;
     if (repoRef) {
         // `--repo` disables branch auto-resolution, so pass the branch explicitly.
-        const branch = getCurrentBranch(cwd, deps);
+        branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
         }
-        args.push(branch, '--repo', repoRef);
+        args.push('--repo', repoRef);
     }
 
     let parsed: Record<string, unknown> | null;
     if (includeChecks) {
         try {
-            parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
+            parsed = queryGhPr(cwd, args, branch, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
         } catch (error) {
             if (!isCiFieldUnavailableError(error)) {
                 throw error;
             }
-            parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
+            parsed = queryGhPr(cwd, args, branch, GH_PR_METADATA_FIELDS, deadline, deps);
         }
     } else {
-        parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
+        parsed = queryGhPr(cwd, args, branch, GH_PR_METADATA_FIELDS, deadline, deps);
     }
 
     if (!parsed) {
@@ -528,24 +581,26 @@ function fetchFromGlab(
     deadline: number,
     deps: GitReviewCacheDeps
 ): GitReviewData | null {
-    const args = ['mr', 'view'];
+    const args = ['mr', 'view', '--output', 'json'];
     if (repoRef) {
-        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
+        // `--repo` disables branch auto-resolution, so pass the branch explicitly,
+        // after `--` so a branch named like a flag stays an argument.
         const branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
         }
-        args.push(branch, '--repo', repoRef);
+        args.push('--repo', repoRef, '--', branch);
     }
-    args.push('--output', 'json');
 
     const output = deps.execFileSync(
-        'glab',
+        resolveExecutable('glab'),
         args,
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
+            // glab runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -718,11 +773,14 @@ function scheduleRefresh(
 
 export function getCachedGitReviewData(
     cwd: string,
-    options: GitReviewFetchOptions = {},
+    options: GitReviewCachedOptions = {},
     deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS
 ): GitReviewData | null {
     const includeChecks = options.includeChecks ?? false;
-    const cachePath = getCachePath(cwd, getCacheRef(cwd, deps), deps);
+    const ref = options.context
+        ? getCacheRefFromContext(options.context, cwd, deps)
+        : getCacheRef(cwd, deps);
+    const cachePath = getCachePath(cwd, ref, deps);
     const cached = readCache(cachePath, deps);
     const needsRefresh = cached === 'miss'
         || cached.stale
@@ -771,7 +829,9 @@ export function getGitReviewStatusLabel(state: string, reviewDecision: string): 
 
 export function truncateTitle(title: string, maxWidth?: number): string {
     const limit = maxWidth ?? DEFAULT_TITLE_MAX_WIDTH;
-    if (title.length <= limit)
+    if (getVisibleWidth(title) <= limit)
         return title;
-    return `${title.slice(0, limit - 1)}…`;
+    // Cut by terminal columns and whole characters, so wide (CJK) characters
+    // count twice and an emoji is never split in half
+    return `${truncateStyledText(title, limit - 1, { ellipsis: false })}…`;
 }

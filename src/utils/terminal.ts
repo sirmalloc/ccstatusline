@@ -46,7 +46,7 @@ function probeTerminalWidth(): number | null {
     }
 
     // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Returns null on
-    // other platforms and falls through to the portable ps/stty/tput walk below.
+    // other platforms and falls through to the portable ps/stty walk below.
     const nativeWidth = probeWidthNative();
     if (nativeWidth !== null) {
         return nativeWidth;
@@ -75,19 +75,9 @@ function probeTerminalWidth(): number | null {
         }
     }
 
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execFileSync('tput', ['cols'], {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            windowsHide: true
-        }).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        // tput also failed
-    }
-
+    // No `tput cols` fallback: with no terminal on its stdio, tput prints
+    // terminfo's default (80) rather than a real width, and a made-up width
+    // truncates the line where null leaves it whole.
     return null;
 }
 
@@ -204,6 +194,20 @@ export function getTerminalWidth(options?: TerminalWidthOptions): number | null 
         const override = parsePositiveInteger(overrideRaw);
         if (override !== null) {
             cachedWidth = override;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
+    // Claude Code >= 2.1.153 sets COLUMNS to the terminal width when it spawns
+    // the statusline, since its captured stdio leaves no TTY to probe. Reading
+    // it skips the ancestor walk (several ps/stty calls per render on macOS).
+    // Checked before the L2 cache so a stale "no TTY" entry cannot hide it.
+    const columnsRaw = process.env.COLUMNS;
+    if (columnsRaw) {
+        const columns = parsePositiveInteger(columnsRaw);
+        if (columns !== null) {
+            cachedWidth = columns;
             hasProbed = true;
             return cachedWidth;
         }

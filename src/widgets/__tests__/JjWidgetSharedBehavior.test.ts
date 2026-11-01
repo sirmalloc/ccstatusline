@@ -12,6 +12,7 @@ import type {
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjBookmarksWidget } from '../JjBookmarks';
 import { JjChangesWidget } from '../JjChanges';
 import { JjDeletionsWidget } from '../JjDeletions';
@@ -105,6 +106,8 @@ const slotCases: {
     { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget(), defaultValue: '-2', overriddenValue: '▼2', clearedValue: '2' }
 ];
 
+mockExecutableResolution();
+
 describe('JJ widget shared behavior', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -154,7 +157,7 @@ describe('JJ widget shared behavior', () => {
 
         expect(widget.render(makeItem(itemType), {}, DEFAULT_SETTINGS)).toBe(noJj);
         expect(mockExecFileSync.mock.calls).toHaveLength(1);
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
     });
 
     it.each(cases)('$name should hide its placeholder outside a jj repo with no-jj', ({ widget, itemType }) => {

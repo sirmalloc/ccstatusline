@@ -1,7 +1,10 @@
 import type { NumberFormat } from '../types/NumberFormat';
 import type { SpeedMetrics } from '../types/SpeedMetrics';
 
-import { renderMagnitude } from './number-format';
+import {
+    effectiveDecimals,
+    renderMagnitude
+} from './number-format';
 
 /**
  * Calculates output tokens per second from speed metrics.
@@ -57,7 +60,9 @@ export function formatSpeed(tokensPerSec: number | null, format: NumberFormat = 
         return '—';
     }
 
-    if (tokensPerSec >= 1000) {
+    // Switch to "k" once the value would round up to "1000" at the shown
+    // precision: 999.95 at 1 decimal, 999.5 at 0 (as formatTokens does for "M")
+    if (tokensPerSec >= 1000 - 0.5 / 10 ** effectiveDecimals(format, 1)) {
         return `${renderMagnitude(tokensPerSec / 1000, format, 1)}k t/s`;
     }
 

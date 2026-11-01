@@ -66,8 +66,10 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
             return null;
         }
 
-        // Remove leading/trailing slashes and .git suffix
-        const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+        // Remove empty segments (leading, trailing or repeated slashes) and the
+        // .git suffix. Splitting stays linear where a trailing-slash regex
+        // would rescan every run of slashes from each position in it.
+        const pathname = parsedUrl.pathname.split('/').filter(Boolean).join('/').replace(/\.git$/, '');
         const segments = pathname.split('/').filter(Boolean);
 
         const repo = segments.at(-1);
@@ -112,11 +114,16 @@ export function getRemoteInfo(remoteName: string, context: RenderContext): Remot
     };
 }
 
+const REMOTE_REF_PREFIX = 'refs/remotes/';
+
 function getTrackingRemoteName(context: RenderContext): string | null {
-    const upstreamRef = runGit('rev-parse --abbrev-ref --symbolic-full-name @{upstream}', context);
-    if (!upstreamRef) {
+    // The full ref, since --abbrev-ref turns it into "remotes/<remote>/<name>"
+    // when a branch or tag is named "<remote>/<name>"
+    const fullRef = runGit('rev-parse --symbolic-full-name @{upstream}', context);
+    if (!fullRef?.startsWith(REMOTE_REF_PREFIX)) {
         return null;
     }
+    const upstreamRef = fullRef.slice(REMOTE_REF_PREFIX.length);
 
     const remotes = listRemotes(context)
         .slice()

@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjChangesWidget } from '../JjChanges';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
@@ -40,6 +41,8 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+mockExecutableResolution();
+
 describe('JjChangesWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -55,18 +58,20 @@ describe('JjChangesWidget', () => {
 
         expect(render({ cwd: '/tmp/repo' })).toBe('(+3,-2)');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--color=never', 'diff', '--stat']);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
