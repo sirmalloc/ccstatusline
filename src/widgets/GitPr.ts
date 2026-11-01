@@ -126,7 +126,10 @@ export class GitPrWidget implements Widget {
         }
 
         const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
-        const prData = this.deps.getCachedGitReviewData(cwd, { includeChecks: context.gitReviewNeedsChecks ?? false });
+        const prData = this.deps.getCachedGitReviewData(cwd, {
+            includeChecks: context.gitReviewNeedsChecks ?? false,
+            context
+        });
         if (!prData) {
             return isHidden(item, NO_DATA_HIDEABLE_STATE.key) ? null : `(no ${resolvePrNoun(null, context, this.deps)})`;
         }
