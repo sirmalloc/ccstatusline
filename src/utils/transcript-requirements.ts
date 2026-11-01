@@ -1,4 +1,3 @@
-import type { Settings } from '../types/Settings';
 import type { StatusJSON } from '../types/StatusJSON';
 import type { WidgetItem } from '../types/Widget';
 import { isCacheSessionScope } from '../widgets/shared/cache-scope';
@@ -27,20 +26,15 @@ const SESSION_SCOPE_CACHE_WIDGETS = new Set<string>([
  * Context widgets only fall back to transcript metrics when the status JSON
  * lacks the matching `context_window` field, so the full transcript scan can be
  * skipped when Claude Code already supplies it. Keep in sync with the
- * `context.tokenMetrics` reads in the widgets and in `calculateMaxWidth`.
+ * `context.tokenMetrics` reads in the widgets.
  */
 export function needsTranscriptTokenMetrics(
     lines: WidgetItem[][],
-    settings: Pick<Settings, 'flexMode'>,
     data: StatusJSON
 ): boolean {
     const contextWindow = getContextWindowMetrics(data);
     const missingUsedPercentage = contextWindow.usedPercentage === null;
     const missingContextLength = contextWindow.contextLengthTokens === null;
-
-    if (settings.flexMode === 'full-until-compact' && missingUsedPercentage) {
-        return true;
-    }
 
     return lines.some(line => line.some((item) => {
         const type = resolveLegacyWidgetType(item.type);

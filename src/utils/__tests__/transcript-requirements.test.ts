@@ -11,7 +11,6 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { StatusJSON } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
-import { calculateContextPercentage } from '../context-percentage';
 import { needsTranscriptTokenMetrics } from '../transcript-requirements';
 import { WIDGET_MANIFEST } from '../widget-manifest';
 
@@ -99,7 +98,7 @@ describe('needsTranscriptTokenMetrics', () => {
         it(`covers every widget whose output depends on transcript metrics (${payloadName})`, () => {
             for (const type of renderableTypes) {
                 for (const item of itemVariants(type)) {
-                    if (needsTranscriptTokenMetrics([[item]], DEFAULT_SETTINGS, data)) {
+                    if (needsTranscriptTokenMetrics([[item]], data)) {
                         continue;
                     }
 
@@ -110,16 +109,6 @@ describe('needsTranscriptTokenMetrics', () => {
                 }
             }
         }, 30000);
-
-        it(`covers the full-until-compact flex width (${payloadName})`, () => {
-            const settings = { ...DEFAULT_SETTINGS, flexMode: 'full-until-compact' as const };
-            if (needsTranscriptTokenMetrics([[{ id: '1', type: 'model' }]], settings, data)) {
-                return;
-            }
-
-            expect(calculateContextPercentage({ data, tokenMetrics: SENTINEL_METRICS }))
-                .toBe(calculateContextPercentage({ data, tokenMetrics: null }));
-        });
     }
 
     it('skips the scan when the status JSON supplies the context fields', () => {
@@ -133,37 +122,34 @@ describe('needsTranscriptTokenMetrics', () => {
             { id: '6', type: 'cache-hit-rate' }
         ]];
 
-        expect(needsTranscriptTokenMetrics(lines, DEFAULT_SETTINGS, data)).toBe(false);
-        expect(needsTranscriptTokenMetrics(lines, { flexMode: 'full-until-compact' }, data)).toBe(false);
+        expect(needsTranscriptTokenMetrics(lines, data)).toBe(false);
     });
 
     it('scans when a context widget has to fall back to the transcript', () => {
         const data = PAYLOADS['no context_window'] ?? {};
 
         for (const type of ['context-length', 'context-percentage', 'context-percentage-usable', 'context-bar']) {
-            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], DEFAULT_SETTINGS, data), type).toBe(true);
+            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], data), type).toBe(true);
         }
-        expect(needsTranscriptTokenMetrics([[{ id: '1', type: 'model' }]], { flexMode: 'full-until-compact' }, data)).toBe(true);
     });
 
     it('scans for context-bar when only the window size is missing', () => {
         const data = PAYLOADS['context_window without size'] ?? {};
 
-        expect(needsTranscriptTokenMetrics([[{ id: '1', type: 'context-length' }]], DEFAULT_SETTINGS, data)).toBe(false);
-        expect(needsTranscriptTokenMetrics([[{ id: '1', type: 'context-bar' }]], DEFAULT_SETTINGS, data)).toBe(true);
+        expect(needsTranscriptTokenMetrics([[{ id: '1', type: 'context-length' }]], data)).toBe(false);
+        expect(needsTranscriptTokenMetrics([[{ id: '1', type: 'context-bar' }]], data)).toBe(true);
     });
 
     it('always scans for token widgets and session-scoped cache widgets', () => {
         const data = PAYLOADS['full context_window'] ?? {};
 
         for (const type of ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total']) {
-            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], DEFAULT_SETTINGS, data), type).toBe(true);
+            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], data), type).toBe(true);
         }
         for (const type of ['cache-hit-rate', 'cache-read', 'cache-write']) {
-            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], DEFAULT_SETTINGS, data), type).toBe(false);
+            expect(needsTranscriptTokenMetrics([[{ id: '1', type }]], data), type).toBe(false);
             expect(needsTranscriptTokenMetrics(
                 [[{ id: '1', type, metadata: { cacheScopeSession: 'true' } }]],
-                DEFAULT_SETTINGS,
                 data
             ), type).toBe(true);
         }

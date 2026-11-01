@@ -17,11 +17,13 @@ import {
     clearGitCache,
     execGit,
     getGitChangeCounts,
+    getGitConflictCount,
     getGitFileStatusCounts,
     getGitStatus,
     isInsideGitWorkTree,
     resolveGitCwd,
-    runGit
+    runGit,
+    runGitArgs
 } from '../git';
 import { GIT_HARDENING_ARGS } from '../git-hardening';
 
@@ -39,7 +41,7 @@ vi.mock('node:child_process', () => ({
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
-    mockImplementation: (impl: () => never) => void;
+    mockImplementation: (impl: () => string) => void;
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
@@ -117,6 +119,47 @@ describe('git utils', () => {
                 fs.rmSync(tempPath, { recursive: true, force: true });
             }
         }
+    });
+
+    describe('getGitConflictCount', () => {
+        it('preserves whitespace in paths and deduplicates stages', () => {
+            const filenames = ['a b.txt', 'a  b.txt', 'tab\tname.txt', 'line\nname.txt', 'trailing.txt '];
+            mockExecFileSync.mockReturnValueOnce(filenames.flatMap(filename => [1, 2, 3].map(stage => `100644 hash ${stage}\t${filename}\0`)).join(''));
+
+            expect(getGitConflictCount({})).toBe(filenames.length);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
+            expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ encoding: 'latin1' }));
+        });
+
+        it('keeps byte-preserving results separate from UTF-8 memory and persistent cache entries', () => {
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root } };
+            const args = ['ls-files', '--unmerged', '-z'];
+            const bytes = Buffer.from('100644 hash 1\tfile-\xfe.txt\0' + '100644 hash 2\tfile-\xff.txt\0', 'latin1');
+            mockExecFileSync.mockReturnValueOnce(bytes.toString('utf8'));
+            mockExecFileSync.mockReturnValueOnce(bytes.toString('latin1'));
+
+            expect(runGitArgs(args, context)).toBe(bytes.toString('utf8'));
+            expect(getGitConflictCount(context)).toBe(2);
+            expect(getGitConflictCount(context)).toBe(2);
+            clearGitCache();
+            expect(getGitConflictCount(context)).toBe(2);
+            expect(runGitArgs(args, context)).toBe(bytes.toString('utf8'));
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        it('returns zero when there are no conflicts', () => {
+            mockExecFileSync.mockReturnValueOnce('');
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
+
+        it('returns zero when git fails', () => {
+            mockExecFileSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
     });
 
     describe('resolveGitCwd', () => {
@@ -296,6 +339,54 @@ describe('git utils', () => {
 
             expect(runGit('symbolic-ref --short HEAD', context)).toBe('new-value');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        // The TTL has to start when git's answer became available. Measuring
+        // from before the run would leave a command slower than the TTL (status
+        // in a large repository) expired on arrival, so every widget sharing it
+        // would run it again.
+        it('gives a slow command a full TTL measured from when it finished', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // The command occupies 6s, longer than the TTL under test.
+                nowSpy.mockReturnValue(7000);
+                return ' M src/app.ts\0';
+            });
+
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+
+            nowSpy.mockReturnValue(11000);
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('gives a slow failure a full TTL measured from when git gave up', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // Killed at the 5s command timeout, just past the TTL under test.
+                nowSpy.mockReturnValue(6001);
+                throw new Error('spawnSync git ETIMEDOUT');
+            });
+
+            expect(runGit('diff --shortstat', context)).toBeNull();
+
+            nowSpy.mockReturnValue(10000);
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
         });
 
         it('keeps persistent cache entries when TTL is zero and repo mtimes match', () => {

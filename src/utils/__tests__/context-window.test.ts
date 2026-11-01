@@ -21,7 +21,7 @@ describe('getContextWindowMetrics', () => {
         });
     });
 
-    it('extracts totals and usage from current_usage object', () => {
+    it('extracts totals and usage from current_usage object, leaving output tokens out of the percentage', () => {
         const metrics = getContextWindowMetrics({
             context_window: {
                 context_window_size: 200000,
@@ -40,8 +40,9 @@ describe('getContextWindowMetrics', () => {
             windowSize: 200000,
             usedTokens: 1900,
             contextLengthTokens: 1700,
-            usedPercentage: 0.95,
-            remainingPercentage: 99.05,
+            // contextLengthTokens over the window: output tokens aren't counted
+            usedPercentage: (1700 / 200000) * 100,
+            remainingPercentage: 100 - (1700 / 200000) * 100,
             totalInputTokens: 4567,
             totalOutputTokens: 890,
             cachedTokens: 700,

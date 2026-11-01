@@ -106,19 +106,15 @@ export class ContextBarWidget implements Widget {
 
         const contextWindowMetrics = getContextWindowMetrics(context.data);
 
-        let total = contextWindowMetrics.windowSize;
+        const modelIdentifier = getModelContextIdentifier(context.data?.model);
+        const total = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize).maxTokens;
         let used = contextWindowMetrics.contextLengthTokens;
 
         if (used === null && context.tokenMetrics) {
             used = context.tokenMetrics.contextLength;
         }
 
-        if (total === null && context.tokenMetrics) {
-            const modelIdentifier = getModelContextIdentifier(context.data?.model);
-            total = getContextConfig(modelIdentifier).maxTokens;
-        }
-
-        if (used === null || total === null || total <= 0) {
+        if (used === null || total <= 0) {
             return null;
         }
 
