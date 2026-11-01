@@ -261,7 +261,7 @@ function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | nu
  * files, none of the repository's own filter drivers or external diff tools.
  * Throws when git fails, or when the repository's filters can't be turned off.
  */
-export function execGit(args: string[], cwd: string | undefined): string {
+export function execGit(args: string[], cwd: string | undefined, encoding: 'utf8' | 'latin1' = 'utf8'): string {
     const [subcommand = '', ...rest] = args;
     const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
     const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd) : [];
@@ -272,7 +272,7 @@ export function execGit(args: string[], cwd: string | undefined): string {
     return execFileSync(
         resolveExecutable('git'),
         [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
-        gitExecOptions(cwd)
+        { ...gitExecOptions(cwd), encoding }
     );
 }
 
@@ -516,7 +516,14 @@ export function runGit(command: string, context: RenderContext): string | null {
 }
 
 export function runGitArgs(args: string[], context: RenderContext, cacheCommand?: string): string | null {
+    return runGitArgsEncoded(args, context, cacheCommand, 'utf8');
+}
+
+function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand: string | undefined, encoding: 'utf8' | 'latin1'): string | null {
     const cwd = resolveGitCwd(context);
+    // Byte-preserving output must never reuse an older, lossy UTF-8 entry.
+    const commandToken = cacheCommand ?? args.join('\0');
+    const cacheToken = encoding === 'utf8' ? commandToken : `${encoding}\0${commandToken}`;
     const metadata = getGitRepoMetadata(cwd);
     if (!metadata && cwd && isDefinitelyOutsideGitRepository(cwd)) {
         // Outside any repository git would only exit 128; nothing to cache
@@ -526,11 +533,12 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
 
     return runCachedCommand({
         tool: 'git',
-        exec: () => execGit(args, cwd),
-        cacheToken: cacheCommand ?? args.join('\0'),
+        exec: () => execGit(args, cwd, encoding),
+        cacheToken,
         cwd,
         metadata,
-        ttlMs: getGitCacheTtlMs(context)
+        ttlMs: getGitCacheTtlMs(context),
+        trim: encoding === 'utf8'
     });
 }
 
@@ -544,6 +552,9 @@ export interface CachedCommandOptions {
     metadata: GitRepoMetadata | null;
     ttlMs: number;
     allowEmpty?: boolean;
+    // Strip trailing whitespace from the output (default). Byte-preserving
+    // callers keep it, since a trailing byte may be part of the data.
+    trim?: boolean;
     // For commands that can themselves change the repo state the metadata
     // tracks (a jj working-copy snapshot), re-read it after the command so the
     // entry is keyed to the state its output describes.
@@ -554,7 +565,7 @@ export interface CachedCommandOptions {
 // the git and jj helpers. Failures are cached as null so a missing binary or a
 // non-repo directory does not respawn the command on every widget.
 export function runCachedCommand(options: CachedCommandOptions): string | null {
-    const { tool, exec, cacheToken, cwd, metadata, ttlMs, allowEmpty = false, refreshMetadata } = options;
+    const { tool, exec, cacheToken, cwd, metadata, ttlMs, allowEmpty = false, trim = true, refreshMetadata } = options;
     const memoryCacheKey = `${tool === 'git' ? '' : `${tool}|`}${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
     const now = Date.now();
@@ -571,21 +582,26 @@ export function runCachedCommand(options: CachedCommandOptions): string | null {
         return persistentEntry.output;
     }
 
+    let result: string | null;
+    let entryMetadata = metadata;
     try {
-        const output = exec().trimEnd();
-
-        const result = (allowEmpty || output.length > 0) ? output : null;
-        const entryMetadata = refreshMetadata ? refreshMetadata() : metadata;
-        const entry = createCacheEntry(result, entryMetadata, now);
-        gitCommandCache.set(memoryCacheKey, entry);
-        writePersistentCacheEntry(entryMetadata, persistentCacheKey, cwd, entry);
-        return result;
+        const rawOutput = exec();
+        const output = trim ? rawOutput.trimEnd() : rawOutput;
+        result = (allowEmpty || output.length > 0) ? output : null;
+        if (refreshMetadata) {
+            entryMetadata = refreshMetadata();
+        }
     } catch {
-        const entry = createCacheEntry(null, metadata, now);
-        gitCommandCache.set(memoryCacheKey, entry);
-        writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
-        return null;
+        result = null;
     }
+
+    // Stamped after the run, so a command slower than the TTL (status in a
+    // large repository, or one cut off by the timeout) still gets the full TTL
+    // of reuse rather than expiring the moment it returns.
+    const entry = createCacheEntry(result, entryMetadata, Date.now());
+    gitCommandCache.set(memoryCacheKey, entry);
+    writePersistentCacheEntry(entryMetadata, persistentCacheKey, cwd, entry);
+    return result;
 }
 
 /**
@@ -730,14 +746,16 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
 }
 
 export function getGitConflictCount(context: RenderContext): number {
-    const output = runGit('ls-files --unmerged', context);
+    // Latin-1 maps each byte to a distinct code point, preserving arbitrary Git
+    // pathnames through string comparisons and the JSON cache. It is not display text.
+    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z'], context, undefined, 'latin1');
     if (!output)
         return 0;
 
-    // Count unique file paths (unmerged files appear 3 times in output)
-    const files = new Set(output.split('\n').map((line) => {
-        const parts = line.split(/\s+/).slice(3);
-        return parts.join(' ');
+    // Preserve exact paths while deduplicating the index stages for each file.
+    const files = new Set(output.split('\0').map((entry) => {
+        const separator = entry.indexOf('\t');
+        return separator === -1 ? '' : entry.slice(separator + 1);
     }).filter(path => path.length > 0));
     return files.size;
 }

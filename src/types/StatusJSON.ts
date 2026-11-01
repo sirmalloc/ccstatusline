@@ -19,7 +19,49 @@ const RateLimitPeriodSchema = z.object({
     resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
 });
 
+// Claude apps gateway spend limit (Claude Code 2.1.251+). The dollar fields and
+// period arrive separately from the percentage, so they can be absent.
+const SpendLimitSchema = RateLimitPeriodSchema.extend({
+    used_usd: CoercedNumberSchema.nullable().optional(),
+    limit_usd: CoercedNumberSchema.nullable().optional(),
+    period: z.string().nullable().optional()
+});
+
 export type RateLimitPeriod = z.infer<typeof RateLimitPeriodSchema>;
+
+// A field Claude Code sends in a shape this version doesn't know is dropped,
+// so the rest of the payload (and the status line) still renders.
+function tolerant<T extends z.ZodType>(schema: T) {
+    return schema.nullable().optional().catch(undefined);
+}
+
+// The likely cause of the last prompt cache miss (Claude Code 2.1.260+): cause
+// names such as tools_changed, plus counts for some of them.
+const LastMissCauseSchema = z.looseObject({
+    causes: z.array(z.string()).catch([]),
+    tools_added: tolerant(CoercedNumberSchema),
+    tools_removed: tolerant(CoercedNumberSchema),
+    system_char_delta: tolerant(CoercedNumberSchema)
+});
+
+// Prompt cache statistics for the main conversation (Claude Code 2.1.251+).
+// Absent until the session's first API response. Timestamps are epoch seconds.
+const PromptCacheSchema = z.object({
+    warm: tolerant(z.boolean()),
+    caching_observed: tolerant(z.boolean()),
+    ttl: tolerant(z.string()),
+    expires_at: tolerant(CoercedNumberSchema),
+    requests: tolerant(CoercedNumberSchema),
+    misses: tolerant(CoercedNumberSchema),
+    expected_rebuilds: tolerant(CoercedNumberSchema),
+    hit_ratio: tolerant(CoercedNumberSchema),
+    cache_write_tokens: tolerant(CoercedNumberSchema),
+    miss_recache_tokens: tolerant(CoercedNumberSchema),
+    last_miss_at: tolerant(CoercedNumberSchema),
+    last_miss_cause: tolerant(LastMissCauseSchema),
+    miss_causes: tolerant(z.record(z.string(), CoercedNumberSchema)),
+    recache_tokens_if_cold: tolerant(CoercedNumberSchema)
+});
 
 export const StatusJSONSchema = z.looseObject({
     hook_event_name: z.string().optional(),
@@ -64,6 +106,9 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    // Only the Fast Mode widget reads it, so a malformed value is dropped
+    // rather than failing the whole payload
+    fast_mode: z.boolean().nullable().optional().catch(undefined),
     worktree: z.object({
         name: z.string().optional(),
         path: z.string().optional(),
@@ -71,11 +116,16 @@ export const StatusJSONSchema = z.looseObject({
         original_cwd: z.string().optional(),
         original_branch: z.string().optional()
     }).nullable().optional(),
+    // Claude Code reports the live prompt-cache state, including the real
+    // expiry timestamp, so consumers do not have to infer it from transcript
+    // timings. Absent on older Claude Code versions.
+    prompt_cache: tolerant(PromptCacheSchema),
     rate_limits: z.object({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
         seven_day_sonnet: RateLimitPeriodSchema.nullable().optional(),
-        seven_day_opus: RateLimitPeriodSchema.nullable().optional()
+        seven_day_opus: RateLimitPeriodSchema.nullable().optional(),
+        spend_limit: SpendLimitSchema.nullable().optional()
     }).nullable().optional()
 });
 

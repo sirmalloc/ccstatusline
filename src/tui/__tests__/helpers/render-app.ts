@@ -111,6 +111,8 @@ export function renderApp() {
         stdin,
         // Debug mode writes whole frames, so the last chunk is the current screen
         getFrame: () => stripAnsi(chunks.at(-1) ?? ''),
+        // Resolves once the TUI exits on its own, e.g. after Save & Exit
+        waitUntilExit: () => instance.waitUntilExit(),
         cleanup: () => {
             instance.unmount();
             instance.cleanup();

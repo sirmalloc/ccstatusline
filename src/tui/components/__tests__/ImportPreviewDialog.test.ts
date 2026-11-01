@@ -86,7 +86,7 @@ describe('ImportPreviewDialog helpers', () => {
     it('previews only explicitly imported fields in merge mode', () => {
         const current: Settings = {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full',
+            defaultPaddingSide: 'left',
             lines: [[{ id: 'custom', type: 'model' }]]
         };
         const validation = {
@@ -98,7 +98,7 @@ describe('ImportPreviewDialog helpers', () => {
         const preview = getImportPreviewSettings(current, validation, 'merge');
 
         expect(preview.globalBold).toBe(true);
-        expect(preview.flexMode).toBe('full');
+        expect(preview.defaultPaddingSide).toBe('left');
         expect(preview.lines).toEqual(current.lines);
     });
 
@@ -108,7 +108,7 @@ describe('ImportPreviewDialog helpers', () => {
         const stderr = createMockStdout();
         const current: Settings = {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full-minus-40'
+            defaultPaddingSide: 'left'
         };
         const instance = render(React.createElement(ImportPreviewDialog, {
             validation: {
@@ -130,15 +130,15 @@ describe('ImportPreviewDialog helpers', () => {
 
         try {
             await waitFor(() => {
-                expect(stdout.getOutput()).toContain('flexMode: full-minus-40 → full');
+                expect(stdout.getOutput()).toContain('defaultPaddingSide: left → both');
             });
 
             stdout.clearOutput();
             stdin.write('\u001B[B');
             await waitFor(() => {
                 const output = stdout.getOutput();
-                const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
-                expect(lastFlexModeRow).toBe('flexMode: full-minus-40');
+                const lastPaddingSideRow = output.slice(output.lastIndexOf('defaultPaddingSide:')).split('\n')[0];
+                expect(lastPaddingSideRow).toBe('defaultPaddingSide: left');
             });
         } finally {
             instance.unmount();

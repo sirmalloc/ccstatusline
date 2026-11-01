@@ -18,6 +18,7 @@ import type {
 import type { WidgetHookDef } from '../utils/hooks';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { BlinkingCursor } from './shared/BlinkingCursor';
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
 import { removeMetadataKeys } from './shared/metadata';
@@ -191,7 +192,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
                 <Box>
                     <Text>Enter max skills to show (0 for unlimited): </Text>
                     <Text>{limitInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

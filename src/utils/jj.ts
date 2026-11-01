@@ -92,7 +92,9 @@ export function runJjArgs(args: string[], context: RenderContext, allowEmpty = f
 
     return runCachedCommand({
         tool: 'jj',
-        exec: () => execFileSync(resolveExecutable('jj'), args, {
+        // ui.color = "always" in the user's jj config colors jj's output even
+        // into a pipe, and its codes would override the widget's own colors
+        exec: () => execFileSync(resolveExecutable('jj'), ['--color=never', ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: JJ_COMMAND_TIMEOUT_MS,
@@ -117,8 +119,9 @@ export function isInsideJjRepo(context: RenderContext): boolean {
 }
 
 function parseDiffStat(stat: string): JjChangeCounts {
-    const insertMatch = /(\d+)\s+insertions?/.exec(stat);
-    const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
+    const summaryLine = stat.split('\n').pop() ?? '';
+    const insertMatch = /(\d+)\s+insertions?/.exec(summaryLine);
+    const deleteMatch = /(\d+)\s+deletions?/.exec(summaryLine);
 
     return {
         insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,

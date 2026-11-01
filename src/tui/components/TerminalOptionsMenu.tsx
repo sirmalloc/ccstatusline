@@ -18,7 +18,7 @@ import {
     type ListEntry
 } from './List';
 
-type TerminalOptionsValue = 'width' | 'colorLevel';
+type TerminalOptionsValue = 'colorLevel';
 
 export function getNextColorLevel(level: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
     return ((level + 1) % 4) as 0 | 1 | 2 | 3;
@@ -39,11 +39,6 @@ export function buildTerminalOptionsItems(
 ): ListEntry<TerminalOptionsValue>[] {
     return [
         {
-            label: '◱ Terminal Width',
-            value: 'width',
-            description: 'Configure how the status line uses available terminal width and when it should compact.'
-        },
-        {
             label: '▓ Color Level',
             sublabel: `(${getColorLevelLabel(colorLevel)})`,
             value: 'colorLevel',
@@ -61,7 +56,7 @@ export function buildTerminalOptionsItems(
 export interface TerminalOptionsMenuProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
-    onBack: (target?: string) => void;
+    onBack: () => void;
 }
 
 export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
@@ -75,11 +70,6 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
     const handleSelect = (value: TerminalOptionsValue | 'back') => {
         if (value === 'back') {
             onBack();
-            return;
-        }
-
-        if (value === 'width') {
-            onBack('width');
             return;
         }
 
