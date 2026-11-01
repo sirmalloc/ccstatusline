@@ -335,7 +335,7 @@ Widget-specific shortcuts:
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `o` toggle hours-only in time mode, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
-- **Context Bar**: `p` cycle medium/full/short/short-only progress bar
+- **Context Bar**: `p` cycle medium/full/short/short-only/line progress bar
 - **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed
 - **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope
 - **Cache Timer**: `t` cycle the fallback 5-minute/1-hour TTL (reported `5m`/`1h` takes precedence), `s` toggle compact time, `g` customize the working/fresh/draining/urgent/cold glyphs; Working is used only in the transcript fallback; Backspace in the glyph editor renders that state without one
