@@ -55,6 +55,7 @@ export interface RenderContext {
     // number strings into numbers.
     rawData?: Record<string, unknown>;
     tokenMetrics?: TokenMetrics | null;
+    sessionTokenMetrics?: TokenMetrics | null;
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;

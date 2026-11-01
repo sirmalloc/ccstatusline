@@ -42,6 +42,7 @@ import {
     getTerminalWidth
 } from './utils/terminal';
 import { sanitizeTerminalText } from './utils/terminal-sanitize';
+import { isWidgetSubagentsEnabled } from './utils/token-subagents';
 import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
@@ -123,6 +124,9 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
     const speedWidgetTypes = new Set(['output-speed', 'input-speed', 'total-speed']);
     const hasSpeedItems = lines.some(line => line.some(item => speedWidgetTypes.has(item.type)));
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    const subagentTokenWidgetTypes = new Set(['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total']);
+    const needsSessionTokens = lines.some(line => line.some(item => item.type === 'tokens-session-total'
+        || (subagentTokenWidgetTypes.has(item.type) && isWidgetSubagentsEnabled(item))));
     const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
     const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
     const hasAccountEmailWidget = lines.some(line => line.some(item => item.type === 'claude-account-email'));
@@ -142,6 +146,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
             includeSessionDuration: hasSessionClock && !hasSessionDurationInStatusJson(data),
             includeSpeedMetrics: hasSpeedItems,
             includeSubagents: true,
+            includeSubagentTokens: needsSessionTokens,
             speedWindowSeconds: Array.from(requestedSpeedWindows),
             includeCompactionStats: hasCompactionWidget,
             includeThinkingEffort: needsTranscriptThinkingEffort,
@@ -157,6 +162,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
     const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
+    const sessionTokenMetrics = transcriptAnalysis?.sessionTokenMetrics ?? null;
     const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;
     const speedMetrics = transcriptAnalysis?.speedMetricsCollection?.sessionAverage ?? null;
     const windowedSpeedMetrics = transcriptAnalysis?.speedMetricsCollection?.windowed ?? null;
@@ -175,6 +181,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
         data,
         rawData,
         tokenMetrics,
+        sessionTokenMetrics,
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
