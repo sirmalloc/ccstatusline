@@ -12,6 +12,7 @@ import {
     parseListLimit,
     setListLimit
 } from '../../../widgets/Skills';
+import { BlinkingCursor } from '../BlinkingCursor';
 
 export const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const [limitInput, setLimitInput] = useState(() => parseListLimit(widget).toString());
@@ -40,7 +41,7 @@ export const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 <Box>
                     <Text>Enter max skills to show (0 for unlimited): </Text>
                     <Text>{limitInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

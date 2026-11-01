@@ -15,6 +15,7 @@ import {
     getSlotSymbol,
     setSlotSymbol
 } from '../../../widgets/shared/symbol-override';
+import { BlinkingCursor } from '../BlinkingCursor';
 
 import { getGraphemes } from './text-cursor';
 
@@ -32,6 +33,12 @@ export const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot
             setSelectedIndex(selectedIndex - 1 < 0 ? slots.length - 1 : selectedIndex - 1);
         } else if (key.downArrow && slots.length > 1) {
             setSelectedIndex(selectedIndex + 1 > slots.length - 1 ? 0 : selectedIndex + 1);
+        } else if (key.tab && key.shift) {
+            // Widgets with several glyphs are mostly blanked whole to save
+            // width on the status line, which is one Backspace per row
+            // otherwise. Blanked rows toggle back so the key is reversible.
+            const allBlank = values.every(value => value.length === 0);
+            setValues(values.map((_, index) => (allBlank ? slots[index]?.defaultSymbol ?? '' : '')));
         } else if (key.tab) {
             setValues(values.map((value, index) => (
                 index === selectedIndex ? slots[selectedIndex]?.defaultSymbol ?? '' : value
@@ -50,13 +57,18 @@ export const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot
             <Text bold>Glyphs</Text>
             <Text dimColor>
                 {slots.length > 1
-                    ? '↑↓ row, type to set, Tab default, Backspace none, Enter save, ESC cancel'
+                    ? '↑↓ row, type to set, Tab default, Backspace none, Shift+Tab toggle all none/default, Enter save, ESC cancel'
                     : 'Type any character or emoji, Tab default, Backspace none, Enter save, ESC cancel'}
             </Text>
             <Box marginTop={1} flexDirection='column'>
                 {slots.map((slot, index) => {
                     const isSelected = index === selectedIndex;
                     const value = values[index] ?? '';
+                    // Nerd Font glyphs can draw into a second cell even when their
+                    // terminal width is one. Keep that cell inside the highlight.
+                    const displayValue = value
+                        ? value + ' '.repeat(Math.max(0, 2 - getVisibleWidth(value)))
+                        : '(none)';
                     const labelPadding = ' '.repeat(Math.max(labelWidth - getVisibleWidth(slot.label), 0));
                     return (
                         <Box key={slot.id} flexDirection='row' flexWrap='nowrap'>
@@ -65,15 +77,17 @@ export const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot
                                     {isSelected ? '▶ ' : '  '}
                                 </Text>
                             </Box>
-                            <Text color={isSelected ? 'green' : undefined}>
-                                {`${labelPadding}${slot.label}: `}
+                            <Text>
+                                <Text color={isSelected ? 'green' : undefined}>
+                                    {`${labelPadding}${slot.label}: `}
+                                </Text>
+                                {isSelected ? (
+                                    <BlinkingCursor inverse dimColor={!value}>{displayValue}</BlinkingCursor>
+                                ) : (
+                                    <Text inverse dimColor={!value}>{displayValue}</Text>
+                                )}
+                                <Text dimColor>{` (default: ${slot.defaultSymbol})`}</Text>
                             </Text>
-                            {value ? (
-                                <Text inverse>{value}</Text>
-                            ) : (
-                                <Text inverse dimColor>(none)</Text>
-                            )}
-                            <Text dimColor>{` (default: ${slot.defaultSymbol})`}</Text>
                         </Box>
                     );
                 })}

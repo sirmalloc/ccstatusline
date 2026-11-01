@@ -36,14 +36,23 @@ function splitCommandOutput(output: string): string[] {
     return paths;
 }
 
-function isTransientBunxStatusLinePath(filePath: string): boolean {
+// While bunx or npx runs the TUI, the bin dir of its temporary copy comes first
+// on PATH, ahead of any persistent install:
+// - bunx: <temp dir>/bunx-<uid>-ccstatusline@<tag>/node_modules/.bin
+// - npx: <npm cache>/_npx/<hash>/node_modules/.bin, wherever the npm cache lives
+const TRANSIENT_STATUS_LINE_PATH_PATTERNS = [
+    /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i,
+    /(?:^|\/)_npx\/[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i
+];
+
+function isTransientStatusLinePath(filePath: string): boolean {
     const normalized = filePath.replace(/\\/g, '/');
 
-    return /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i.test(normalized);
+    return TRANSIENT_STATUS_LINE_PATH_PATTERNS.some(pattern => pattern.test(normalized));
 }
 
 export function getPersistentCommandResolutionPaths(paths: string[]): string[] {
-    return paths.filter(path => !isTransientBunxStatusLinePath(path));
+    return paths.filter(path => !isTransientStatusLinePath(path));
 }
 
 export function getCommandResolutionPaths(

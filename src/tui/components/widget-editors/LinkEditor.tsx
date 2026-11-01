@@ -12,6 +12,7 @@ import {
     isValidHttpUrl,
     toEditorMetadata
 } from '../../../widgets/Link';
+import { BlinkingCursor } from '../BlinkingCursor';
 
 type LinkEditorMode = 'url' | 'text';
 
@@ -78,7 +79,7 @@ export const LinkEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, on
             <Text>
                 {prompt}
                 {activeValue.slice(0, activeCursor)}
-                <Text backgroundColor='gray' color='black'>{activeValue[activeCursor] ?? ' '}</Text>
+                <BlinkingCursor>{activeValue[activeCursor] ?? ' '}</BlinkingCursor>
                 {activeValue.slice(activeCursor + 1)}
             </Text>
             {isUrlMode ? (

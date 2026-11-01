@@ -5,6 +5,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../../types/Widget';
+import { getVisibleWidth } from '../../utils/ansi';
 
 import { removeMetadataKeys } from './metadata';
 
@@ -31,6 +32,12 @@ export function getSymbol(item: WidgetItem, defaultSymbol: string): string {
 export function formatSymbolPrefix(item: WidgetItem, defaultSymbol: string): string {
     const symbol = getSymbol(item, defaultSymbol);
     return symbol.length > 0 ? `${symbol} ` : '';
+}
+
+/** Joins a symbol to text, optionally reserving room for an overhanging glyph. */
+export function joinSymbol(symbol: string, text: string, minimumSymbolWidth = 0): string {
+    const gap = ' '.repeat(Math.max(0, minimumSymbolWidth - getVisibleWidth(symbol)) + 1);
+    return symbol.length > 0 ? `${symbol}${gap}${text}` : text;
 }
 
 export function getSlotSymbol(item: WidgetItem, slot: SymbolSlot): string {

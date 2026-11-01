@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 
 import type { WidgetEditorProps } from '../../../types/Widget';
 import { shouldInsertInput } from '../../../utils/input-guards';
+import { BlinkingCursor } from '../BlinkingCursor';
 
 interface EditorMode { type: 'command' | 'width' | 'timeout' | null }
 
@@ -90,7 +91,7 @@ export const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
                     Enter command path:
                     {' '}
                     {commandInput.slice(0, commandCursorPos)}
-                    <Text backgroundColor='gray' color='black'>{commandInput[commandCursorPos] ?? ' '}</Text>
+                    <BlinkingCursor>{commandInput[commandCursorPos] ?? ' '}</BlinkingCursor>
                     {commandInput.slice(commandCursorPos + 1)}
                 </Text>
                 <Text dimColor>←→ move cursor, Enter save, ESC cancel</Text>
@@ -102,7 +103,7 @@ export const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
                 <Box>
                     <Text>Enter max width (blank for no limit): </Text>
                     <Text>{widthInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
@@ -113,7 +114,7 @@ export const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
                 <Box>
                     <Text>Enter timeout in milliseconds (default 1000): </Text>
                     <Text>{timeoutInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

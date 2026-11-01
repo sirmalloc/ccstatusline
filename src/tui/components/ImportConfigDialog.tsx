@@ -7,6 +7,8 @@ import React, { useState } from 'react';
 
 import { shouldInsertInput } from '../../utils/input-guards';
 
+import { BlinkingCursor } from './BlinkingCursor';
+
 interface ImportConfigDialogProps {
     onFileChosen: (filePath: string) => void;
     onCancel: () => void;
@@ -34,7 +36,7 @@ export function ImportConfigDialog({ onFileChosen, onCancel }: ImportConfigDialo
             <Box marginTop={1}>
                 <Text>Path: </Text>
                 <Text>{inputValue}</Text>
-                <Text inverse> </Text>
+                <BlinkingCursor inverse>{' '}</BlinkingCursor>
             </Box>
             <Box marginTop={1}>
                 <Text dimColor>Enter to confirm, Escape to cancel</Text>

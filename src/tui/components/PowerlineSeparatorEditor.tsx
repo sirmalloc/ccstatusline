@@ -11,6 +11,8 @@ import {
     shouldInsertInput
 } from '../../utils/input-guards';
 
+import { BlinkingCursor } from './BlinkingCursor';
+
 export type EditorMode = 'separator' | 'startCap' | 'endCap';
 
 export interface PowerlineSeparatorEditorProps {
@@ -294,7 +296,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     <Text>
                         U+
                         {hexInput.slice(0, cursorPos)}
-                        <Text backgroundColor='gray' color='black'>{hexInput[cursorPos] ?? '_'}</Text>
+                        <BlinkingCursor>{hexInput[cursorPos] ?? '_'}</BlinkingCursor>
                         {hexInput.slice(cursorPos + 1)}
                         {hexInput.length < 6 && hexInput.length === cursorPos && <Text dimColor>{'_'.repeat(6 - hexInput.length - 1)}</Text>}
                     </Text>

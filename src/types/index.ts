@@ -7,7 +7,6 @@ export type {
     WidgetItemType
 } from './Widget';
 export type { Settings } from './Settings';
-export type { FlexMode } from './FlexMode';
 export type { PowerlineConfig } from './PowerlineConfig';
 export type { ColorLevel, ColorLevelString } from './ColorLevel';
 export { getColorLevelString } from './ColorLevel';

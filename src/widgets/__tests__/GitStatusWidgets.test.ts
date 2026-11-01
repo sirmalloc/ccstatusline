@@ -111,7 +111,7 @@ const WIDGETS: WidgetCase[] = [
         shows: { dirty: ['+*?'], clean: [null], staged: ['+'], unstaged: ['*'], untracked: ['?'], conflict: ['!+*'], empty: ['?'] }
     },
     {
-        type: 'git-sha', widget: new GitShaWidget(), name: 'Git SHA', color: 'gray', raw: false, glyphs: false,
+        type: 'git-sha', widget: new GitShaWidget(), name: 'Git SHA', color: 'brightBlack', raw: false, glyphs: false,
         preview: ['a1b2c3d'],
         shows: { dirty: ['abc1234'], clean: ['def5678'], staged: ['1111111'], unstaged: ['2222222'], untracked: ['3333333'], conflict: ['4444444'], empty: ['(no commit)'] }
     }

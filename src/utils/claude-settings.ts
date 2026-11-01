@@ -442,9 +442,13 @@ export async function installStatusLine({
         padding: 0
     };
 
-    // Only set refreshInterval if Claude Code version supports it (>=2.1.97)
-    if (supportsRefreshInterval) {
-        settings.statusLine.refreshInterval = existingRefreshInterval ?? 10;
+    // Default refreshInterval only on supported versions (>=2.1.97), but always keep an
+    // existing value - the version probe also returns false when `claude --version` fails.
+    const refreshInterval = supportsRefreshInterval
+        ? (existingRefreshInterval ?? 10)
+        : existingRefreshInterval;
+    if (refreshInterval !== undefined) {
+        settings.statusLine.refreshInterval = refreshInterval;
     }
 
     await saveClaudeSettings(settings);
@@ -525,6 +529,45 @@ export async function setRefreshInterval(interval: number | null): Promise<void>
 }
 
 const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });
+
+const AutoCompactConfigSchema = z.object({
+    autoCompactEnabled: z.boolean().optional().catch(undefined),
+    autoCompactWindow: z.number().int().min(100000).max(1000000).optional().catch(undefined)
+});
+
+/** Read compaction fields independently so a layer can override just one field. */
+export function getAutoCompactConfig(cwd: string = process.cwd()): { enabled?: boolean; windowSize?: number } {
+    let enabled: boolean | undefined;
+    let windowSize: number | undefined;
+    for (const filePath of getLayeredSettingsCandidatePathsByPriority(cwd)) {
+        try {
+            const raw: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            const parsed = AutoCompactConfigSchema.safeParse(raw);
+            if (parsed.success) {
+                enabled ??= parsed.data.autoCompactEnabled;
+                windowSize ??= parsed.data.autoCompactWindow;
+            }
+        } catch {
+            // Missing, unreadable and malformed settings contribute no overrides.
+        }
+        if (enabled !== undefined && windowSize !== undefined) {
+            break;
+        }
+    }
+    if (enabled === undefined) {
+        try {
+            // Older /config preferences live outside the layered settings files.
+            const raw: unknown = JSON.parse(fs.readFileSync(getClaudeJsonPath(), 'utf-8'));
+            const parsed = AutoCompactConfigSchema.safeParse(raw);
+            if (parsed.success) {
+                enabled = parsed.data.autoCompactEnabled;
+            }
+        } catch {
+            // Missing, unreadable and malformed legacy preferences add no override.
+        }
+    }
+    return { enabled, windowSize };
+}
 
 function getLayeredSettingsCandidatePathsByPriority(cwd: string): string[] {
     const userDir = getClaudeConfigDir();
