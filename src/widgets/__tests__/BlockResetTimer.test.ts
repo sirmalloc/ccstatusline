@@ -124,24 +124,47 @@ describe('BlockResetTimerWidget', () => {
         expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero', 'under-limit']);
     });
 
-    it('hides when sessionUsage is zero and the zero state is enabled', () => {
+    it('labels the zero state with its reset window condition', () => {
+        const zeroState = new BlockResetTimerWidget().getHideableStates().find(state => state.key === 'zero');
+
+        expect(zeroState?.label).toBe('when usage is zero and no reset window is active');
+    });
+
+    it('hides zero usage only when the zero state is enabled and no reset window is active', () => {
         const widget = new BlockResetTimerWidget();
         const item: WidgetItem = { id: 'reset', type: 'reset-timer', metadata: { hide: 'zero' } };
-
-        mockResolveUsageWindowWithFallback.mockReturnValue({
+        const activeWindow = {
             sessionDurationMs: 18000000,
             elapsedMs: 3600000,
             remainingMs: 14400000,
             elapsedPercent: 20,
             remainingPercent: 80
-        });
+        };
+
         mockFormatUsageDuration.mockReturnValue('4hr');
 
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
         expect(render(widget, item, { usageData: { sessionUsage: 0 } })).toBeNull();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 18000000,
+            remainingMs: 0,
+            elapsedPercent: 100,
+            remainingPercent: 0
+        });
+        expect(render(widget, item, { usageData: { sessionUsage: 0, sessionResetAt: '2020-07-01T00:00:00.000Z' } })).toBeNull();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(activeWindow);
         // A null bucket pins usage to 0 while limits[] still supplies the reset time
         expect(render(widget, item, { usageData: { sessionUsage: 0, sessionResetAt: '2030-07-01T00:00:00.000Z' } })).toBe('Reset: 4hr');
+        // Or while local block metrics supply the window
+        expect(render(widget, item, { usageData: { sessionUsage: 0 } })).toBe('Reset: 4hr');
         expect(render(widget, item, { usageData: { sessionUsage: 5 } })).toBe('Reset: 4hr');
-        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 0 } })).toBe('Reset: 4hr');
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+        expect(render(widget, item, { usageData: { sessionUsage: 5 } })).toBe('Reset: [Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 0 } })).toBe('Reset: [Loading]');
     });
 
     // One state covers both placeholders, since either means the same thing to

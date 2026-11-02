@@ -39,7 +39,7 @@ import {
 } from './shared/timezone-editor';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
-    USAGE_ZERO_HIDEABLE_STATE,
+    USAGE_TIMER_ZERO_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageLocale,
@@ -149,7 +149,7 @@ export class WeeklyResetTimerWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, USAGE_TIMER_ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -229,11 +229,12 @@ export class WeeklyResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
-        if (usageData.weeklyUsage === 0 && !usageData.weeklyResetAt && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+        const window = resolveWeeklyUsageWindow(usageData);
+
+        // An ended window clamps to zero remaining, which is no window for this state
+        if (usageData.weeklyUsage === 0 && (!window || window.remainingMs === 0) && isHidden(item, USAGE_TIMER_ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
-
-        const window = resolveWeeklyUsageWindow(usageData);
 
         if (!window) {
             if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {

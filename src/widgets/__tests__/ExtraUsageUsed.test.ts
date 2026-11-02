@@ -111,6 +111,15 @@ describe('ExtraUsageUsedWidget', () => {
         expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData: { extraUsageEnabled: true, extraUsageUsed: 0 } })).toBe('Overage Used: $0.00');
     });
 
+    it('hides spend that rounds to zero at the resolved number format', () => {
+        const widget = new ExtraUsageUsedWidget();
+        const hideZeroItem: WidgetItem = { id: 'extra', type: 'extra-usage-used', metadata: { hide: 'zero' } };
+
+        expect(render(widget, hideZeroItem, { usageData: { extraUsageEnabled: true, extraUsageUsed: 0.4 } })).toBeNull();
+        expect(render(widget, { ...hideZeroItem, numberFormat: { style: 'whole' } }, { usageData: { extraUsageEnabled: true, extraUsageUsed: 40 } })).toBeNull();
+        expect(render(widget, hideZeroItem, { usageData: { extraUsageEnabled: true, extraUsageUsed: 40 } })).toBe('Overage Used: $0.40');
+    });
+
     it('renders available used budget before unrelated usage errors', () => {
         const widget = new ExtraUsageUsedWidget();
 

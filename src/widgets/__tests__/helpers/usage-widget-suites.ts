@@ -163,6 +163,23 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, { ...config.baseItem, metadata: { hide: 'zero', invert: 'true' } }, context)).toBeNull();
     });
 
+    it('hides usage that rounds to zero at the resolved number format, regardless of invert', () => {
+        const widget = config.createWidget();
+        const hideZero: WidgetItem = { ...config.baseItem, metadata: { hide: 'zero' } };
+
+        expect(config.render(widget, hideZero, getUsageContext(config.usageField, 0.04))).toBeNull();
+        expect(config.render(widget, { ...hideZero, metadata: { hide: 'zero', invert: 'true' } }, getUsageContext(config.usageField, 0.04))).toBeNull();
+        expect(config.render(widget, { ...hideZero, numberFormat: { style: 'whole' } }, getUsageContext(config.usageField, 0.4))).toBeNull();
+    });
+
+    it('keeps small usage that the resolved number format can show', () => {
+        const widget = config.createWidget();
+        const hideZero: WidgetItem = { ...config.baseItem, metadata: { hide: 'zero' } };
+
+        expect(config.render(widget, hideZero, getUsageContext(config.usageField, 0.05))).toContain('0.1%');
+        expect(config.render(widget, { ...hideZero, numberFormat: { decimals: 2 } }, getUsageContext(config.usageField, 0.04))).toContain('0.04%');
+    });
+
     it('renders zero usage when the zero state is off', () => {
         const widget = config.createWidget();
 

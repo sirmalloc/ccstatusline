@@ -57,6 +57,15 @@ describe('SpendLimitUsageWidget', () => {
         expect(render(baseItem, { usageData: { spendLimitUsage: 0 } })).toBe('Spend Limit: 0.0%');
     });
 
+    it('declares a zero hideable state and hides usage that displays as zero', () => {
+        const hideZeroItem: WidgetItem = { ...baseItem, metadata: { hide: 'zero' } };
+
+        expect(new SpendLimitUsageWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
+        expect(render(hideZeroItem, { usageData: { spendLimitUsage: 0 } })).toBeNull();
+        expect(render(hideZeroItem, { usageData: { spendLimitUsage: 0.04 } })).toBeNull();
+        expect(render(hideZeroItem, usageContext)).toBe('Spend Limit: 62.8%');
+    });
+
     it('renders nothing when the payload has no spend limit', () => {
         expect(render(baseItem, {})).toBeNull();
         expect(render(baseItem, { usageData: { sessionUsage: 20 } })).toBeNull();

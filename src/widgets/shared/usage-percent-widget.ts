@@ -10,6 +10,7 @@ import type {
 } from '../../types/Widget';
 import {
     formatPercent,
+    rendersAsZero,
     resolveNumberFormat
 } from '../../utils/number-format';
 import {
@@ -213,7 +214,7 @@ export function renderUsagePercentWidgetValue(
     }
 
     const percent = Math.max(0, Math.min(100, usagePercent));
-    if (percent === 0 && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+    if (rendersAsZero(percent, format, 1) && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
         return null;
     }
 

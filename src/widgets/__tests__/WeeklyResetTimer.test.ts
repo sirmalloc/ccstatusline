@@ -155,9 +155,29 @@ describe('WeeklyResetTimerWidget', () => {
         expect(new WeeklyResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero']);
     });
 
-    it('hides when weeklyUsage is zero and the zero state is enabled', () => {
+    it('labels the zero state with its reset window condition', () => {
+        const zeroState = new WeeklyResetTimerWidget().getHideableStates().find(state => state.key === 'zero');
+
+        expect(zeroState?.label).toBe('when usage is zero and no reset window is active');
+    });
+
+    it('hides zero usage only when the zero state is enabled and no reset window is active', () => {
         const widget = new WeeklyResetTimerWidget();
         const item: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { hide: 'zero' } };
+
+        mockFormatUsageDuration.mockReturnValue('4hr');
+
+        mockResolveWeeklyUsageWindow.mockReturnValue(null);
+        expect(render(widget, item, { usageData: { weeklyUsage: 0 } })).toBeNull();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 604800000,
+            remainingMs: 0,
+            elapsedPercent: 100,
+            remainingPercent: 0
+        });
+        expect(render(widget, item, { usageData: { weeklyUsage: 0, weeklyResetAt: '2020-07-01T00:00:00.000Z' } })).toBeNull();
 
         mockResolveWeeklyUsageWindow.mockReturnValue({
             sessionDurationMs: 18000000,
@@ -166,9 +186,6 @@ describe('WeeklyResetTimerWidget', () => {
             elapsedPercent: 20,
             remainingPercent: 80
         });
-        mockFormatUsageDuration.mockReturnValue('4hr');
-
-        expect(render(widget, item, { usageData: { weeklyUsage: 0 } })).toBeNull();
         // A null bucket pins usage to 0 while limits[] still supplies the reset time
         expect(render(widget, item, { usageData: { weeklyUsage: 0, weeklyResetAt: '2030-07-01T00:00:00.000Z' } })).toBe('Weekly Reset: 4hr');
         expect(render(widget, item, { usageData: { weeklyUsage: 5 } })).toBe('Weekly Reset: 4hr');

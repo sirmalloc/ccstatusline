@@ -7,6 +7,10 @@ import type {
     HideableState,
     WidgetItem
 } from '../types/Widget';
+import {
+    rendersAsZero,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import { ExtraUsageAmountWidget } from './shared/extra-usage-amount-widget';
 import { isHidden } from './shared/hideable';
@@ -25,8 +29,11 @@ export class ExtraUsageUsedWidget extends ExtraUsageAmountWidget {
 
     override render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const data = context.usageData;
-        if (!context.isPreview && data?.extraUsageEnabled === true && data.extraUsageUsed === 0 && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
-            return null;
+        if (!context.isPreview && data?.extraUsageEnabled === true && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+            const dollars = this.getDollars(data);
+            if (dollars !== null && rendersAsZero(dollars, resolveNumberFormat('cost', item, settings), 2)) {
+                return null;
+            }
         }
         return super.render(item, context, settings);
     }
