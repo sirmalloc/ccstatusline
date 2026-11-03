@@ -187,7 +187,8 @@ export function getCachedBlockMetrics(sessionDurationHours = 5): BlockMetrics | 
     const cachedStartTime = readBlockCache(activeConfigDir);
     if (cachedStartTime) {
         const blockEndTime = new Date(cachedStartTime.getTime() + sessionDurationMs);
-        if (now.getTime() <= blockEndTime.getTime()) {
+        // A start still ahead of now was written before the clock was set back
+        if (cachedStartTime.getTime() <= now.getTime() && now.getTime() <= blockEndTime.getTime()) {
             // Cache is valid - return cached result
             return {
                 startTime: cachedStartTime,
@@ -197,9 +198,11 @@ export function getCachedBlockMetrics(sessionDurationHours = 5): BlockMetrics | 
         // Cache expired - need to recalculate
     }
 
-    // A recent scan already found nothing; repeating it walks every transcript again
+    // A recent scan already found nothing; repeating it walks every transcript again.
+    // Bounded by one interval, so a record written before the clock was set back
+    // cannot hide a new block for longer.
     const emptyUntil = readEmptyBlockCache(activeConfigDir);
-    if (emptyUntil && now.getTime() < emptyUntil.getTime()) {
+    if (emptyUntil && now.getTime() < emptyUntil.getTime() && emptyUntil.getTime() <= now.getTime() + EMPTY_RESULT_TTL_MS) {
         return null;
     }
 

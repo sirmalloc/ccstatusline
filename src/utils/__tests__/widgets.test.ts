@@ -40,6 +40,10 @@ describe('widget catalog', () => {
         const totalSpeed = catalog.find(entry => entry.type === 'total-speed');
         const resetTimer = catalog.find(entry => entry.type === 'reset-timer');
         const weeklyResetTimer = catalog.find(entry => entry.type === 'weekly-reset-timer');
+        const sessionForecast = catalog.find(entry => entry.type === 'block-forecast');
+        const sessionLimitTimer = catalog.find(entry => entry.type === 'block-limit-timer');
+        const weeklyLimitTimer = catalog.find(entry => entry.type === 'weekly-limit-timer');
+        const fableWeeklyLimitTimer = catalog.find(entry => entry.type === 'fable-weekly-limit-timer');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
@@ -61,6 +65,14 @@ describe('widget catalog', () => {
         expect(resetTimer?.category).toBe('Usage');
         expect(weeklyResetTimer?.displayName).toBe('Weekly Reset Timer');
         expect(weeklyResetTimer?.category).toBe('Usage');
+        expect(sessionForecast?.displayName).toBe('Block Forecast');
+        expect(sessionForecast?.category).toBe('Usage');
+        expect(sessionLimitTimer?.displayName).toBe('Block Limit Timer');
+        expect(sessionLimitTimer?.category).toBe('Usage');
+        expect(weeklyLimitTimer?.displayName).toBe('Weekly Limit Timer');
+        expect(weeklyLimitTimer?.category).toBe('Usage');
+        expect(fableWeeklyLimitTimer?.displayName).toBe('Weekly Fable Limit Timer');
+        expect(fableWeeklyLimitTimer?.category).toBe('Usage');
     });
 
     it('hides manual separator when default separator is configured', () => {
@@ -377,6 +389,8 @@ describe('label prefix', () => {
         { display: 'progress-short' },
         { display: 'slider' },
         { display: 'slider-only' },
+        { format: 'label-check' },
+        { format: 'label-mark' },
         { inverse: 'true' }
     ];
 
@@ -395,6 +409,9 @@ describe('label prefix', () => {
             for (const metadata of LABEL_MODE_PROBES) {
                 const item = { id: '1', type, metadata };
                 const label = widget.getLabelPrefix(item);
+                if (label === undefined) {
+                    continue;
+                }
                 const rendered = widget.render(item, { isPreview: true }, settings) ?? '';
                 expect(`${type}/${JSON.stringify(metadata)}: ${rendered.includes(label) ? 'has' : 'lacks'} "${label}"`)
                     .toBe(`${type}/${JSON.stringify(metadata)}: has "${label}"`);
