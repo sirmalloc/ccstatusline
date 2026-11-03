@@ -90,7 +90,49 @@ function lastNewlineBefore(chunk: Buffer, end: number): number {
     return end > 0 ? chunk.lastIndexOf(0x0a, end - 1) : -1;
 }
 
-function decodeReverseLine(segments: Buffer[], totalBytes: number, stripBom: boolean): string | null {
+/**
+ * Whether a line held as reverse-ordered segments contains the needle, without
+ * joining the segments: a long record would otherwise be copied just to be
+ * rejected. Each segment is checked, then each boundary between neighbours
+ */
+function segmentsContain(segments: Buffer[], needle: Buffer): boolean {
+    for (const segment of segments) {
+        if (segment.indexOf(needle) !== -1) {
+            return true;
+        }
+    }
+
+    const overlap = needle.length - 1;
+    for (let i = 0; i + 1 < segments.length; i++) {
+        const later = segments[i];
+        const earlier = segments[i + 1];
+        if (!later || !earlier) {
+            continue;
+        }
+
+        const boundary = Buffer.concat([
+            earlier.subarray(Math.max(0, earlier.length - overlap)),
+            later.subarray(0, overlap)
+        ]);
+        if (boundary.indexOf(needle) !== -1) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function decodeReverseLine(
+    segments: Buffer[],
+    totalBytes: number,
+    stripBom: boolean,
+    needle: Buffer | null
+): string | null {
+    // Checked on the raw bytes, so a skipped line is never joined or decoded
+    if (needle && !segmentsContain(segments, needle)) {
+        return null;
+    }
+
     let lineBuffer: Buffer;
     if (segments.length === 1) {
         const segment = segments[0];
@@ -174,8 +216,12 @@ export function* iterateJsonlLinesSync(filePath: string): Generator<string> {
 /**
  * Reads JSONL records from newest to oldest without loading the whole file.
  * This is intended for widgets that only need the latest matching record.
+ *
+ * With `mustContain`, lines that don't contain that text are skipped before
+ * they are decoded, which keeps scans over large transcripts cheap.
  */
-export function* iterateJsonlLinesReverseSync(filePath: string): Generator<string> {
+export function* iterateJsonlLinesReverseSync(filePath: string, mustContain?: string): Generator<string> {
+    const needle = mustContain ? Buffer.from(mustContain, 'utf8') : null;
     const fd = fs.openSync(filePath, 'r');
     try {
         let position = fs.fstatSync(fd).size;
@@ -198,7 +244,7 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
                     totalBytes += segment.length;
                 }
 
-                const line = decodeReverseLine(segments, totalBytes, false);
+                const line = decodeReverseLine(segments, totalBytes, false, needle);
                 segments.length = 0;
                 totalBytes = 0;
                 if (line !== null) {
@@ -217,7 +263,7 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
         }
 
         if (totalBytes > 0) {
-            const line = decodeReverseLine(segments, totalBytes, true);
+            const line = decodeReverseLine(segments, totalBytes, true, needle);
             if (line !== null) {
                 yield line;
             }
