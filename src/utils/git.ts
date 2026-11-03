@@ -29,6 +29,7 @@ interface GitRepoMetadata {
     cachePath: string;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
+    headRefStamp: string | null;
 }
 
 interface GitCacheEntry {
@@ -36,6 +37,8 @@ interface GitCacheEntry {
     createdAt: number;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
+    // Only on commands that succeeded, in entries written since it was added
+    headRefStamp?: string | null;
 }
 
 interface PersistentGitCache {
@@ -52,6 +55,35 @@ const GIT_CACHE_SCHEMA_VERSION = 1 as const;
 // must not freeze the statusline process - the error path below caches null
 // and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
+
+// The TTL is for edits to work tree files, which HEAD and index mtimes cannot
+// show. The commands below never read the work tree, so running them again when
+// the TTL ends can only repeat their answer. Their output is kept for longer,
+// and this limit bounds what the checks cannot see, such as a config edit.
+const STABLE_OUTPUT_MAX_AGE_MS = 5 * 60 * 1_000;
+
+// Depends only on where cwd is in the repository, and a persistent cache file
+// already belongs to one git dir and cwd
+const REPOSITORY_LOCATION_COMMANDS = new Set([
+    'rev-parse --is-inside-work-tree',
+    'rev-parse --show-toplevel',
+    'rev-parse --git-dir --git-common-dir'
+]);
+
+// Depends only on HEAD, the ref it points to, and the index
+const HEAD_AND_INDEX_COMMANDS = new Set([
+    'symbolic-ref HEAD',
+    'symbolic-ref --short HEAD',
+    'rev-parse --short HEAD',
+    'diff --cached --shortstat',
+    'ls-files --unmerged -z'
+]);
+
+// What HEAD holds in a reftable repository, whose refs are not in files
+const REFTABLE_HEAD_REF = 'refs/heads/.invalid';
+
+// These point git away from the files that the cache checks read
+const GIT_LOCATION_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE'];
 
 // In-process cache keeps cwd in the key; the persistent cache uses one file
 // per (repo, cwd) pair, stores cwd once at the file level and keys entries by
@@ -275,6 +307,25 @@ export function execGit(args: string[], cwd: string | undefined, encoding: 'utf8
     );
 }
 
+// Changes when the commit on HEAD moves, which git can do without touching HEAD
+// or the index (`git reset --soft`). null when no file can show that.
+function getHeadRefStamp(gitDir: string): string | null {
+    const head = readTextFile(path.join(gitDir, 'HEAD')).trim();
+    // A detached HEAD holds the commit itself, so HEAD's own mtime covers it
+    if (/^[0-9a-f]{40,64}$/i.test(head)) {
+        return 'detached';
+    }
+
+    const ref = /^ref:\s*(refs\/\S+)$/.exec(head)?.[1];
+    if (!ref || ref === REFTABLE_HEAD_REF) {
+        return null;
+    }
+
+    const commonDir = readTextFile(path.join(gitDir, 'commondir')).trim();
+    const refsDir = commonDir ? path.resolve(gitDir, commonDir) : gitDir;
+    return `${getMtimeMs(path.join(refsDir, ref))}|${getMtimeMs(path.join(refsDir, 'packed-refs'))}`;
+}
+
 function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     if (!cwd) {
         return null;
@@ -293,7 +344,8 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     return {
         cachePath: getCachePath(gitDir, cwd),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
-        indexMtimeMs: getMtimeMs(path.join(gitDir, 'index'))
+        indexMtimeMs: getMtimeMs(path.join(gitDir, 'index')),
+        headRefStamp: getHeadRefStamp(gitDir)
     };
 }
 
@@ -368,15 +420,31 @@ function isCacheEntryFresh(
     entry: GitCacheEntry,
     metadata: GitRepoMetadata | null,
     ttlMs: number,
-    now: number
+    now: number,
+    command: string
 ): boolean {
+    const ageMs = now - entry.createdAt;
+    // A TTL of 0 already means no age-based expiry, so it keeps its own rules
+    const mayOutliveTtl = metadata !== null
+        && ttlMs > 0
+        && !GIT_LOCATION_VARIABLES.some(name => process.env[name] !== undefined);
+
+    // A null output is a failure here, as these always print something
+    if (mayOutliveTtl && entry.output !== null && REPOSITORY_LOCATION_COMMANDS.has(command)) {
+        return ageMs <= STABLE_OUTPUT_MAX_AGE_MS;
+    }
+
     if (metadata) {
         if (entry.headMtimeMs !== metadata.headMtimeMs || entry.indexMtimeMs !== metadata.indexMtimeMs) {
             return false;
         }
     }
 
-    return ttlMs === 0 || now - entry.createdAt <= ttlMs;
+    const isStable = mayOutliveTtl
+        && metadata.headRefStamp !== null
+        && entry.headRefStamp === metadata.headRefStamp
+        && HEAD_AND_INDEX_COMMANDS.has(command);
+    return ttlMs === 0 || ageMs <= (isStable ? STABLE_OUTPUT_MAX_AGE_MS : ttlMs);
 }
 
 function readPersistentCache(cachePath: string): PersistentGitCache | null {
@@ -441,7 +509,8 @@ function readPersistentCacheEntry(
     cacheKey: string,
     cwd: string | undefined,
     ttlMs: number,
-    now: number
+    now: number,
+    command: string
 ): GitCacheEntry | null {
     if (!metadata) {
         return null;
@@ -453,7 +522,7 @@ function readPersistentCacheEntry(
     }
 
     const entry = cache.entries[cacheKey];
-    if (!entry || !isCacheEntryFresh(entry, metadata, ttlMs, now)) {
+    if (!entry || !isCacheEntryFresh(entry, metadata, ttlMs, now, command)) {
         return null;
     }
 
@@ -484,12 +553,15 @@ function writePersistentCacheEntry(
     writePersistentCache(metadata.cachePath, cache);
 }
 
-function createCacheEntry(output: string | null, metadata: GitRepoMetadata | null, now: number): GitCacheEntry {
+function createCacheEntry(output: string | null, metadata: GitRepoMetadata | null, now: number, succeeded: boolean): GitCacheEntry {
     return {
         output,
         createdAt: now,
         headMtimeMs: metadata?.headMtimeMs ?? null,
-        indexMtimeMs: metadata?.indexMtimeMs ?? null
+        indexMtimeMs: metadata?.indexMtimeMs ?? null,
+        // No answer is kept past the TTL after a failure: empty output from a
+        // successful `diff --cached` and a timeout both have a null output
+        ...(succeeded ? { headRefStamp: metadata?.headRefStamp ?? null } : {})
     };
 }
 
@@ -537,21 +609,23 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
 
     // Check cache first
     const memoryEntry = gitCommandCache.get(memoryCacheKey);
-    if (memoryEntry && isCacheEntryFresh(memoryEntry, metadata, ttlMs, now)) {
+    if (memoryEntry && isCacheEntryFresh(memoryEntry, metadata, ttlMs, now, commandToken)) {
         return memoryEntry.output;
     }
 
-    const persistentEntry = readPersistentCacheEntry(metadata, persistentCacheKey, cwd, ttlMs, now);
+    const persistentEntry = readPersistentCacheEntry(metadata, persistentCacheKey, cwd, ttlMs, now, commandToken);
     if (persistentEntry) {
         gitCommandCache.set(memoryCacheKey, persistentEntry);
         return persistentEntry.output;
     }
 
     let result: string | null;
+    let succeeded = false;
     try {
         const rawOutput = execGit(args, cwd, encoding);
         const output = encoding === 'utf8' ? rawOutput.trimEnd() : rawOutput;
         result = output.length > 0 ? output : null;
+        succeeded = true;
     } catch {
         result = null;
     }
@@ -559,7 +633,7 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
     // Stamped after the run, so a command slower than the TTL (status in a
     // large repository, or one cut off by the timeout) still gets the full TTL
     // of reuse rather than expiring the moment it returns.
-    const entry = createCacheEntry(result, metadata, Date.now());
+    const entry = createCacheEntry(result, metadata, Date.now(), succeeded);
     gitCommandCache.set(memoryCacheKey, entry);
     writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
     return result;
@@ -709,7 +783,7 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
 export function getGitConflictCount(context: RenderContext): number {
     // Latin-1 maps each byte to a distinct code point, preserving arbitrary Git
     // pathnames through string comparisons and the JSON cache. It is not display text.
-    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z'], context, undefined, 'latin1');
+    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z'], context, 'ls-files --unmerged -z', 'latin1');
     if (!output)
         return 0;
 
