@@ -6,7 +6,8 @@ import {
     beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import { getBlockMetrics } from '../jsonl';
@@ -86,6 +87,7 @@ describe('jsonl block metrics integration', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         if (originalClaudeConfigDir === undefined) {
             delete process.env.CLAUDE_CONFIG_DIR;
         } else {
@@ -266,4 +268,37 @@ describe('jsonl block metrics integration', () => {
         expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(recentActivity).toISOString());
         expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
     }, 30000);
+
+    it('reads a long-running transcript only as far back as the lookback needs', () => {
+        const projectsDir = path.join(tempClaudeDir, 'projects', 'project-a');
+        fs.mkdirSync(projectsDir, { recursive: true });
+        const transcriptPath = path.join(projectsDir, 'long-running.jsonl');
+
+        const now = new Date();
+        const oldActivity = hoursAgo(now, 30);
+        const blockStartSource = hoursAgo(now, 2);
+        const recentActivity = hoursAgo(now, 0.5);
+        // A session kept open for days: its older history, padded the way tool
+        // results pad real transcripts, sits before the 29h gap and needn't be read
+        const oldRow = JSON.stringify({
+            type: 'user',
+            timestamp: oldActivity.toISOString(),
+            message: { content: 'x'.repeat(64 * 1024) }
+        });
+        fs.writeFileSync(transcriptPath, [
+            ...Array.from({ length: 200 }, () => oldRow),
+            makeUsageLine(oldActivity),
+            makeUsageLine(blockStartSource),
+            makeUsageLine(recentActivity)
+        ].join('\n'));
+
+        const readSync = vi.spyOn(fs, 'readSync');
+        const metrics = getBlockMetrics();
+        const bytesRead = readSync.mock.results
+            .reduce((total, result) => total + (typeof result.value === 'number' ? result.value : 0), 0);
+
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(blockStartSource).toISOString());
+        expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
+        expect(bytesRead).toBeLessThan(fs.statSync(transcriptPath).size / 4);
+    });
 });
