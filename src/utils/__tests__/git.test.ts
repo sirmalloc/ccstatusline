@@ -239,6 +239,39 @@ describe('git utils', () => {
                 '--ignore-submodules=dirty'
             ]));
         });
+
+        it.each([
+            ['a partial clone', '[remote "origin"]\n\tpartialclonefilter = blob:none\n'],
+            ['a branch name', '[branch "filter-work"]\n\tremote = origin\n'],
+            ['a remote URL', '[remote "origin"]\n\turl = https://example.com/include.git\n']
+        ])('does not ask git about filters for the word in %s', (_name, config) => {
+            const { root } = createGitRepo();
+            fs.writeFileSync(path.join(root, '.git', 'config'), config);
+            mockExecFileSync.mockReturnValueOnce('');
+
+            execGit(['status', '--porcelain'], root);
+
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toContain('status');
+        });
+
+        it.each([
+            '[filter "x"]',
+            '[FILTER "x"]',
+            '[filter.x]',
+            '[core][filter "x"]',
+            '[include]',
+            '[includeIf "gitdir:/"]'
+        ])('asks git about filters for the section %s', (section) => {
+            const { root } = createGitRepo();
+            fs.writeFileSync(path.join(root, '.git', 'config'), `${section}\n`);
+            mockExecFileSync.mockReturnValueOnce('');
+            mockExecFileSync.mockReturnValueOnce('');
+
+            execGit(['status', '--porcelain'], root);
+
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toContain('config');
+        });
     });
 
     describe('runGit', () => {
