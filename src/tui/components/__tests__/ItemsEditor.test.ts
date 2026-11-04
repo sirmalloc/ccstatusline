@@ -620,6 +620,10 @@ describe('ItemsEditor', () => {
             });
             stdin.write('l');
             await waitFor(() => {
+                expect(lastFrame()).toContain('link: Zed');
+            });
+            stdin.write('l');
+            await waitFor(() => {
                 expect(lastFrame()).toContain('Current Working Dir (~, segments: 2)');
                 expect(lastFrame()).not.toContain('link:');
             });

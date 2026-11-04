@@ -84,7 +84,7 @@ The exact live compaction threshold is not included in the status payload. This 
 
 ### Environment, Layout & Custom
 
-- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit. Press `l` in its editor to cycle clickable links (`off` → file manager → VS Code → Cursor). The displayed path still honors home abbreviation, segment limits, and fish-style shortening, while the link always targets the original absolute directory. File-manager links use `file://` URLs on POSIX and Windows, including UNC shares; local terminals need OSC 8 hyperlink support.
+- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit. Press `l` in its editor to cycle clickable links (`off` → file manager → VS Code → Cursor → Zed). The displayed path still honors home abbreviation, segment limits, and fish-style shortening, while the link always targets the original absolute directory. File-manager links use `file://` URLs on POSIX and Windows, including UNC shares; local terminals need OSC 8 hyperlink support.
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators stay saved but are hidden in Powerline mode, reappearing when it is disabled; flex separators still work there as layout spacers.
 
@@ -321,7 +321,7 @@ Widget-specific shortcuts:
 - **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions, Remote Control Status with Nerd Font icons): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, Shift+Tab toggles every symbol between none and default, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status, Remote Control Status on/off) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `f` toggle fish-style abbreviation, `w` set a maximum visible width (blank removes the limit)
 - **Git Worktree**: `f` toggle fish-style abbreviation
-- **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
+- **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor` → `Zed`), `w` set a maximum visible width (blank removes the limit)
 - **Git PR**: `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
@@ -343,7 +343,7 @@ Widget-specific shortcuts:
 - **Claude Status**: `h` toggle the 48-hour incident-history strip, `l` toggle the link to the status page
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Fast Mode**: `f` cycle format, `n` toggle Nerd Font lightning icons
-- **Current Working Dir**: `l` cycle links (`off` → file manager → VS Code → Cursor; off by default), `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
+- **Current Working Dir**: `l` cycle links (`off` → file manager → VS Code → Cursor → Zed; off by default), `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
 - **Skills**: `v` cycle view mode, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
