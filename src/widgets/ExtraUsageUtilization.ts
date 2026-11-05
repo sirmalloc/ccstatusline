@@ -18,7 +18,6 @@ import { getUsageErrorMessage } from '../utils/usage';
 
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
 import { isHidden } from './shared/hideable';
-import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
@@ -26,11 +25,11 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
-    getUsageProgressBarWidth,
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
     makeSliderBar,
+    renderUsageProgressBar,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -87,9 +86,8 @@ export class ExtraUsageUtilizationWidget implements Widget {
             const renderedPercent = inverted ? 100 - previewPercent : previewPercent;
 
             if (isUsageProgressMode(displayMode)) {
-                const width = getUsageProgressBarWidth(displayMode);
-                const progressBar = makeTimerProgressBar(renderedPercent, width);
-                return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+                const progressBar = renderUsageProgressBar(renderedPercent, displayMode);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${progressBar} ${formatPercent(renderedPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
@@ -122,9 +120,8 @@ export class ExtraUsageUtilizationWidget implements Widget {
         const renderedPercent = inverted ? 100 - percent : percent;
 
         if (isUsageProgressMode(displayMode)) {
-            const width = getUsageProgressBarWidth(displayMode);
-            const progressBar = makeTimerProgressBar(renderedPercent, width);
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+            const progressBar = renderUsageProgressBar(renderedPercent, displayMode);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${progressBar} ${formatPercent(renderedPercent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
