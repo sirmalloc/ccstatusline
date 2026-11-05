@@ -434,4 +434,58 @@ describe('RefreshIntervalMenu', () => {
             stderr.destroy();
         }
     });
+
+    it('keeps the cancelled setting highlighted after Escape closes its prompt', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn();
+        const onCustomCommandCacheTtlUpdate = vi.fn();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(RefreshIntervalMenu, {
+                currentInterval: 10,
+                supportsRefreshInterval: true,
+                gitCacheTtlSeconds: 5,
+                customCommandCacheTtlSeconds: 7,
+                terminalWidthCacheTtlSeconds: 9,
+                onUpdate,
+                onGitCacheTtlUpdate: vi.fn(),
+                onCustomCommandCacheTtlUpdate,
+                onTerminalWidthCacheTtlUpdate: vi.fn(),
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toMatch(selected('Refresh Interval'));
+            });
+            await press(stdin, stdout, '\u001B[B', selected('Git Cache TTL'));
+            await press(stdin, stdout, '\u001B[B', selected('Custom Command Cache TTL'));
+            await press(stdin, stdout, '\r', 'Enter custom command cache TTL in seconds (0-60):');
+
+            await press(stdin, stdout, '\u001B', selected('Custom Command Cache TTL'));
+            expect(stdout.getOutput()).not.toMatch(selected('Refresh Interval'));
+
+            await press(stdin, stdout, '\r', 'Enter custom command cache TTL in seconds (0-60):');
+            expect(onUpdate).not.toHaveBeenCalled();
+            expect(onCustomCommandCacheTtlUpdate).not.toHaveBeenCalled();
+            expect(onBack).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
