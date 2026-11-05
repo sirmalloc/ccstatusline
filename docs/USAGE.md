@@ -316,6 +316,8 @@ Text editors use a blinking bar cursor so trailing spaces remain visible. Label 
 
 The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget. Plain-letter shortcuts ignore Ctrl and Alt/Option modifiers, so combinations such as `Ctrl+S` do not also trigger the letter action.
 
+All bar widgets offer a 16-cell **line bar** mode using `━` for filled cells and `─` for empty cells, with no brackets and the widget's numeric values alongside it. It is the last mode before the `p` cycle returns to its starting mode. Fill inversion and time cursors remain available on widgets that support them. Existing modes retain their appearance.
+
 Widget-specific shortcuts:
 - **Remote Control Status**: `e` edits the label in `label-check` and `label-mark` formats when raw value is off. The override is shared by these two formats; Tab in the label editor restores `remote `.
 - **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions, Remote Control Status with Nerd Font icons): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, Shift+Tab toggles every symbol between none and default, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status, Remote Control Status on/off) edit each part in one list
@@ -326,15 +328,15 @@ Widget-specific shortcuts:
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Conflicts**: `z` toggles how a visible conflict-free tree renders (`⚠0` or the clean glyph); `g` edits the conflict and clean glyphs
-- **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
+- **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only/line bar
 - **Session Cost Rate**: `t` switch between active time (how long Claude spent working, the default) and clock time (the whole session)
-- **Block Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Spend Limit Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Block and weekly usage widgets use `t` to toggle the time cursor in bar modes.
+- **Block Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Spend Limit Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only/line bar and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Block and weekly usage widgets use `t` to toggle the time cursor in bar modes.
 - **Extra Usage Daily Budget**: `w` toggle counting weekdays only (Saturday and Sunday, UTC, are skipped; today always counts)
 - **Block Forecast**: `u` switch between projected used and remaining percentage
 - **Block Limit Timer / Weekly Limit Timer / Weekly Fable Limit Timer**: `s` toggle compact time
-- **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
-- **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
-- **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `o` toggle hours-only in time mode, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
+- **Block Timer**: `p` cycle time/full bar/medium bar/short bar/short bar only/line bar, `s` toggle compact time, `v` invert fill in progress mode
+- **Block Reset Timer**: `p` cycle time/full bar/medium bar/short bar/short bar only/line bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
+- **Weekly Reset Timer**: `p` cycle time/full bar/medium bar/short bar/short bar only/line bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `o` toggle hours-only in time mode, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only/line progress bar
 - **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed
 - **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope

@@ -26,7 +26,6 @@ import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
 } from './shared/locale-editor';
-import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     TIMEZONE_EDITOR_ACTION,
@@ -39,7 +38,6 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageLocale,
-    getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
     isAtSessionLimit,
@@ -50,6 +48,7 @@ import {
     isUsageProgressMode,
     isUsageSliderMode,
     makeSliderBar,
+    renderUsageProgressBar,
     toggleUsageCompact,
     toggleUsageDateMode,
     toggleUsageHourFormat,
@@ -118,9 +117,8 @@ export class BlockResetTimerWidget implements Widget {
             const previewPercent = inverted ? 90.0 : 10.0;
 
             if (isUsageProgressMode(displayMode)) {
-                const barWidth = getUsageProgressBarWidth(displayMode);
-                const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(previewPercent, format)}`);
+                const progressBar = renderUsageProgressBar(previewPercent, displayMode);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `${progressBar} ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
@@ -164,10 +162,9 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         if (isUsageProgressMode(displayMode)) {
-            const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const progressBar = makeTimerProgressBar(percent, barWidth);
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(percent, format)}`);
+            const progressBar = renderUsageProgressBar(percent, displayMode);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `${progressBar} ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {

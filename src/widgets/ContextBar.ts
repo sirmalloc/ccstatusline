@@ -18,20 +18,13 @@ import {
 import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
+import { makeLineProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { makeSliderBar } from './shared/usage-display';
 
 const LABEL = 'Context: ';
 
 type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only' | 'line';
-
-const LINE_BAR_WIDTH = 16;
-
-// Thin bar for fonts and themes where block glyphs look heavy: heavy rule for used, light rule for free.
-function makeLineBar(percent: number, width = LINE_BAR_WIDTH): string {
-    const filled = Math.round((percent / 100) * width);
-    return '━'.repeat(filled) + '─'.repeat(width - filled);
-}
 
 function getDisplayMode(item: WidgetItem): DisplayMode {
     const mode = item.metadata?.display;
@@ -112,7 +105,7 @@ export class ContextBarWidget implements Widget {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
             }
             const barWidth = displayMode === 'progress' ? 32 : 16;
-            const previewBar = displayMode === 'line' ? makeLineBar(25) : makeUsageProgressBar(25, barWidth);
+            const previewBar = displayMode === 'line' ? makeLineProgressBar(25) : makeUsageProgressBar(25, barWidth);
             const previewDisplay = `${previewBar} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), previewDisplay);
         }
@@ -144,7 +137,7 @@ export class ContextBarWidget implements Widget {
         }
 
         const barWidth = displayMode === 'progress' ? 32 : 16;
-        const bar = displayMode === 'line' ? makeLineBar(clampedPercent) : makeUsageProgressBar(clampedPercent, barWidth);
+        const bar = displayMode === 'line' ? makeLineProgressBar(clampedPercent) : makeUsageProgressBar(clampedPercent, barWidth);
         const display = `${bar} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
 
         return formatRawOrLabeledValue(item, this.getLabelPrefix(), display);
