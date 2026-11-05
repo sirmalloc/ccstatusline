@@ -15,6 +15,7 @@ export class JjDescriptionWidget extends JjWidgetBase {
     protected getValue(context: RenderContext): string | null {
         return runJjArgs([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             '@',

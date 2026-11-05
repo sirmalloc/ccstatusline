@@ -154,13 +154,13 @@ describe('GitBranchWidget', () => {
     it.each(['false', 'true'])('should render the short commit on a detached HEAD (fish style: %s)', (fishStyle) => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
-        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
 
         expect(render({ hideNoGit: true, metadata: { fishStyle } })).toBe('⎇ (ddfb2de)');
-        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual(['--color=never', 'root']);
-        expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        // No .jj above the working directory, so jj is not spawned to ask
+        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('git');
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        expect(mockExecFileSync.mock.calls).toHaveLength(3);
     });
 
     describe.each(['false', 'true'])('in a jj workspace (fish style: %s)', (fishStyle) => {
@@ -169,8 +169,11 @@ describe('GitBranchWidget', () => {
 
         beforeEach(() => {
             workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-branch-jj-'));
+            // Colocated: the workspace is also a git repo. A plain git repo has
+            // its own .git at code/app. Git is only spawned where a .git exists.
             fs.mkdirSync(path.join(workspaceDir, '.jj'));
-            fs.mkdirSync(path.join(workspaceDir, 'code', 'app'), { recursive: true });
+            fs.mkdirSync(path.join(workspaceDir, '.git'));
+            fs.mkdirSync(path.join(workspaceDir, 'code', 'app', '.git'), { recursive: true });
         });
 
         afterEach(() => {
@@ -189,7 +192,7 @@ describe('GitBranchWidget', () => {
             mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
             mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
 
-            expect(render({ hideNoGit, metadata: { fishStyle } })).toBe(expected);
+            expect(render({ cwd: workspaceDir, hideNoGit, metadata: { fishStyle } })).toBe(expected);
             expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
             expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--show-toplevel']);
             expect(mockExecFileSync.mock.calls).toHaveLength(4);
@@ -205,7 +208,7 @@ describe('GitBranchWidget', () => {
             mockExecFileSync.mockReturnValueOnce(`${path.join(workspaceDir, 'code', 'app')}\n`);
             mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
 
-            expect(render({ hideNoGit: true, metadata: { fishStyle } })).toBe('⎇ (ddfb2de)');
+            expect(render({ cwd: path.join(workspaceDir, 'code', 'app'), hideNoGit: true, metadata: { fishStyle } })).toBe('⎇ (ddfb2de)');
             expect(mockExecFileSync.mock.calls[4]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
         });
     });
@@ -213,7 +216,6 @@ describe('GitBranchWidget', () => {
     it('should link a detached HEAD to its commit', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
-        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
         mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
