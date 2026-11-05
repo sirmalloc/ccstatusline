@@ -352,8 +352,7 @@ describe('LineSelector', () => {
             await waitFor(() => {
                 expect(view.frame()).toContain('Are you sure you want to delete line?');
             });
-            // The dialog heading prints no space before the number ('☰ Line2')
-            expect(view.frame()).toMatch(/☰ Line ?2 \(empty\)/);
+            expect(view.frame()).toContain('☰ Line 2 (empty)');
             expect(view.frame()).toMatch(/▶\s+Yes/);
             expect(view.frame()).toContain('No');
 
@@ -371,8 +370,9 @@ describe('LineSelector', () => {
             // Deleting the first line keeps the highlight on the first line
             view.press('d');
             await waitFor(() => {
-                expect(view.frame()).toMatch(/☰ Line ?1 \(1 widget\)/);
+                expect(view.frame()).toContain('Are you sure you want to delete line?');
             });
+            expect(view.frame()).toContain('☰ Line 1 (1 widget)');
 
             view.press(ENTER);
             await waitFor(() => {
