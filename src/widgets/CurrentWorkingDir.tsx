@@ -41,7 +41,8 @@ type CwdLinkMode = (typeof CWD_LINK_MODES)[number];
 const LINK_MODE_LABELS: Record<CwdLinkMode, string> = {
     file: 'file',
     vscode: 'VS Code',
-    cursor: 'Cursor'
+    cursor: 'Cursor',
+    zed: 'Zed'
 };
 
 export class CurrentWorkingDirWidget implements Widget {

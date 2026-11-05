@@ -15,9 +15,7 @@ interface Migration {
 }
 
 type V1MigratedField
-    = | 'flexMode'
-        | 'compactThreshold'
-        | 'colorLevel'
+    = | 'colorLevel'
         | 'defaultSeparator'
         | 'defaultPadding'
         | 'inheritSeparatorColors'
@@ -36,14 +34,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const V1_FIELD_RULES: V1FieldRule[] = [
-    {
-        key: 'flexMode',
-        isValid: value => typeof value === 'string'
-    },
-    {
-        key: 'compactThreshold',
-        isValid: value => typeof value === 'number'
-    },
     {
         key: 'colorLevel',
         isValid: value => typeof value === 'number'

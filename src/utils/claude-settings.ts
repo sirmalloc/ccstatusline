@@ -530,6 +530,45 @@ export async function setRefreshInterval(interval: number | null): Promise<void>
 
 const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });
 
+const AutoCompactConfigSchema = z.object({
+    autoCompactEnabled: z.boolean().optional().catch(undefined),
+    autoCompactWindow: z.number().int().min(100000).max(1000000).optional().catch(undefined)
+});
+
+/** Read compaction fields independently so a layer can override just one field. */
+export function getAutoCompactConfig(cwd: string = process.cwd()): { enabled?: boolean; windowSize?: number } {
+    let enabled: boolean | undefined;
+    let windowSize: number | undefined;
+    for (const filePath of getLayeredSettingsCandidatePathsByPriority(cwd)) {
+        try {
+            const raw: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            const parsed = AutoCompactConfigSchema.safeParse(raw);
+            if (parsed.success) {
+                enabled ??= parsed.data.autoCompactEnabled;
+                windowSize ??= parsed.data.autoCompactWindow;
+            }
+        } catch {
+            // Missing, unreadable and malformed settings contribute no overrides.
+        }
+        if (enabled !== undefined && windowSize !== undefined) {
+            break;
+        }
+    }
+    if (enabled === undefined) {
+        try {
+            // Older /config preferences live outside the layered settings files.
+            const raw: unknown = JSON.parse(fs.readFileSync(getClaudeJsonPath(), 'utf-8'));
+            const parsed = AutoCompactConfigSchema.safeParse(raw);
+            if (parsed.success) {
+                enabled = parsed.data.autoCompactEnabled;
+            }
+        } catch {
+            // Missing, unreadable and malformed legacy preferences add no override.
+        }
+    }
+    return { enabled, windowSize };
+}
+
 function getLayeredSettingsCandidatePathsByPriority(cwd: string): string[] {
     const userDir = getClaudeConfigDir();
     const projectDir = path.join(cwd, '.claude');

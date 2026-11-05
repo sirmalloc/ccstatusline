@@ -172,6 +172,13 @@ describe('GitWorktreeWidget', () => {
 
     describe('fish style', () => {
         it.each([
+            { name: 'preserves a flag in a single segment', gitDir: '/some/path/.git/worktrees/🇨🇳release\n/some/path/.git\n', expected: '𖠰 🇨🇳' },
+            { name: 'preserves a ZWJ emoji in a single segment', gitDir: '/some/path/.git/worktrees/👩‍💻tools\n/some/path/.git\n', expected: '𖠰 👩‍💻' },
+            { name: 'preserves a combining mark in a single segment', gitDir: '/some/path/.git/worktrees/e\u0301quipe\n/some/path/.git\n', expected: '𖠰 e\u0301' },
+            { name: 'preserves skin tone modifiers', gitDir: '/some/path/.git/worktrees/👍🏽fix/topic\n/some/path/.git\n', expected: '𖠰 👍🏽/topic' },
+            { name: 'preserves variation selectors', gitDir: '/some/path/.git/worktrees/❤️health/topic\n/some/path/.git\n', expected: '𖠰 ❤️/topic' },
+            { name: 'preserves graphemes in every abbreviated segment', gitDir: '/some/path/.git/worktrees/🇨🇳release/👩‍💻tools/e\u0301quipe/topic\n/some/path/.git\n', expected: '𖠰 🇨🇳/👩‍💻/e\u0301/topic' },
+            { name: 'keeps the final grapheme-bearing segment full', gitDir: '/some/path/.git/worktrees/feature/👩‍💻tools\n/some/path/.git\n', expected: '𖠰 f/👩‍💻tools' },
             { name: 'collapses the main worktree to its first letter', gitDir: '.git\n/some/path\n', expected: '𖠰 m' },
             { name: 'keeps the last segment full', gitDir: '/some/path/.git/worktrees/some-dir/some-worktree\n/some/path/.git\n', expected: '𖠰 s/some-worktree' },
             { name: 'preserves a non-BMP character in a single segment', gitDir: '/some/path/.git/worktrees/🚀launch\n/some/path/.git\n', expected: '𖠰 🚀' },
