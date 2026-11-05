@@ -532,6 +532,20 @@ export function getVisibleText(text: string): string {
     return result;
 }
 
+// A space right after a Private Use Area character (Nerd Font icons), possibly
+// after color codes or link closers, becomes an EN SPACE: Ghostty and kitty
+// only draw such an icon two cells wide when the next cell is U+0020 or
+// U+2002, and U+00A0 keeps it at one. Powerline separators (U+E0B0-U+E0D7)
+// are left out: they're drawn one cell wide.
+const PUA_THEN_SPACE_REGEX = /([\uE000-\uE0AF\uE0D8-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}](?:\x1b\[[0-9;:]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\))*) /gu;
+
+// Swaps spaces for characters that editors like VS Code do not trim.
+export function replaceSpacesForOutput(text: string): string {
+    return text
+        .replace(PUA_THEN_SPACE_REGEX, '$1\u2002')
+        .replace(/ /g, '\u00A0');
+}
+
 export function getVisibleWidth(text: string): number {
     return getTextDisplayWidth(getVisibleText(text));
 }
