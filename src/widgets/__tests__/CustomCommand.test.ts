@@ -95,6 +95,7 @@ describe('CustomCommandWidget', () => {
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 0,
         minimalistMode: false,
+        compactLabels: false,
         powerline: {
             enabled: false,
             separators: [],
