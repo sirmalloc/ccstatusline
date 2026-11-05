@@ -35,6 +35,7 @@ import {
     uninstallStatusLine
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
+import { updateColorMap } from '../utils/colors';
 import {
     applyImport,
     exportConfig,
@@ -462,6 +463,7 @@ export function applyTuiImport(
 ): Settings {
     const nextSettings = applyImport(current, imported, mode, presentKeys);
     chalk.level = nextSettings.colorLevel;
+    updateColorMap();
     return nextSettings;
 }
 
@@ -562,6 +564,9 @@ export const App: React.FC = () => {
             const initialSettings = restored?.settings ?? loadedSettings;
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = initialSettings.colorLevel;
+            // The color codes were built at the level chalk detected for this
+            // terminal, which can be lower than the configured one
+            updateColorMap();
             setSettings(initialSettings);
             setOriginalSettings(cloneSettings(restored?.originalSettings ?? loadedSettings));
             // Capture why settings.json was rejected (if at all) so the TUI can warn and
