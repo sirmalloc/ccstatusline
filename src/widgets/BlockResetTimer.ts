@@ -147,7 +147,8 @@ export class BlockResetTimerWidget implements Widget {
         if (!isAtSessionLimit(context) && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
             return null;
         }
-        const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
+        const nowMs = Date.now();
+        const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics, nowMs);
 
         if (!window) {
             if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {
@@ -179,7 +180,10 @@ export class BlockResetTimerWidget implements Widget {
         if (dateMode) {
             const timezone = getUsageTimezone(item);
             const locale = getUsageLocale(item);
-            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone, locale, isUsage12HourClock(item));
+            // A window from transcript blocks has no reported reset time, but
+            // its reset is just as known: the end of the block
+            const sessionResetAt = usageData.sessionResetAt ?? new Date(nowMs + window.remainingMs).toISOString();
+            const resetAt = formatUsageResetAt(sessionResetAt, compact, timezone, locale, isUsage12HourClock(item));
             if (resetAt) {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt);
             }
