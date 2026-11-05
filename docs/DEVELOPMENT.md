@@ -132,7 +132,7 @@ PR/MR lookups pass explicit branch names after `--` to `gh` and `glab`, and SSH 
 
 On Windows, `resolveExecutable()` selects Git, JJ, SSH, `gh`, `glab`, and `chcp.com` from absolute PATH entries, skipping empty and relative entries. This keeps the current project directory out of implicit executable lookup.
 
-`sanitizeTerminalText()` filters widget text before layout and piped output before printing. It retains SGR styling, OSC 8 links with control-free, space-free URLs, tabs, and newlines; 8-bit SGR and OSC 8 forms are normalized to their 7-bit equivalents, while other terminal sequences are removed whole. Hyperlink construction also validates URLs. Custom Command's preserve-colors option does not bypass this filtering.
+`sanitizeTerminalText()` filters widget text before layout and piped output before printing. It retains SGR styling, OSC 8 links with control-free, space-free URLs, and newlines; tabs become single spaces, matching the one column width measurement gives them; 8-bit SGR and OSC 8 forms are normalized to their 7-bit equivalents, while other terminal sequences are removed whole. Hyperlink construction also validates URLs. Custom Command's preserve-colors option does not bypass this filtering.
 
 Width measurement fast-paths printable ASCII and caches up to 4,096 display-cluster widths per process. Truncation measures clusters across intervening ANSI escapes, preserving styling and hyperlink boundaries without exceeding the requested width.
 
