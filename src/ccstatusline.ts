@@ -128,6 +128,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
     const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const hasSkillsWidget = lines.some(line => line.some(item => item.type === 'skills'));
     const hasAccountEmailWidget = lines.some(line => line.some(item => item.type === 'claude-account-email'));
     const needsTranscriptThinkingEffort = hasThinkingEffortWidget
         && (!data.effort || !('level' in data.effort));
@@ -165,7 +166,8 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
     const windowedSpeedMetrics = transcriptAnalysis?.speedMetricsCollection?.windowed ?? null;
 
     let skillsMetrics: SkillsMetrics | null = null;
-    if (data.session_id) {
+    // Only the skills widget reads these; skip the per-session log read otherwise.
+    if (hasSkillsWidget && data.session_id) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
