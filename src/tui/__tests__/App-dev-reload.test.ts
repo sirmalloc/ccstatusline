@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { render } from 'ink';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -22,6 +23,7 @@ import {
 import * as claudeSettings from '../../utils/claude-settings';
 import { initConfigPath } from '../../utils/config';
 import {
+    DEV_RELOAD_CHILD_ARG_PREFIX,
     isDevReloadRequested,
     readDevReloadSnapshot,
     writeDevReloadSnapshot
@@ -64,16 +66,19 @@ describe('App under dev reload', () => {
     let tempDir: string;
     let stateFile: string;
     const savedEnv = { ...process.env };
+    const savedArgv = [...process.argv];
     const savedChalkLevel = chalk.level;
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-app-reload-'));
-        stateFile = path.join(tempDir, 'state.json');
+        const capability = randomBytes(32).toString('hex');
+        tempDir = path.join(os.tmpdir(), `ccstatusline-dev-reload-${capability}`);
+        fs.mkdirSync(tempDir, { mode: 0o700 });
+        stateFile = path.join(tempDir, 'snapshot.json');
         initConfigPath(path.join(tempDir, 'settings.json'));
         // A save also syncs widget hooks into Claude Code's settings
         process.env.CLAUDE_CONFIG_DIR = path.join(tempDir, 'claude');
         process.env.CCSTATUSLINE_DEV_RELOAD = '1';
-        process.env.CCSTATUSLINE_DEV_RELOAD_STATE = stateFile;
+        process.argv = [...savedArgv, `${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`];
 
         // Keep App's startup checks off the real machine: Claude Code, its
         // settings, package managers and installed fonts
@@ -88,6 +93,7 @@ describe('App under dev reload', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         process.env = { ...savedEnv };
+        process.argv = [...savedArgv];
         initConfigPath();
         chalk.level = savedChalkLevel;
         fs.rmSync(tempDir, { recursive: true, force: true });

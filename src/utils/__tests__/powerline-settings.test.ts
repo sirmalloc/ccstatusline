@@ -43,8 +43,7 @@ describe('powerline settings helpers', () => {
         expect(updated.powerline.theme).toBe('catppuccin');
     });
 
-    // Custom is only ever picked on purpose, and the widget colors draw only under it
-    it('keeps a chosen Custom theme when enabling powerline', () => {
+    it('keeps a custom theme when enabling powerline again', () => {
         const settings = {
             ...DEFAULT_SETTINGS,
             powerline: {

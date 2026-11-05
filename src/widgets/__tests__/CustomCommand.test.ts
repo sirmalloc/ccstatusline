@@ -14,6 +14,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
+import { StatusJSONSchema } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleText,
@@ -85,8 +86,6 @@ describe('CustomCommandWidget', () => {
     const settings: Settings = {
         version: 3,
         lines: [],
-        flexMode: 'full',
-        compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -169,8 +168,30 @@ describe('CustomCommandWidget', () => {
         expect(model?.display_name).toBe('Sonnet');
     });
 
+    it('pipes Claude Code\'s JSON as it arrived, not the validated copy', () => {
+        const rawData = {
+            model: { id: 'claude-opus-4-6', display_name: 'Opus', family: 'opus' },
+            workspace: { current_dir: '/p', project_dir: '/p', added_dirs: ['/extra'], git_worktree: 'wt' },
+            cost: { total_cost_usd: '1.5' }
+        };
+        const context: RenderContext = { ...createContext(142), data: StatusJSONSchema.parse(rawData), rawData };
+
+        const output = widget.render(createItem(), context, settings);
+
+        expect(JSON.parse(output ?? '{}')).toEqual({ ...rawData, terminal_width: 142 });
+    });
+
     it('omits terminal_width when the width is unknown', () => {
         expect(renderParsed(null)).not.toHaveProperty('terminal_width');
+    });
+
+    it.each([
+        ['color codes around an empty value', '\x1b[32m\x1b[0m'],
+        ['a link with no text', '\x1b]8;;https://example.com\x1b\\\x1b]8;;\x1b\\']
+    ])('renders nothing when preserved output is only %s', (_case, stdout) => {
+        respondWith(stdout);
+
+        expect(widget.render({ ...createItem(), preserveColors: true }, createContext(200), settings)).toBeNull();
     });
 
     it('runs the command on every render when no cache TTL is configured', () => {
@@ -198,6 +219,13 @@ describe('CustomCommandWidget', () => {
 
         expect(mockSpawnSync.mock.calls).toHaveLength(2);
     });
+
+    it('drops the charset escape in a tput reset when colours are not preserved', () => {
+        // `tput sgr0` prints ESC ( B, then ESC [ m
+        respondWith('\x1b[32mOK\x1b(B\x1b[m done');
+
+        expect(widget.render(createItem(), createContext(200), settings)).toBe('OK done');
+    });
     describe('maxWidth truncation', () => {
         const SGR_ORANGE = '\x1b[38;5;208m';
         const SGR_RESET = '\x1b[0m';
@@ -218,6 +246,13 @@ describe('CustomCommandWidget', () => {
 
         it('closes an 8-bit colour the truncation cut off', () => {
             const output = renderWith('\x9b38;5;208mfeature/login-refactor\x9b0m', { preserveColors: true, maxWidth: 20 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature/login-ref...');
+            expect(output.endsWith(SGR_RESET)).toBe(true);
+        });
+
+        it('closes a colour written with colons that the truncation cut off', () => {
+            const output = renderWith('\x1b[38:5:208mfeature/login-refactor\x1b[0m', { preserveColors: true, maxWidth: 20 }) ?? '';
 
             expect(getVisibleText(output)).toBe('feature/login-ref...');
             expect(output.endsWith(SGR_RESET)).toBe(true);
@@ -253,6 +288,10 @@ describe('CustomCommandWidget', () => {
 
         it('still truncates plain output with an ellipsis', () => {
             expect(renderWith('feature/login-refactor', { maxWidth: 20 })).toBe('feature/login-ref...');
+        });
+
+        it('counts a tab as one column, the space the renderer prints for it', () => {
+            expect(renderWith('0\t3 ahead/behind', { maxWidth: 10 })).toBe('0\t3 ahe...');
         });
     });
 });

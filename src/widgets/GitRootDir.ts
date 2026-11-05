@@ -38,7 +38,8 @@ const LEGACY_CURSOR_LINK_KEY = 'linkToCursor';
 const TOGGLE_LINK_ACTION = 'toggle-link';
 const IDE_LINK_LABELS: Record<IdeLinkMode, string> = {
     vscode: 'link-vscode',
-    cursor: 'link-cursor'
+    cursor: 'link-cursor',
+    zed: 'link-zed'
 };
 
 export class GitRootDirWidget implements Widget {
