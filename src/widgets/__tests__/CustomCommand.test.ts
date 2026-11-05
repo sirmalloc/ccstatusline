@@ -219,6 +219,13 @@ describe('CustomCommandWidget', () => {
 
         expect(mockSpawnSync.mock.calls).toHaveLength(2);
     });
+
+    it('drops the charset escape in a tput reset when colours are not preserved', () => {
+        // `tput sgr0` prints ESC ( B, then ESC [ m
+        respondWith('\x1b[32mOK\x1b(B\x1b[m done');
+
+        expect(widget.render(createItem(), createContext(200), settings)).toBe('OK done');
+    });
     describe('maxWidth truncation', () => {
         const SGR_ORANGE = '\x1b[38;5;208m';
         const SGR_RESET = '\x1b[0m';
@@ -239,6 +246,13 @@ describe('CustomCommandWidget', () => {
 
         it('closes an 8-bit colour the truncation cut off', () => {
             const output = renderWith('\x9b38;5;208mfeature/login-refactor\x9b0m', { preserveColors: true, maxWidth: 20 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature/login-ref...');
+            expect(output.endsWith(SGR_RESET)).toBe(true);
+        });
+
+        it('closes a colour written with colons that the truncation cut off', () => {
+            const output = renderWith('\x1b[38:5:208mfeature/login-refactor\x1b[0m', { preserveColors: true, maxWidth: 20 }) ?? '';
 
             expect(getVisibleText(output)).toBe('feature/login-ref...');
             expect(output.endsWith(SGR_RESET)).toBe(true);
@@ -274,6 +288,10 @@ describe('CustomCommandWidget', () => {
 
         it('still truncates plain output with an ellipsis', () => {
             expect(renderWith('feature/login-refactor', { maxWidth: 20 })).toBe('feature/login-ref...');
+        });
+
+        it('counts a tab as one column, the space the renderer prints for it', () => {
+            expect(renderWith('0\t3 ahead/behind', { maxWidth: 10 })).toBe('0\t3 ahe...');
         });
     });
 });

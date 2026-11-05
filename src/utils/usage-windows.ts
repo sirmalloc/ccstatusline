@@ -157,8 +157,10 @@ function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean, weekday
 
 const DEFAULT_TZ_LOCALE = 'en-US';
 
+// 'pm', 'p.m.' and es-ES's 'p. m.' all become 'PM': each dot goes, with the
+// space after it
 function normalizeDayPeriod(dayPeriod: string): string {
-    return dayPeriod.replace(/\./g, '').toUpperCase();
+    return dayPeriod.replace(/\.\s*/g, '').toUpperCase();
 }
 
 function formatResetAtInTimezone(
@@ -171,6 +173,10 @@ function formatResetAtInTimezone(
 ): string | null {
     try {
         const options: Intl.DateTimeFormatOptions = {
+            // The parts fill a YYYY-MM-DD layout, so they must be Gregorian
+            // whatever calendar the locale defaults to: ar-SA's is Islamic
+            // under some runtimes' ICU data, th-TH's Buddhist, fa-IR's Persian
+            calendar: 'gregory',
             timeZone: timezone,
             hour: '2-digit',
             minute: '2-digit',
@@ -193,7 +199,9 @@ function formatResetAtInTimezone(
         const hour = get('hour');
         const minute = get('minute');
         const dayPeriod = get('dayPeriod');
-        const tzName = get('timeZoneName');
+        // UTC keeps its fixed label: a few locales name it otherwise, el-GR
+        // as 'Συντονισμένη Παγκόσμια Ώρα'
+        const tzName = timezone === 'UTC' ? 'UTC' : get('timeZoneName');
 
         if (weekday) {
             const weekdayName = get('weekday');
@@ -240,6 +248,24 @@ function formatResetAtInTimezone(
     }
 }
 
+// A chosen locale writes the weekday, day period and digits at UTC as in any
+// other zone; the time stays marked as UTC, with a Z in compact mode. Without
+// a locale, or with one Intl can't format, UTC keeps its fixed format
+function formatResetAtUtcInLocale(
+    date: Date,
+    compact: boolean,
+    locale: string | undefined,
+    hour12: boolean,
+    weekday: boolean
+): string {
+    const localized = locale ? formatResetAtInTimezone(date, compact, 'UTC', locale, hour12, weekday) : null;
+    if (localized) {
+        return compact ? `${localized}Z` : localized;
+    }
+
+    return formatResetAtUtc(date, compact, hour12, weekday);
+}
+
 export function formatUsageResetAt(
     resetAt: string | undefined,
     compact = false,
@@ -262,7 +288,7 @@ export function formatUsageResetAt(
     const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
 
     if (!timezone || timezone === 'UTC') {
-        return formatResetAtUtc(date, compact, hour12, weekday);
+        return formatResetAtUtcInLocale(date, compact, locale, hour12, weekday);
     }
 
     const resolvedTimezone = timezone === 'local' ? undefined : timezone;
