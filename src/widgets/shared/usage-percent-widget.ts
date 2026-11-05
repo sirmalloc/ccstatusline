@@ -23,19 +23,18 @@ import {
 import type { UsageWindowMetrics } from '../../utils/usage-types';
 
 import { isHidden } from './hideable';
-import { makeTimerProgressBar } from './progress-bar';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
-    getUsageProgressBarWidth,
     isUsageCursorEnabled,
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
     makeSliderBar,
+    renderUsageProgressBar,
     toggleUsageCursor,
     toggleUsageInverted
 } from './usage-display';
@@ -134,9 +133,8 @@ function renderUsageDisplay(
     const displayMode = getUsageDisplayMode(item);
 
     if (isUsageProgressMode(displayMode)) {
-        const width = getUsageProgressBarWidth(displayMode);
-        const progressBar = makeTimerProgressBar(percent, width, getCursorOptions());
-        const progressDisplay = `[${progressBar}] ${formatPercent(percent, format)}`;
+        const progressBar = renderUsageProgressBar(percent, displayMode, getCursorOptions());
+        const progressDisplay = `${progressBar} ${formatPercent(percent, format)}`;
         return formatRawOrLabeledValue(item, label, progressDisplay);
     }
 

@@ -29,4 +29,13 @@ describe('preRenderAllWidgets', () => {
         expect(line[0]?.content).toBe('\x1b[31mred\x1b[39m text');
         expect(line[0]?.plainLength).toBe('red text'.length);
     });
+
+    it('prints a tab in widget output as one space, measured as one column', () => {
+        const widget: WidgetItem = { id: 'text', type: 'custom-text', customText: 'ahead\t3' };
+
+        const [line = []] = preRenderAllWidgets([[widget]], DEFAULT_SETTINGS, context);
+
+        expect(line[0]?.content).toBe('ahead 3');
+        expect(line[0]?.plainLength).toBe('ahead 3'.length);
+    });
 });

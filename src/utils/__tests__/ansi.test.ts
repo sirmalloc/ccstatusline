@@ -7,7 +7,7 @@ import {
 import {
     getVisibleText,
     getVisibleWidth,
-    restoreBackgroundAfterResets,
+    restoreStyleAfterResets,
     stripOscCodes,
     stripSgrCodes,
     truncateStyledText
@@ -48,6 +48,33 @@ describe('escape sequence parsing', () => {
         // ESC 7 / ESC 8 are save/restore cursor.
         expect(getVisibleText('a\x1b7b\x1b8c')).toBe('abc');
         expect(getVisibleWidth('a\x1b7b\x1b8c')).toBe(3);
+    });
+
+    // `tput sgr0` prints ESC ( B before its reset
+    it('hides an escape with intermediate bytes up to its final byte', () => {
+        expect(getVisibleText('\x1b[32mOK\x1b(B\x1b[m done')).toBe('OK done');
+        expect(getVisibleText('a\x1b$(Cb\x1b#8c')).toBe('abc');
+        expect(getVisibleWidth('a\x1b(Bb')).toBe(2);
+    });
+
+    it('ends an escape with intermediate bytes where its final byte is missing', () => {
+        expect(getVisibleText('a\x1b(')).toBe('a');
+        expect(getVisibleText('a\x1b(😀b')).toBe('a😀b');
+        expect(getVisibleWidth('a\x1b(😀b')).toBe(4);
+    });
+
+    it.each([
+        ['a DCS string', '\x1bPq#0;2;0;0;0\x1b\\'],
+        ['an APC string', '\x1b_Gpayload\x1b\\'],
+        ['a PM string', '\x1b^payload\x07'],
+        ['a SOS string', '\x1bXpayload\x9c']
+    ])('hides %s with its payload', (_label, sequence) => {
+        expect(getVisibleText(`a${sequence}b`)).toBe('ab');
+        expect(getVisibleWidth(`a${sequence}b`)).toBe(2);
+    });
+
+    it('ends an unterminated DCS string at the next escape', () => {
+        expect(getVisibleText('a\x1bPq#0\x1b[1mb')).toBe('ab');
     });
 
     it('swallows a lone ESC at the end of the text', () => {
@@ -119,6 +146,11 @@ describe('stripSgrCodes', () => {
         expect(stripSgrCodes('\x1b[1m\x9b38;5;208mbold\x9b0m\x1b[22m')).toBe('bold');
     });
 
+    it('removes color codes written with colons', () => {
+        expect(stripSgrCodes('\x1b[38:5:196mred\x1b[0m')).toBe('red');
+        expect(stripSgrCodes('\x1b[38:2::255:0:0mred\x1b[4:3m curly\x9b4:0m')).toBe('red curly');
+    });
+
     it('leaves other CSI sequences and hyperlinks alone', () => {
         const text = `\x1b[2K\x9b2J${OSC8_OPEN}link${OSC8_CLOSE}${C1_OSC8_OPEN}c1${C1_OSC8_CLOSE}`;
 
@@ -126,40 +158,73 @@ describe('stripSgrCodes', () => {
     });
 });
 
-describe('restoreBackgroundAfterResets', () => {
+describe('restoreStyleAfterResets', () => {
     const BG = '\x1b[44m';
 
     it('re-applies the background after every sequence that clears it', () => {
-        expect(restoreBackgroundAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', BG))
+        expect(restoreStyleAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', { background: BG }))
             .toBe(`\x1b[31ma\x1b[0m${BG}b\x1b[m${BG}c\x1b[00m${BG}d\x1b[;1m${BG}e\x1b[39;49m${BG}f`);
     });
 
     it('re-applies the background after an 8-bit reset', () => {
-        expect(restoreBackgroundAfterResets('\x9b31ma\x9b0mb\x9b49mc', BG))
+        expect(restoreStyleAfterResets('\x9b31ma\x9b0mb\x9b49mc', { background: BG }))
             .toBe(`\x9b31ma\x9b0m${BG}b\x9b49m${BG}c`);
     });
 
     it('leaves other styling, and the arguments of extended colors, alone', () => {
         const text = '\x1b[1;31ma\x1b[38;5;0mb\x1b[48;2;0;49;0mc\x1b[58;5;49md\x1b[39me';
 
-        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
+        expect(restoreStyleAfterResets(text, { background: BG })).toBe(text);
     });
 
     it.each([
         '0;40', '0;41', '0;47', '0;100', '0;107',
         '49;41', ';41', '0;48;5;49', '0;48;2;0;49;0',
-        '41;0;42', '0;41;38;5;0', '0;41;58;5;49'
+        '41;0;42', '0;41;38;5;0', '0;41;58;5;49',
+        '0;48:5:49', '0;48:2::0:49:0', '0;38:2::0:0:0;41'
     ])('keeps the explicit background after a reset in SGR %s', (params) => {
         const text = `\x1b[${params}mtext`;
 
-        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
+        expect(restoreStyleAfterResets(text, { background: BG })).toBe(text);
     });
 
     it.each([
         '41;0', '107;49', '48;5;49;0', '48;2;0;49;0;49',
-        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0'
+        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0',
+        '0;38:5:196', '48:5:1;0', '48:2::0:49:0;49', '0;58:2::0:49:0'
     ])('restores the background when the final background operation clears it in SGR %s', (params) => {
-        expect(restoreBackgroundAfterResets(`\x1b[${params}mtext`, BG))
+        expect(restoreStyleAfterResets(`\x1b[${params}mtext`, { background: BG }))
             .toBe(`\x1b[${params}m${BG}text`);
+    });
+
+    it('re-applies bold and dim after every sequence that clears them', () => {
+        expect(restoreStyleAfterResets('\x1b[32ma\x1b[0mb\x1b[1mc\x1b[22md\x1b[me', { bold: true, dim: true }))
+            .toBe('\x1b[32ma\x1b[0m\x1b[1m\x1b[2mb\x1b[1mc\x1b[22m\x1b[1m\x1b[2md\x1b[m\x1b[1m\x1b[2me');
+    });
+
+    it('re-applies only what each sequence clears', () => {
+        expect(restoreStyleAfterResets('a\x1b[0mb\x1b[49mc\x1b[22md', { background: BG, bold: true }))
+            .toBe(`a\x1b[0m\x1b[1m${BG}b\x1b[49m${BG}c\x1b[22m\x1b[1md`);
+    });
+
+    it('re-applies only dim when the sequence sets bold again itself', () => {
+        expect(restoreStyleAfterResets('a\x1b[22;1mb', { bold: true, dim: true }))
+            .toBe('a\x1b[22;1m\x1b[2mb');
+    });
+
+    it.each([
+        '22;1', '0;1', '1', '2', '49',
+        '38;5;22', '48;2;0;22;0', '58;5;0'
+    ])('re-applies bold after a reset but not after SGR %s, which leaves it on', (params) => {
+        expect(restoreStyleAfterResets(`a\x1b[0mb\x1b[${params}mc`, { bold: true }))
+            .toBe(`a\x1b[0m\x1b[1mb\x1b[${params}mc`);
+    });
+
+    it.each([
+        '0', '', '22', '1;22', '2;0', '0;2', '22;2',
+        '38;5;1;22', '0;38;5;1'
+    ])('restores bold when the last operation on it in SGR %s clears it', (params) => {
+        expect(restoreStyleAfterResets(`\x1b[${params}mtext`, { bold: true }))
+            .toBe(`\x1b[${params}m\x1b[1mtext`);
     });
 });

@@ -53,8 +53,6 @@ describe('CurrentWorkingDirWidget', () => {
     const defaultSettings: Settings = {
         version: 3,
         lines: [],
-        flexMode: 'full',
-        compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -325,6 +323,12 @@ describe('CurrentWorkingDirWidget', () => {
                 path: '/Users/alice/Documents/我的 项目 #1?%',
                 visiblePath: '~/Documents/我的 项目 #1?%',
                 buildTarget: (path: string) => buildIdeFileUrl(path, 'cursor')
+            },
+            {
+                mode: 'zed',
+                path: '/Users/alice/Documents/我的 项目 #1?%',
+                visiblePath: '~/Documents/我的 项目 #1?%',
+                buildTarget: (path: string) => buildIdeFileUrl(path, 'zed')
             }
         ])('links the shortened $mode label to the full absolute cwd', ({ mode, path, visiblePath, buildTarget }) => {
             const item = createItem({
@@ -359,7 +363,8 @@ describe('CurrentWorkingDirWidget', () => {
         it.each([
             { mode: 'file', target: 'file:///tmp/a%5Cb' },
             { mode: 'vscode', target: 'vscode://file/tmp/a%5Cb' },
-            { mode: 'cursor', target: 'cursor://file/tmp/a%5Cb' }
+            { mode: 'cursor', target: 'cursor://file/tmp/a%5Cb' },
+            { mode: 'zed', target: 'zed://file/tmp/a%5Cb' }
         ])('treats literal backslashes in a POSIX cwd as part of the filename in $mode mode', ({ mode, target }) => {
             const path = '/tmp/a\\b';
             const item = createItem({ linkTo: mode }, true);
@@ -511,16 +516,18 @@ describe('CurrentWorkingDirWidget', () => {
             expect(result?.metadata?.segments).toBeUndefined();
         });
 
-        it('should cycle file, VS Code, Cursor, then off without changing display metadata', () => {
+        it('should cycle file, VS Code, Cursor, Zed, then off without changing display metadata', () => {
             const base = createItem({ abbreviateHome: 'true', segments: '2' });
             const file = widget.handleEditorAction('cycle-link', base);
             const vscode = widget.handleEditorAction('cycle-link', file ?? base);
             const cursor = widget.handleEditorAction('cycle-link', vscode ?? base);
-            const off = widget.handleEditorAction('cycle-link', cursor ?? base);
+            const zed = widget.handleEditorAction('cycle-link', cursor ?? base);
+            const off = widget.handleEditorAction('cycle-link', zed ?? base);
 
             expect(file?.metadata).toEqual({ abbreviateHome: 'true', segments: '2', linkTo: 'file' });
             expect(vscode?.metadata?.linkTo).toBe('vscode');
             expect(cursor?.metadata?.linkTo).toBe('cursor');
+            expect(zed?.metadata?.linkTo).toBe('zed');
             expect(off?.metadata).toEqual({ abbreviateHome: 'true', segments: '2' });
         });
     });
