@@ -48,7 +48,7 @@ interface UsageProbeResult {
     requestPaths: (string | null)[];
     profileAuthorization: string | null;
     accountCache: unknown;
-    accountCacheDuringProfileRequest: unknown;
+    profileLeasesDuringProfileRequest: string[];
 }
 
 interface ProbeReply {
@@ -80,9 +80,10 @@ interface ProbeOptions {
     responseHeaders?: Record<string, string>;
     statusCode?: number;
     // What each of the probe's two calls runs: fetchUsageData (the default),
-    // fetchAccountEmail, whose status also drives the real email widget, or
-    // fetchUsageData and then lookUpUsageAccount, reported as { account }.
-    target?: 'account-email' | 'usage' | 'usage-account';
+    // fetchAccountEmail, whose status also drives the real email widget,
+    // fetchUsageData and then lookUpUsageAccount, reported as { account }, or
+    // those and then fetchAccountEmail, reported as { account, accountEmail }.
+    target?: 'account-email' | 'usage' | 'usage-account' | 'usage-account-and-email';
     // The reply to profile requests; without it they get the usage reply.
     profileReply?: ProbeReply;
 }
@@ -113,9 +114,10 @@ let requestPath = null;
 let requestAuthorization = null;
 const requestPaths = [];
 let profileAuthorization = null;
-let accountCacheDuringProfileRequest = null;
+let profileLeasesDuringProfileRequest = [];
 const profileReply = process.env.TEST_PROFILE_REPLY_JSON ? JSON.parse(process.env.TEST_PROFILE_REPLY_JSON) : null;
 const readAccountCache = () => (fs.existsSync(accountCacheFile) ? JSON.parse(fs.readFileSync(accountCacheFile, 'utf8')) : null);
+const listProfileLeases = () => (fs.existsSync(probeCacheDir) ? fs.readdirSync(probeCacheDir).filter(name => name.endsWith('.inflight')) : []);
 
 https.request = (...args) => {
     requestCount += 1;
@@ -129,7 +131,7 @@ https.request = (...args) => {
     const isProfileRequest = options?.path === '/api/oauth/profile';
     if (isProfileRequest) {
         profileAuthorization = options?.headers?.Authorization ?? null;
-        accountCacheDuringProfileRequest = readAccountCache();
+        profileLeasesDuringProfileRequest = listProfileLeases();
     }
     // A profile request gets the test's profile reply when it sets one; these
     // stand in for the usage reply above for this request only.
@@ -213,7 +215,8 @@ const configHash = createHash('sha256').update(path.resolve(configDir)).digest('
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + configHash + '.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + configHash + '.json');
 const securityCallsFile = path.join(os.homedir(), 'security-calls.jsonl');
-const accountCacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-account.json');
+const probeCacheDir = path.join(os.homedir(), '.cache', 'ccstatusline');
+const accountCacheFile = path.join(probeCacheDir, 'usage-account.json');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
 Date.now = () => nowMs;
@@ -223,6 +226,9 @@ const fetchOnce = async () => {
         return fetchAccountEmail();
     }
     const usageData = await fetchUsageData({ requiredFields });
+    if (process.env.TEST_PROBE_TARGET === 'usage-account-and-email') {
+        return { account: await lookUpUsageAccount(), accountEmail: await fetchAccountEmail() };
+    }
     return process.env.TEST_PROBE_TARGET === 'usage-account' ? { account: await lookUpUsageAccount() } : usageData;
 };
 const first = await fetchOnce();
@@ -260,7 +266,7 @@ process.stdout.write(JSON.stringify({
     requestPaths,
     profileAuthorization,
     accountCache: readAccountCache(),
-    accountCacheDuringProfileRequest
+    profileLeasesDuringProfileRequest
 }));
 `;
 
@@ -2917,10 +2923,19 @@ describe('lookUpUsageAccount', () => {
         return result.requestPaths.filter(requestPath => requestPath === '/api/oauth/profile').length;
     }
 
-    function seedAccountCache(home: string, contents: unknown): void {
-        const cacheDir = path.join(home, '.cache', 'ccstatusline');
-        fs.mkdirSync(cacheDir, { recursive: true });
-        fs.writeFileSync(path.join(cacheDir, 'usage-account.json'), JSON.stringify(contents));
+    // The profile lookup's per-login files, shared with fetchAccountEmail
+    function profileFilePath(home: string, refreshToken: string, suffix: 'json' | 'lock'): string {
+        return path.join(home, '.cache', 'ccstatusline', `account-email-${fingerprint(refreshToken)}.${suffix}`);
+    }
+
+    function readProfileLock(home: string, refreshToken: string): unknown {
+        const lockPath = profileFilePath(home, refreshToken, 'lock');
+        return fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, 'utf8')) as unknown : null;
+    }
+
+    function seedProfileFile(home: string, refreshToken: string, suffix: 'json' | 'lock', contents: unknown): void {
+        fs.mkdirSync(path.join(home, '.cache', 'ccstatusline'), { recursive: true });
+        fs.writeFileSync(profileFilePath(home, refreshToken, suffix), JSON.stringify(contents));
     }
 
     function lookUpAt(harness: ReturnType<typeof createProbeHarness>, home: TokenHome, probeNowMs: number, profileReply: ProbeReply, claudeConfig = home.claudeConfig): UsageProbeResult {
@@ -3017,7 +3032,8 @@ describe('lookUpUsageAccount', () => {
             expect(result.first).toEqual({ account: null });
             expect(result.second).toEqual({ account: null });
             expect(profileRequests(result)).toBe(1);
-            expect(result.accountCache).toEqual([{ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 30 }]);
+            expect(result.accountCache).toBeNull();
+            expect(readProfileLock(home.home, 'refresh-a')).toEqual({ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 30 });
         } finally {
             harness.cleanup();
         }
@@ -3025,7 +3041,7 @@ describe('lookUpUsageAccount', () => {
 
     // A render waiting on the profile request must not be joined by another
     // render's request for the same login.
-    it('holds the login off before it sends the request', () => {
+    it('takes the login\'s lookup lease before it sends the request', () => {
         const harness = createProbeHarness();
 
         try {
@@ -3034,7 +3050,7 @@ describe('lookUpUsageAccount', () => {
 
             const result = lookUpAt(harness, home, nowMs, { mode: 'success', responseBody: profileResponseBody() });
 
-            expect(result.accountCacheDuringProfileRequest).toEqual([{ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 30 }]);
+            expect(result.profileLeasesDuringProfileRequest).toEqual([`account-email-${fingerprint('refresh-a')}.inflight`]);
         } finally {
             harness.cleanup();
         }
@@ -3073,7 +3089,7 @@ describe('lookUpUsageAccount', () => {
             const result = lookUpAt(harness, home, nowMs, { mode: 'status', statusCode: 429, responseHeaders: { 'retry-after': '120' } });
 
             expect(result.first).toEqual({ account: null });
-            expect(result.accountCache).toEqual([{ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 120 }]);
+            expect(readProfileLock(home.home, 'refresh-a')).toEqual({ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 120 });
         } finally {
             harness.cleanup();
         }
@@ -3092,7 +3108,7 @@ describe('lookUpUsageAccount', () => {
             const result = lookUpAt(harness, home, nowMs, rateLimited);
 
             expect(profileRequests(result)).toBe(1);
-            expect(result.accountCache).toEqual([{ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 24 * 60 * 60 }]);
+            expect(readProfileLock(home.home, 'refresh-a')).toEqual({ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 24 * 60 * 60 });
             expect(profileRequests(lookUpAt(harness, home, nowMs + 5000, rateLimited))).toBe(0);
         } finally {
             harness.cleanup();
@@ -3105,12 +3121,89 @@ describe('lookUpUsageAccount', () => {
         try {
             const home = harness.createTokenHome('account-poisoned-backoff');
             writeUsageCredentials(home.claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
-            seedAccountCache(home.home, [{ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 2 * 24 * 60 * 60 }]);
+            seedProfileFile(home.home, 'refresh-a', 'lock', { tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 2 * 24 * 60 * 60 });
 
             const result = lookUpAt(harness, home, nowMs, { mode: 'success', responseBody: profileResponseBody() });
 
             expect(profileRequests(result)).toBe(1);
             expect((result.first as { account: unknown }).account).not.toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // The Claude Account Email widget asks the same endpoint about the same login.
+    it('answers the account email from the same profile request', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-and-email');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['extraUsageEnabled', 'extraUsageUsed'],
+                responseBody: usageResponseBody,
+                target: 'usage-account-and-email',
+                profileReply: { mode: 'success', responseBody: profileResponseBody() }
+            });
+
+            const first = result.first as { account: { key: string } | null; accountEmail: unknown };
+            expect(first.account?.key).toMatch(/^account:[0-9a-f]{16}$/);
+            expect(first.accountEmail).toEqual({ status: 'available', email: 'user@example.com' });
+            expect(result.second).toEqual(result.first);
+            expect(profileRequests(result)).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('asks for the account when only the email of the login is cached', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-cached');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            seedProfileFile(home.home, 'refresh-a', 'json', { tokenHash: fingerprint('refresh-a'), email: 'user@example.com' });
+
+            const result = lookUpAt(harness, home, nowMs, { mode: 'success', responseBody: profileResponseBody() });
+
+            expect((result.first as { account: unknown }).account).not.toBeNull();
+            expect(profileRequests(result)).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // An account that can't be named, while its email can, holds off only the
+    // account lookup: the email stays served from its cache.
+    it('holds off the account lookup when the profile names an email but no organization', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-only');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['extraUsageEnabled', 'extraUsageUsed'],
+                responseBody: usageResponseBody,
+                target: 'usage-account-and-email',
+                profileReply: { mode: 'success', responseBody: JSON.stringify({ account: { uuid: 'account-uuid', email: 'user@example.com' } }) }
+            });
+
+            expect(result.first).toEqual({ account: null, accountEmail: { status: 'available', email: 'user@example.com' } });
+            expect(result.second).toEqual(result.first);
+            expect(profileRequests(result)).toBe(1);
+            expect(readProfileLock(home.home, 'refresh-a')).toEqual({ tokenHash: fingerprint('refresh-a'), blockedUntil: nowSeconds + 30 });
         } finally {
             harness.cleanup();
         }
