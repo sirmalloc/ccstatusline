@@ -253,6 +253,56 @@ describe('config utilities', () => {
         expect(replaced.updatemessage).toBeUndefined();
     });
 
+    it.each(['load', 'merge', 'replace'] as const)('preserves legacy hiding in a versionless modern config on %s', async (operation) => {
+        const { configDir, settingsPath } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({
+            lines: [[
+                { id: 'branch', type: 'git-branch', metadata: { hideNoGit: 'true', label: 'Branch ' } },
+                { id: 'separator', type: 'separator' },
+                { id: 'conflicts', type: 'git-conflicts', metadata: { zeroDisplay: 'hidden' } },
+                { id: 'ahead', type: 'git-ahead-behind', metadata: { hide: '', hideNoGit: 'false' } }
+            ]],
+            powerline: { enabled: true, theme: 'nord' },
+            gitCacheTtlSeconds: 30
+        });
+        fs.writeFileSync(settingsPath, original);
+
+        let settings: Settings;
+        if (operation === 'load') {
+            settings = await loadSettings();
+            expect(getConfigLoadError()).toBeNull();
+            expect(getConfigLoadNotice()).toBeNull();
+        } else {
+            const validation = await validateImportFile(settingsPath);
+            expect(validation.status).toBe('valid');
+            if (validation.status !== 'valid') {
+                return;
+            }
+            expect(validation.presentKeys).toEqual(['lines', 'powerline', 'gitCacheTtlSeconds']);
+            settings = applyImport(DEFAULT_SETTINGS, validation.data, operation, validation.presentKeys);
+        }
+
+        expect(settings.lines).toEqual([[
+            { id: 'branch', type: 'git-branch', metadata: { hide: 'no-git', label: 'Branch ' } },
+            { id: 'separator', type: 'separator' },
+            { id: 'conflicts', type: 'git-conflicts', metadata: { hide: 'zero' } },
+            { id: 'ahead', type: 'git-ahead-behind', metadata: { hide: '' } }
+        ]]);
+        const { getWidget } = await import('../widgets');
+        const branch = settings.lines[0]?.[0];
+        expect(branch).toBeDefined();
+        if (branch) {
+            expect(getWidget('git-branch')?.render(branch, { data: { cwd: configDir } }, settings)).toBeNull();
+        }
+        expect(settings.powerline.enabled).toBe(true);
+        expect(settings.powerline.theme).toBe('nord');
+        expect(settings.gitCacheTtlSeconds).toBe(30);
+        expect(settings.updatemessage).toBeUndefined();
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(configDir)).toEqual(['settings.json']);
+    });
+
     it('migrates a v1 import and merges only the keys the file holds', async () => {
         const { configDir } = getSettingsPaths();
         const importPath = path.join(configDir, 'v1-import.json');

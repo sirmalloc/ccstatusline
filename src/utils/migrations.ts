@@ -293,6 +293,17 @@ function migrateItemHideFlags(item: unknown): unknown {
     return migratedItem;
 }
 
+function migrateHideFlags(data: Record<string, unknown>): Record<string, unknown> {
+    return Array.isArray(data.lines)
+        ? {
+            ...data,
+            lines: data.lines.map((line: unknown) => (Array.isArray(line)
+                ? line.map(migrateItemHideFlags)
+                : line))
+        }
+        : data;
+}
+
 // Define all migrations here
 export const migrations: Migration[] = [
     {
@@ -349,20 +360,10 @@ export const migrations: Migration[] = [
         toVersion: 4,
         description: 'Migrate from v3 to v4',
         migrate: (data) => {
-            const migrated: Record<string, unknown> = { ...data };
-
             // Convert per-widget hide flags to the unified metadata.hide list.
             // No updatemessage: rendering is unchanged, so there is nothing
             // for users to act on.
-            if (Array.isArray(data.lines)) {
-                migrated.lines = data.lines.map((line: unknown) => (Array.isArray(line)
-                    ? line.map(migrateItemHideFlags)
-                    : line));
-            }
-
-            migrated.version = 4;
-
-            return migrated;
+            return { ...migrateHideFlags(data), version: 4 };
         }
     }
 ];
@@ -411,6 +412,17 @@ export function migrateConfig(data: unknown, targetVersion: number): unknown {
 // and only leaves the version out.
 const POST_V1_KEYS = Object.keys(SettingsSchema.shape).filter(key => !(key in SettingsSchema_v1.shape));
 
+function isVersionlessModernConfig(data: unknown): data is Record<string, unknown> {
+    return isRecord(data) && !('version' in data) && POST_V1_KEYS.some(key => key in data);
+}
+
+// Modern settings without a version bypass the destructive v1 migration, but
+// can still contain pre-v4 widget flags. Normalize those in memory without
+// assigning a version, changing widget IDs, or rewriting the user's file.
+export function normalizeVersionlessConfig(data: unknown): unknown {
+    return isVersionlessModernConfig(data) ? migrateHideFlags(data) : data;
+}
+
 /**
  * Check if a migration is needed
  */
@@ -420,7 +432,7 @@ export function needsMigration(data: unknown, targetVersion: number): boolean {
     // as v1 would rebuild the config from its v1 fields and drop everything else
     if (isRecord(data) && 'version' in data && typeof data.version !== 'number')
         return false;
-    if (isRecord(data) && !('version' in data) && POST_V1_KEYS.some(key => key in data))
+    if (isVersionlessModernConfig(data))
         return false;
 
     return detectVersion(data) < targetVersion;

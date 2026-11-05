@@ -14,7 +14,8 @@ import type { SkippedWidgetHooks } from './hooks';
 import {
     detectVersion,
     migrateConfig,
-    needsMigration
+    needsMigration,
+    normalizeVersionlessConfig
 } from './migrations';
 import { getPackageVersion } from './terminal';
 import { upgradeLegacyWidgetTypes } from './widgets';
@@ -275,6 +276,8 @@ export async function loadSettings(): Promise<Settings> {
             // Migrate to the current version (persisted below, only once it validates)
             migratedFrom = detectVersion(rawData);
             rawData = migrateConfig(rawData, CURRENT_VERSION);
+        } else {
+            rawData = normalizeVersionlessConfig(rawData);
         }
 
         // At this point, data should be in current format
@@ -397,7 +400,9 @@ export async function validateImportFile(filePath: string): Promise<ImportValida
         };
     }
 
-    const migrated = needsMigration(parsed, CURRENT_VERSION) ? migrateConfig(parsed, CURRENT_VERSION) : parsed;
+    const migrated = needsMigration(parsed, CURRENT_VERSION)
+        ? migrateConfig(parsed, CURRENT_VERSION)
+        : normalizeVersionlessConfig(parsed);
 
     const result = SettingsSchema.safeParse(migrated);
     if (!result.success) {

@@ -9,7 +9,8 @@ import {
     V4_HIDE_FLAG_RULES,
     detectVersion,
     migrateConfig,
-    needsMigration
+    needsMigration,
+    normalizeVersionlessConfig
 } from '../migrations';
 import {
     getAllWidgetTypes,
@@ -38,6 +39,29 @@ describe('migrations', () => {
     it('does not migrate a config without a version that holds settings added after v1', () => {
         expect(needsMigration({ lines: [], powerline: { enabled: true } }, 4)).toBe(false);
         expect(needsMigration({ gitCacheTtlSeconds: 30 }, 4)).toBe(false);
+    });
+
+    it('normalizes versionless modern hide flags without mutating the input or adding a version', () => {
+        const data = {
+            powerline: { enabled: true },
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hideNoGit: 'true' } }]],
+            gitCacheTtlSeconds: 30
+        };
+        const normalized = normalizeVersionlessConfig(data);
+        expect(normalized).toEqual({
+            ...data,
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hide: 'no-git' } }]]
+        });
+        expect(data.lines[0]?.[0]?.metadata).toEqual({ hideNoGit: 'true' });
+        expect(normalizeVersionlessConfig(normalized)).toEqual(normalized);
+    });
+
+    it.each([undefined, 3, 4, '4', null])('leaves configs without modern versionless detection alone (version: %s)', (version) => {
+        const data = {
+            ...(version === undefined ? {} : { version, powerline: { enabled: true } }),
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hideNoGit: 'true' } }]]
+        };
+        expect(normalizeVersionlessConfig(data)).toBe(data);
     });
 
     it('still migrates a config without a version that holds only v1-era settings', () => {
