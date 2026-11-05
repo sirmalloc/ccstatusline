@@ -88,6 +88,19 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
+    it('passes the configured usage cache TTL to fetching', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 12.3 });
+        const settings = { ...DEFAULT_SETTINGS, usageCacheTtlSeconds: 900 };
+        const lines = makeLines([{ id: 'usage', type: 'session-usage' }]);
+
+        await prefetchUsageDataIfNeeded(lines, {}, { cacheTtlSeconds: settings.usageCacheTtlSeconds });
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{
+            requiredFields: ['sessionUsage'],
+            cacheTtlSeconds: 900
+        }]]);
+    });
+
     it('does not fetch usage data when no usage widgets exist', async () => {
         const lines = makeLines(
             [{ id: '1', type: 'model' }],

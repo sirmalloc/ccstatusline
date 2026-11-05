@@ -52,6 +52,8 @@ interface TokenHome {
 }
 
 interface ProbeOptions {
+    cacheTtlSeconds?: number;
+    secondNowMs?: number;
     claudeConfigDir?: string;
     claudeSecureStorageConfigDir?: string;
     home: string;
@@ -179,12 +181,19 @@ const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + c
 const securityCallsFile = path.join(os.homedir(), 'security-calls.jsonl');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
+const cacheTtlSeconds = process.env.TEST_CACHE_TTL_SECONDS ? Number(process.env.TEST_CACHE_TTL_SECONDS) : undefined;
 Date.now = () => nowMs;
 
 const fetchOnce = process.env.TEST_PROBE_TARGET === 'account-email'
     ? () => fetchAccountEmail()
-    : () => fetchUsageData({ requiredFields });
+    : () => fetchUsageData({ requiredFields, cacheTtlSeconds });
 const first = await fetchOnce();
+if (process.env.TEST_SECOND_NOW_MS) {
+    // Date.now is fake, while fs writes use the real clock. Align the cache so
+    // the second call cannot accidentally reuse a future-dated file.
+    if (fs.existsSync(cacheFile)) fs.utimesSync(cacheFile, nowMs / 1000, nowMs / 1000);
+    Date.now = () => Number(process.env.TEST_SECOND_NOW_MS);
+}
 const second = await fetchOnce();
 let renderedEmail = null;
 if (process.env.TEST_PROBE_TARGET === 'account-email') {
@@ -291,6 +300,8 @@ process.stdout.write(JSON.stringify({
             PATH: options.pathDir ?? '/nonexistent',
             TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
             TEST_NOW_MS: String(options.nowMs),
+            TEST_SECOND_NOW_MS: options.secondNowMs === undefined ? '' : String(options.secondNowMs),
+            TEST_CACHE_TTL_SECONDS: options.cacheTtlSeconds === undefined ? '' : String(options.cacheTtlSeconds),
             TEST_REQUEST_MODE: options.mode ?? 'success',
             TEST_RESPONSE_BODY: options.responseBody ?? '',
             TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
@@ -1360,7 +1371,134 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
-    it('refetches a fresh cache when the token fingerprint changes (account switch)', () => {
+    it.each([
+        [undefined, 179, 0],
+        [undefined, 180, 1],
+        [900, 181, 0],
+        [900, 899, 0],
+        [900, 900, 1],
+        [900, -899, 0],
+        [900, -900, 1]
+    ] as const)('uses file cache TTL %s at age %s seconds', (cacheTtlSeconds, ageSeconds, requestCount) => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('configured-file-ttl');
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash });
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                pathDir: home.bin,
+                cacheTtlSeconds,
+                nowMs: mtimeMs + ageSeconds * 1000,
+                mode: 'success',
+                responseBody: successResponseBody,
+                requiredFields: ['sessionUsage']
+            });
+            expect(result.requestCount).toBe(requestCount);
+            expect(result.first.sessionUsage).toBe(requestCount === 0 ? 5 : 42);
+            expect(result.second).toEqual(result.first);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        [undefined, 179, 1],
+        [undefined, 180, 2],
+        [900, 181, 1],
+        [900, 899, 1],
+        [900, 900, 2]
+    ] as const)('uses memory cache TTL %s after %s seconds', (cacheTtlSeconds, elapsedSeconds, requestCount) => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('configured-memory-ttl');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                pathDir: home.bin,
+                cacheTtlSeconds,
+                nowMs,
+                secondNowMs: nowMs + elapsedSeconds * 1000,
+                mode: 'success',
+                responseBody: successResponseBody,
+                requiredFields: ['sessionUsage']
+            });
+            expect(result.requestCount).toBe(requestCount);
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.second).toEqual(result.first);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        { mode: 'error' as const, statusCode: 500, backoff: 30, error: 'api-error' },
+        { mode: 'status' as const, statusCode: 429, backoff: 3600, error: 'rate-limited' }
+    ])('keeps $backoff-second backoff independent of a 900-second TTL', ({ mode, statusCode, backoff, error }) => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('configured-ttl-backoff');
+            const options: ProbeOptions = {
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                pathDir: home.bin,
+                nowMs,
+                cacheTtlSeconds: 900,
+                mode,
+                statusCode,
+                responseHeaders: { 'retry-after': '3600' }
+            };
+            const failed = harness.runProbe(options);
+            expect(failed.first).toEqual({ error });
+            expect(failed.requestCount).toBe(1);
+            expect(parseLockContents(failed.lockContents)?.blockedUntil).toBe(Math.floor(nowMs / 1000) + backoff);
+
+            const blocked = harness.runProbe({ ...options, nowMs: nowMs + (backoff - 1) * 1000 });
+            expect(blocked.requestCount).toBe(0);
+            const retried = harness.runProbe({
+                ...options,
+                mode: 'success',
+                statusCode: 200,
+                responseBody: successResponseBody,
+                nowMs: nowMs + backoff * 1000
+            });
+            expect(retried.requestCount).toBe(1);
+            expect(retried.first.sessionUsage).toBe(42);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps profile caches separate with a 900-second TTL', () => {
+        const harness = createProbeHarness();
+        try {
+            const first = harness.createTokenHome('ttl-profile-first');
+            const second = { ...harness.createTokenHome('ttl-profile-second'), home: first.home };
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(first, { sessionUsage: 5, tokenHash });
+            const options: ProbeOptions = {
+                claudeConfigDir: first.claudeConfig,
+                home: first.home,
+                pathDir: first.bin,
+                nowMs: mtimeMs + 300000,
+                cacheTtlSeconds: 900,
+                mode: 'success',
+                responseBody: successResponseBody
+            };
+            expect(harness.runProbe(options).requestCount).toBe(0);
+            const changedProfile = harness.runProbe({ ...options, claudeConfigDir: second.claudeConfig, pathDir: second.bin });
+            expect(changedProfile.requestCount).toBe(1);
+            expect(changedProfile.first.sessionUsage).toBe(42);
+            const originalProfile = harness.runProbe(options);
+            expect(originalProfile.requestCount).toBe(0);
+            expect(originalProfile.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([180, 900])('refetches a fresh cache when the token fingerprint changes with TTL %s (account switch)', (cacheTtlSeconds) => {
         const harness = createProbeHarness();
 
         try {
@@ -1376,7 +1514,8 @@ describe('fetchUsageData error handling', () => {
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
                 mode: 'success',
-                nowMs: seededMtimeMs + 5000,
+                nowMs: seededMtimeMs + (cacheTtlSeconds === 900 ? 300000 : 5000),
+                cacheTtlSeconds,
                 pathDir: home.bin,
                 requiredFields: ['sessionUsage'],
                 responseBody: successResponseBody
@@ -1830,7 +1969,8 @@ describe('fetchUsageData error handling', () => {
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
                 mode: 'success',
-                nowMs: mtimeMs + 5000,
+                nowMs: mtimeMs + 300000,
+                cacheTtlSeconds: 900,
                 pathDir: home.bin,
                 requiredFields: ['sessionUsage'],
                 responseBody: successResponseBody
@@ -2143,9 +2283,11 @@ describe('fetchUsageData error handling', () => {
     // LOCK_MAX_AGE once the cache expires. The cache served through that lock is
     // as current as a cache hit unless it has outlived the lock too.
     it.each([
-        ['doesn\'t mark a cache that has just expired', 185, false],
-        ['marks a cache older than the in-flight lock allows', 215, true]
-    ])('%s while another render\'s refresh is in flight', (_label, cacheAgeSeconds, staleFallback) => {
+        ['doesn\'t mark a cache that has just expired', 185, false, 180],
+        ['marks a cache older than the in-flight lock allows', 215, true, 180],
+        ['doesn\'t mark a cache that has just expired with a longer TTL', 905, false, 900],
+        ['marks a cache older than the in-flight lock allows with a longer TTL', 935, true, 900]
+    ])('%s while another render\'s refresh is in flight', (_label, cacheAgeSeconds, staleFallback, cacheTtlSeconds) => {
         const harness = createProbeHarness();
 
         try {
@@ -2163,6 +2305,7 @@ describe('fetchUsageData error handling', () => {
                 home: home.home,
                 mode: 'unexpected',
                 nowMs: refreshNowMs,
+                cacheTtlSeconds,
                 pathDir: home.bin,
                 requiredFields: ['sessionUsage']
             });

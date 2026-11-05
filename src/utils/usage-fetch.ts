@@ -10,6 +10,7 @@ import * as path from 'node:path';
 import { z } from 'zod';
 
 import type { AccountEmailResult } from '../types/AccountEmail';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 
 import { getClaudeConfigDir } from './claude-settings';
 import { isExcludedFromProxy } from './no-proxy';
@@ -38,7 +39,6 @@ function getUsageFilePath(suffix: 'json' | 'lock' | 'credentials.lock'): string 
     const configHash = createHash('sha256').update(configDir).digest('hex').slice(0, 16);
     return path.join(CACHE_DIR, `usage-${configHash}.${suffix}`);
 }
-const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 // Upper bound on how far ahead a lock may block fetching. The longest
@@ -54,7 +54,10 @@ const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 // unlock prompt must not hold the status line until someone answers it.
 const MACOS_SECURITY_TIMEOUT_MS = 5000;
 
-export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
+export interface FetchUsageDataOptions {
+    requiredFields?: readonly UsageDataField[];
+    cacheTtlSeconds?: number;
+}
 
 // The access token is what the API is called with; the refresh token is kept
 // alongside it only to fingerprint the account (see getUsageCacheIdentity).
@@ -462,7 +465,8 @@ function getStaleUsageOrError(
     now: number,
     cacheIdentity: UsageCacheIdentity | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
-    requiredFields: readonly UsageDataField[] = []
+    requiredFields: readonly UsageDataField[] = [],
+    cacheTtlSeconds = DEFAULT_SETTINGS.usageCacheTtlSeconds
 ): UsageData {
     const stale = readStaleUsageCache(cacheIdentity, now);
     if (stale && !stale.data.error) {
@@ -471,7 +475,7 @@ function getStaleUsageOrError(
             // Widgets share this response: an expired window must not discard
             // another widget's valid fields. Only missing fields use the error.
             const data = complete ? stale.data : { ...stale.data, error };
-            if (hasUsageCacheOutlivedRefresh(now)) {
+            if (hasUsageCacheOutlivedRefresh(now, cacheTtlSeconds)) {
                 staleUsageFallbacks.add(data);
             }
             return cacheUsageData(data, now, stale.fetchedAtMs);
@@ -812,10 +816,10 @@ function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null, now: numb
 // failed request also leaves in place, for up to LOCK_MAX_AGE, and other
 // renders serve the cache through it meanwhile. Only a cache older than that
 // has outlived a refresh.
-function hasUsageCacheOutlivedRefresh(now: number): boolean {
+function hasUsageCacheOutlivedRefresh(now: number, cacheTtlSeconds: number): boolean {
     try {
         const fileAge = now - Math.floor(fs.statSync(getUsageFilePath('json')).mtimeMs / 1000);
-        return Math.abs(fileAge) >= CACHE_MAX_AGE + LOCK_MAX_AGE;
+        return Math.abs(fileAge) >= cacheTtlSeconds + LOCK_MAX_AGE;
     } catch {
         return true;
     }
@@ -1011,11 +1015,12 @@ async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_M
 export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promise<UsageData> {
     const now = Math.floor(Date.now() / 1000);
     const requiredFields = options.requiredFields ?? [];
+    const cacheTtlSeconds = options.cacheTtlSeconds ?? DEFAULT_SETTINGS.usageCacheTtlSeconds;
 
     // Check memory cache (fast path)
     if (cachedUsageData) {
         const cacheAge = now - usageCacheTime;
-        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
+        if (!cachedUsageData.error && cacheAge < cacheTtlSeconds && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
             return cachedUsageData;
         }
         if (cachedUsageData.error && cacheAge < usageErrorCacheMaxAge) {
@@ -1039,7 +1044,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // concurrent render may have written it after this one read the clock.
         // Further ahead, it was written under a clock since set back, and
         // trusting it would keep that data on screen until real time caught up.
-        if (Math.abs(fileAge) < CACHE_MAX_AGE) {
+        if (Math.abs(fileAge) < cacheTtlSeconds) {
             const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
@@ -1053,7 +1058,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields, cacheTtlSeconds);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -1063,7 +1068,8 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             now,
             cacheIdentity,
             Math.max(1, activeLock.blockedUntil - now),
-            requiredFields
+            requiredFields,
+            cacheTtlSeconds
         );
     }
 
@@ -1075,23 +1081,23 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields, cacheTtlSeconds);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields, cacheTtlSeconds);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields, cacheTtlSeconds);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields, cacheTtlSeconds);
         }
 
         // Save to cache
@@ -1112,7 +1118,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return cacheUsageData(usageData, now, Date.now());
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields, cacheTtlSeconds);
     }
 }
 
