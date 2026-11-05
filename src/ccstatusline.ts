@@ -45,6 +45,7 @@ import {
     getTerminalWidth
 } from './utils/terminal';
 import { sanitizeTerminalText } from './utils/terminal-sanitize';
+import { needsTranscriptTokenMetrics } from './utils/transcript-requirements';
 import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
@@ -140,9 +141,20 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
         }
     }
 
-    const transcriptAnalysisPromise = data.transcript_path
+    // Reading the transcript costs a full parse of a file that grows all
+    // session, so only scan it when a configured widget will read the result.
+    const includeTokenMetrics = needsTranscriptTokenMetrics(lines, data);
+    const includeSessionDuration = hasSessionClock && !hasSessionDurationInStatusJson(data);
+    const needsTranscriptAnalysis = includeTokenMetrics
+        || includeSessionDuration
+        || hasSpeedItems
+        || hasCompactionWidget
+        || needsTranscriptThinkingEffort
+        || hasSessionNameWidget;
+    const transcriptAnalysisPromise = data.transcript_path && needsTranscriptAnalysis
         ? getTranscriptAnalysis(data.transcript_path, {
-            includeSessionDuration: hasSessionClock && !hasSessionDurationInStatusJson(data),
+            includeTokenMetrics,
+            includeSessionDuration,
             includeSpeedMetrics: hasSpeedItems,
             includeSubagents: true,
             speedWindowSeconds: Array.from(requestedSpeedWindows),
