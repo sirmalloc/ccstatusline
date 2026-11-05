@@ -118,7 +118,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'cache-misses', create: () => new widgets.CacheMissesWidget() },
     { type: 'last-cache-miss', create: () => new widgets.LastCacheMissWidget() },
     { type: 'cache-miss-tokens', create: () => new widgets.CacheMissTokensWidget() },
-    { type: 'cache-if-cold', create: () => new widgets.CacheIfColdWidget() }
+    { type: 'cache-if-cold', create: () => new widgets.CacheIfColdWidget() },
+    { type: 'rclone-queue', create: () => new widgets.RCloneQueueWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
