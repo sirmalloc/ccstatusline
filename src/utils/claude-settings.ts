@@ -376,7 +376,7 @@ function splitCommandWords(command: string): string[] {
             quote = null;
         } else if (quote === null && (char === '"' || (posix && char === '\''))) {
             quote = char;
-            word ??= '';
+            word = word ?? '';
         } else if (posix && escapesNextCharacter(command, index, quote)) {
             index++;
             word = (word ?? '') + command.charAt(index);
