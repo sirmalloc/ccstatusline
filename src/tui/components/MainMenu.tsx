@@ -4,13 +4,17 @@ import {
 } from 'ink';
 import React from 'react';
 
-import type { InstallationMetadata } from '../../types/Settings';
+import type {
+    InstallationMetadata,
+    Settings
+} from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
 
 export type MainMenuOption = 'lines'
     | 'colors'
+    | 'theme'
     | 'powerline'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -32,6 +36,7 @@ export interface MainMenuProps {
     onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
     installation?: InstallationMetadata;
+    settings?: Settings;
 }
 
 interface MainMenuItem {
@@ -78,7 +83,8 @@ function getInstallationMenuItem(
 export function buildMainMenuItems(
     isClaudeInstalled: boolean,
     hasChanges: boolean,
-    installation?: InstallationMetadata
+    installation?: InstallationMetadata,
+    powerlineEnabled = false
 ): MainMenuEntry[] {
     const menuItems: MainMenuEntry[] = [
         {
@@ -93,6 +99,14 @@ export function buildMainMenuItems(
             description:
                 'Customize colors for each widget including foreground, background, and bold styling'
         },
+        // Powerline mode has its own theme picker and ignores the regular-mode
+        // theme, so the entry only makes sense when powerline is off.
+        ...(powerlineEnabled ? [] : [{
+            label: '🌈 Theme',
+            value: 'theme' as const,
+            description:
+                'Apply a built-in color theme to regular (non-powerline) mode as foreground colors'
+        }]),
         {
             label: '⚡ Powerline Setup',
             value: 'powerline',
@@ -211,9 +225,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     initialSelection = 0,
     onSelectionChange,
     powerlineFontStatus,
-    installation
+    installation,
+    settings
 }) => {
-    const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
+    const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation, settings?.powerline.enabled ?? false);
 
     return (
         <Box flexDirection='column'>

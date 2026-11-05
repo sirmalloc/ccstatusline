@@ -225,6 +225,7 @@ describe('Main menu structure', () => {
         })).toEqual([
             'lines',
             'colors',
+            'theme',
             'powerline',
             '-',
             'terminalConfig',
@@ -246,6 +247,7 @@ describe('Main menu structure', () => {
         expect(getMenuValues(false, false)).toEqual([
             'lines',
             'colors',
+            'theme',
             'powerline',
             '-',
             'terminalConfig',
@@ -272,6 +274,7 @@ describe('Main menu structure', () => {
         expect(getMenuValues(true, false, installation)).toEqual([
             'lines',
             'colors',
+            'theme',
             'powerline',
             '-',
             'terminalConfig',
@@ -311,14 +314,14 @@ describe('Main menu structure', () => {
             sublabel: '(install first)'
         }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
-        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
-        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
-        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(9);
+        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(9);
+        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(9);
         expect(getMainMenuSelectionIndex(
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
-        )).toBe(8);
+        )).toBe(9);
     });
 });
 
@@ -412,6 +415,7 @@ describe('App after a global update run from the TUI', () => {
 
             // An unsaved edit: Color Level 256 → Truecolor
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  🌈 Theme');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
             await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
@@ -735,6 +739,7 @@ describe('App save with a widget whose hooks the status line command can\'t run'
 
             // An unsaved edit, so the menu offers Save & Exit: Color Level 256 → Truecolor
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  🌈 Theme');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
             await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
@@ -742,6 +747,7 @@ describe('App save with a widget whose hooks the status line command can\'t run'
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
             await pressKey(rendered, KEYS.up, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.up, '▶  🌈 Theme');
             await pressKey(rendered, KEYS.up, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.up, '▶  📝 Edit Lines');
             await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');

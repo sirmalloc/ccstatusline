@@ -30,6 +30,12 @@ import {
     type PowerlineThemeSelectorProps
 } from '../PowerlineThemeSelector';
 
+function flushInk() {
+    return new Promise((resolve) => {
+        setTimeout(resolve, 25);
+    });
+}
+
 class MockTtyStream extends PassThrough {
     isTTY = true;
     columns = 120;
@@ -106,6 +112,16 @@ describe('PowerlineThemeSelector helpers', () => {
             label: 'One Dark',
             sublabel: '(original)',
             value: 'onedark'
+        });
+    });
+
+    it('labels the none entry for regular mode', () => {
+        const items = buildPowerlineThemeItems(['none'], 'none');
+
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({
+            label: 'None (no theme)',
+            value: 'none'
         });
     });
 
@@ -223,6 +239,98 @@ describe('PowerlineThemeSelector helpers', () => {
             });
 
             expect(maximumUpdateDepthWarnings).toHaveLength(0);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('writes settings.theme when navigating in regular mode', async () => {
+        const firstTheme = getPowerlineThemes().find(name => name !== 'custom');
+        expect(firstTheme).toBeDefined();
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: { ...DEFAULT_SETTINGS },
+                onUpdate,
+                onBack,
+                mode: 'regular'
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(onUpdate).not.toHaveBeenCalled();
+
+            // Regular list starts at 'none' (no theme); one step down picks
+            // the first real theme and must write the top-level setting.
+            stdin.write('\u001B[B');
+            await waitFor(() => {
+                expect(onUpdate.mock.calls.length).toBeGreaterThan(0);
+            });
+            await flushInk();
+
+            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBe(firstTheme);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('clears settings.theme when None is selected in regular mode', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: { ...DEFAULT_SETTINGS, theme: 'nord' },
+                onUpdate,
+                onBack,
+                mode: 'regular'
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(onUpdate).not.toHaveBeenCalled();
+
+            // 'nord' sits one slot below 'none' in the regular list.
+            stdin.write('\u001B[A');
+            await waitFor(() => {
+                expect(onUpdate.mock.calls.length).toBeGreaterThan(0);
+            });
+            await flushInk();
+
+            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBeUndefined();
         } finally {
             instance.unmount();
             instance.cleanup();
