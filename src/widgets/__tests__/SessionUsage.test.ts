@@ -115,8 +115,8 @@ describe('SessionUsageWidget', () => {
         expect(render(widget, { id: 'session', type: 'session-usage', metadata: { label: 'Session: ' } }, context)).toBe('Session: 20.0%');
     });
 
-    it('declares the no-data and at-limit hideable states', () => {
-        expect(new SessionUsageWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'at-limit']);
+    it('declares the no-data, zero, and at-limit hideable states', () => {
+        expect(new SessionUsageWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero', 'at-limit']);
     });
 
     describe('at-limit hide state', () => {

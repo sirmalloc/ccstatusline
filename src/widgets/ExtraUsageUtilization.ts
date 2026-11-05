@@ -12,6 +12,7 @@ import type {
 } from '../types/Widget';
 import {
     formatPercent,
+    rendersAsZero,
     resolveNumberFormat
 } from '../utils/number-format';
 import { getUsageErrorMessage } from '../utils/usage';
@@ -22,6 +23,7 @@ import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -62,7 +64,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
+        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -119,6 +121,10 @@ export class ExtraUsageUtilizationWidget implements Widget {
 
         // utilization is a percentage (0-100), not a fraction
         const percent = Math.max(0, Math.min(100, utilization));
+        if (rendersAsZero(percent, format, 1) && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+            return null;
+        }
+
         const renderedPercent = inverted ? 100 - percent : percent;
 
         if (isUsageProgressMode(displayMode)) {

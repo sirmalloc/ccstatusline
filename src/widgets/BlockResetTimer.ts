@@ -35,6 +35,7 @@ import {
 import {
     SESSION_UNDER_LIMIT_HIDEABLE_STATE,
     USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_TIMER_ZERO_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -80,7 +81,7 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_UNDER_LIMIT_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, USAGE_TIMER_ZERO_HIDEABLE_STATE, SESSION_UNDER_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -149,7 +150,13 @@ export class BlockResetTimerWidget implements Widget {
         if (!isAtSessionLimit(context) && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
             return null;
         }
+
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
+
+        // An ended window clamps to zero remaining, which is no window for this state
+        if (usageData.sessionUsage === 0 && (!window || window.remainingMs === 0) && isHidden(item, USAGE_TIMER_ZERO_HIDEABLE_STATE.key)) {
+            return null;
+        }
 
         if (!window) {
             if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {

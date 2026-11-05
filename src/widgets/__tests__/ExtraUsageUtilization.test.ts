@@ -150,7 +150,32 @@ describe('ExtraUsageUtilizationWidget', () => {
             metadata: { invert: 'true' }
         }).modifierText).toBe('(remaining)');
 
-        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data', 'zero']);
+    });
+
+    it('hides zero utilization only when the zero state is enabled, regardless of invert', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const zeroContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUtilization: 0 } };
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } }, zeroContext)).toBeNull();
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero', invert: 'true' } }, zeroContext)).toBeNull();
+        const nonZeroContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUtilization: 25 } };
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } }, nonZeroContext)).toBe('Overage: 25.0%');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, zeroContext)).toBe('Overage: 0.0%');
+
+        const derivedZeroContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUsed: 0, extraUsageLimit: 5000 } };
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } }, derivedZeroContext)).toBeNull();
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, derivedZeroContext)).toBe('Overage: 0.0%');
+    });
+
+    it('hides utilization that rounds to zero at the resolved number format, regardless of invert', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const hideZeroItem: WidgetItem = { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } };
+        const derivedContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUsed: 10, extraUsageLimit: 100000 } };
+
+        expect(render(widget, hideZeroItem, derivedContext)).toBeNull();
+        expect(render(widget, { ...hideZeroItem, metadata: { hide: 'zero', invert: 'true' } }, derivedContext)).toBeNull();
+        expect(render(widget, { ...hideZeroItem, numberFormat: { decimals: 2 } }, derivedContext)).toBe('Overage: 0.01%');
     });
 
     it('does not show a time cursor carried over from a usage widget', () => {

@@ -20,6 +20,7 @@ import {
     getNumberFormatKeybind,
     getNumberFormatModifierText,
     renderMagnitude,
+    rendersAsZero,
     resolveNumberFormat
 } from '../number-format';
 import { formatSpeed } from '../speed-metrics';
@@ -38,6 +39,17 @@ describe('renderMagnitude', () => {
 
     it.each(cases)('value $value with $format over baseline $baseline -> $expected', ({ value, format, baseline, expected }) => {
         expect(renderMagnitude(value, format, baseline)).toBe(expected);
+    });
+});
+
+describe('rendersAsZero', () => {
+    it('follows the precision the format resolves to', () => {
+        expect(rendersAsZero(0, {}, 1)).toBe(true);
+        expect(rendersAsZero(0.04, {}, 1)).toBe(true);
+        expect(rendersAsZero(0.05, {}, 1)).toBe(false);
+        expect(rendersAsZero(0.4, { style: 'whole' }, 1)).toBe(true);
+        expect(rendersAsZero(0.04, { style: 'compact' }, 1)).toBe(true);
+        expect(rendersAsZero(0.04, { decimals: 2 }, 1)).toBe(false);
     });
 });
 

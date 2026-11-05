@@ -10,6 +10,7 @@ import type {
 } from '../../types/Widget';
 import {
     formatPercent,
+    rendersAsZero,
     resolveNumberFormat
 } from '../../utils/number-format';
 import {
@@ -27,6 +28,7 @@ import { makeTimerProgressBar } from './progress-bar';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -212,6 +214,10 @@ export function renderUsagePercentWidgetValue(
     }
 
     const percent = Math.max(0, Math.min(100, usagePercent));
+    if (rendersAsZero(percent, format, 1) && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+        return null;
+    }
+
     const renderedPercent = inverted ? 100 - percent : percent;
 
     return renderUsageDisplay(item, config.label, renderedPercent, format, () => {

@@ -83,6 +83,10 @@ export function renderMagnitude(value: number, format: NumberFormat, baselineDec
     return format.style === 'compact' ? trimTrailingZeros(fixed) : fixed;
 }
 
+export function rendersAsZero(value: number, format: NumberFormat, baselineDecimals: number): boolean {
+    return Number(renderMagnitude(value, format, baselineDecimals)) === 0;
+}
+
 // Render a percentage. `baselineDecimals` defaults to 1 ("84.5%"); callers that
 // want a whole-percent baseline (e.g. a context bar) pass 0.
 export function formatPercent(value: number, format: NumberFormat = {}, baselineDecimals = 1): string {

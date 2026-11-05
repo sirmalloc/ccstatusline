@@ -2,12 +2,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 
-import { getUsagePercentCustomKeybinds } from './shared/usage-display';
+import {
+    USAGE_ZERO_HIDEABLE_STATE,
+    getUsagePercentCustomKeybinds
+} from './shared/usage-display';
 import {
     getUsagePercentWidgetDescription,
     getUsagePercentWidgetDisplayName,
@@ -26,6 +30,10 @@ export class SpendLimitUsageWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getUsagePercentWidgetEditorDisplay('spend-limit', item);
+    }
+
+    getHideableStates(): HideableState[] {
+        return [USAGE_ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {

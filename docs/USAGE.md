@@ -372,7 +372,7 @@ Supported states by widget family:
 - **Session Cost**: `zero` hides `$0.00`
 - **Session Clock**: `zero` hides durations under one minute
 - **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
-- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available
+- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available, `zero` hides the timer while its period's usage (session or weekly) is 0% and no reset window is active; a reset time that has passed doesn't count as active, and Block Reset Timer also treats a local transcript block as an active window
 - **Block Reset Timer**: `under-limit` hides the timer until the 5-hour block's usage reaches 100%, so the reset countdown appears only once the block's limit is hit. It reads the block's raw percent from the usage API, so a usage percent shown as `100%` after rounding 99.7% still counts as under the limit. The status payload's percent comes from that session's last response and stops moving while the session sits idle, so it's used only when the API can't be reached. The API's answer is cached for 3 minutes and shared by every session. A cached answer from a block that has already reset (the cache outliving the reset, or the API failing since) is ignored, and the payload's percent stands in until a fresh one arrives.
 - **Block Usage**: `at-limit` hides the percent once the 5-hour block's usage reaches 100%, by the same check as Block Reset Timer's `under-limit`, so with both on the reset countdown takes the percent's place at the limit, in the same render. With `under-limit` on, the timer appears only there, so a label like `5h reset ` (set with `e`) keeps the 5h label in front of the countdown
 - **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
@@ -380,8 +380,9 @@ Supported states by widget family:
 - **Fast Mode**: `off` hides the widget when fast mode is disabled; a missing `fast_mode` field always hides it
 - **Compaction Counter**: `zero` hides the counter before any compaction occurs
 - **Skills**: `empty` hides the widget before any skill is used
-- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable
-- **Block / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable
+- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable; on Extra Usage Used and Extra Usage Utilization, `zero` hides the widget while the amount spent, or the used percentage, displays as zero at the widget's number format (Extra Usage Remaining has no `zero` state)
+- **Block / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable, `zero` hides the widget while used percentage displays as 0% at the widget's number format (also when showing remaining)
+- **Spend Limit Usage**: `zero` hides the widget while used percentage displays as 0% at the widget's number format (also when showing remaining)
 - **Cache widgets** (`Cache Hit Rate`, `Cache Read`, `Cache Write`, `Cache Timer`): `empty` hides the widget when there is no cache activity, and on Cache Timer when neither usable reported cache state nor a transcript cache anchor is available
 - **Cache Misses / Cache Miss Tokens**: `zero` hides the widget while the session has no prompt cache misses
 - **Custom Text / Custom Symbol**: `merge-target-hidden` hides the item when the widget it is merged with renders nothing, so icon prefixes/suffixes disappear together with their widget
