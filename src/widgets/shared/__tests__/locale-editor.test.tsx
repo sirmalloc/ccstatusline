@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream';
 import React from 'react';
 import stripAnsi from 'strip-ansi';
 import {
+    afterEach,
     describe,
     expect,
     it,
@@ -11,7 +12,10 @@ import {
 
 import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
 import type { WidgetItem } from '../../../types/Widget';
-import { canonicalizeLocale } from '../../../utils/locales';
+import {
+    DEFAULT_RESET_LOCALE,
+    canonicalizeLocale
+} from '../../../utils/locales';
 import {
     LOCALE_EDITOR_ACTION,
     UsageLocaleEditor
@@ -122,7 +126,18 @@ function getPlainOutput(output: string): string {
     return stripAnsi(output).replace(/\r\n/g, '\n');
 }
 
+// Node takes the runtime's locale from LANG and Bun keeps en-US, so a test
+// that depends on the System row pins it
+function stubSystemLocale(locale: string): void {
+    const resolved = new Intl.DateTimeFormat(locale).resolvedOptions();
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue(resolved);
+}
+
 describe('UsageLocaleEditor', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('adds spacing between the locale list and result count', async () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
@@ -196,6 +211,51 @@ describe('UsageLocaleEditor', () => {
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata?.locale).toBe(customLocale);
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('saves the locale a search keyword names, not the language code it spells', async () => {
+        stubSystemLocale(DEFAULT_RESET_LOCALE);
+        const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
+
+        try {
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'uk', 'en-GB');
+
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.locale).toBe('en-GB');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    // The System and Configured rows take the place of the common row for
+    // their locale, so the keyword has to find them too
+    it.each<[string, string, Record<string, string>]>([
+        ['system', 'en-GB', {}],
+        ['configured', DEFAULT_RESET_LOCALE, { locale: 'en-GB' }]
+    ])('saves the %s locale a search keyword names', async (_row, systemLocale, metadata) => {
+        stubSystemLocale(systemLocale);
+        const rendered = renderEditor({ id: 'reset', type: 'reset-timer', metadata });
+
+        try {
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'uk', 'Use uk');
+
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.locale).toBe('en-GB');
         } finally {
             cleanupEditor(rendered);
         }

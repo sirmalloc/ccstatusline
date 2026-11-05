@@ -1,6 +1,8 @@
 import chalk from 'chalk';
 import * as childProcess from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
     afterEach,
@@ -12,16 +14,23 @@ import {
 } from 'vitest';
 
 import {
+    CURRENT_VERSION,
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
 import * as claudeSettings from '../../utils/claude-settings';
+import {
+    getColorAnsiCode,
+    updateColorMap
+} from '../../utils/colors';
+import { DEV_RELOAD_CHILD_ARG_PREFIX } from '../../utils/dev-reload';
 import * as globalCommandResolution from '../../utils/global-command-resolution';
 import * as globalPackageManager from '../../utils/global-package-manager';
 import { getPackageVersion } from '../../utils/terminal';
 import * as updateChecker from '../../utils/update-checker';
 import {
     applyTuiImport,
+    buildConfigLoadNotice,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
     classifyInstalledStatusLine,
@@ -43,7 +52,8 @@ import {
     pressKey,
     renderApp,
     setUpAppSandbox,
-    type AppSandbox
+    type AppSandbox,
+    type RenderedApp
 } from './helpers/render-app';
 import {
     letReactCatchUp,
@@ -105,6 +115,28 @@ describe('TUI config imports', () => {
             expect(chalk.level).toBe(0);
         } finally {
             chalk.level = originalLevel;
+        }
+    });
+
+    it('builds the named colors for the imported color level', () => {
+        const originalLevel = chalk.level;
+
+        try {
+            // The color codes as built at startup in a terminal that reports 16 colors
+            chalk.level = 1;
+            updateColorMap();
+
+            applyTuiImport(
+                { ...DEFAULT_SETTINGS, colorLevel: 1 },
+                { ...DEFAULT_SETTINGS, colorLevel: 2 },
+                'merge',
+                ['colorLevel']
+            );
+
+            expect(getColorAnsiCode('cyan', 'ansi256')).toBe('\x1b[38;5;30m');
+        } finally {
+            chalk.level = originalLevel;
+            updateColorMap();
         }
     });
 });
@@ -411,8 +443,7 @@ describe('App after a global update run from the TUI', () => {
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
@@ -735,8 +766,7 @@ describe('App save with a widget whose hooks the status line command can\'t run'
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
@@ -758,6 +788,205 @@ describe('App save with a widget whose hooks the status line command can\'t run'
     });
 });
 
+describe('App with a migration it could not back up', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('builds a notice that says the settings shown are migrated and a save backs up the file', () => {
+        expect(buildConfigLoadNotice(null)).toBeNull();
+        const notice = buildConfigLoadNotice('settings.json could not be backed up before migrating');
+        expect(notice).toContain('could not be backed up before migrating');
+        expect(notice).toContain('showing the migrated settings');
+        expect(notice).toContain('backs up the file first');
+    });
+
+    it('shows the migrated settings and saves only once the original can be backed up', async () => {
+        const original = JSON.stringify({
+            version: 3,
+            lines: [[{ id: 'mine', type: 'custom-text', customText: 'My own line' }]]
+        });
+        fs.writeFileSync(sandbox.settingsPath, original);
+        const backupPath = `${sandbox.settingsPath}.v3.bak`;
+        // A directory where the backup goes makes the backup write fail
+        fs.mkdirSync(backupPath);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('could not be backed up before migrating');
+                expect(rendered.getFrame()).toContain('My own line');
+            });
+
+            await pressKey(rendered, KEYS.ctrlS, '✗ Could not save configuration');
+            expect(fs.readFileSync(sandbox.settingsPath, 'utf-8')).toBe(original);
+
+            fs.rmdirSync(backupPath);
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+            expect(JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8'))).toMatchObject({
+                version: CURRENT_VERSION,
+                lines: [[{ id: 'mine', type: 'custom-text', customText: 'My own line' }]]
+            });
+            expect(rendered.getFrame()).not.toContain('could not be backed up');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App main menu highlight across Ctrl+S', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify(DEFAULT_SETTINGS));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    // The main menu entry the cursor is on
+    function getHighlightedEntry(rendered: RenderedApp): string | undefined {
+        return rendered.getFrame().split('\n').find(line => line.startsWith('▶  '))?.slice(3).trimEnd();
+    }
+
+    // Changes Color Level, so the main menu offers Save & Exit, then moves down
+    // from Terminal Options, the entry last opened, to the given entry, past
+    // whatever entries lie between
+    async function changeAndMoveDownTo(rendered: RenderedApp, target: string): Promise<void> {
+        await waitFor(() => {
+            expect(rendered.getFrame()).toContain('Main Menu');
+        });
+        await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+        await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+        await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+        await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
+        await pressKey(rendered, KEYS.enter, '(Truecolor)');
+        await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
+        for (let steps = 0; getHighlightedEntry(rendered) !== target; steps += 1) {
+            expect(steps).toBeLessThan(20);
+            const before = getHighlightedEntry(rendered);
+            rendered.stdin.write(KEYS.down);
+            await waitFor(() => {
+                expect(getHighlightedEntry(rendered)).not.toBe(before);
+            });
+        }
+    }
+
+    it('keeps the highlighted entry, so Enter opens it', async () => {
+        const rendered = renderApp();
+
+        try {
+            await changeAndMoveDownTo(rendered, '📦 Install to Claude Code');
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            expect(rendered.getFrame()).not.toContain('💾 Save & Exit');
+            expect(rendered.getFrame()).toContain('▶  📦 Install to Claude Code');
+
+            await pressKey(rendered, KEYS.enter, 'Install ccstatusline to Claude Code');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    // Saving replaces Save & Exit and Exit without saving with a single Exit
+    it.each([
+        { highlighted: '💾 Save & Exit', after: '🚪 Exit', above: '📦 Install to Claude Code' },
+        { highlighted: '❌ Exit without saving', after: '🚪 Exit', above: '📦 Install to Claude Code' },
+        { highlighted: '⭐ Like ccstatusline? Star us on GitHub', after: '⭐ Like ccstatusline? Star us on GitHub', above: '🚪 Exit' }
+    ])('highlights $after after a save from $highlighted', async ({ highlighted, after, above }) => {
+        const rendered = renderApp();
+
+        try {
+            await changeAndMoveDownTo(rendered, highlighted);
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain(`▶  ${after}`);
+            });
+
+            await pressKey(rendered, KEYS.up, `▶  ${above}`);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App preview colors in a terminal that reports fewer colors', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+        // The color codes as built at startup in a terminal that reports 16 colors
+        chalk.level = 1;
+        updateColorMap();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    function writeSettingsAt256Colors(line: unknown[]): void {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({ ...DEFAULT_SETTINGS, colorLevel: 2, lines: [line] }));
+    }
+
+    it('draws the preview in the configured color level', async () => {
+        writeSettingsAt256Colors([{ id: 'model', type: 'model' }]);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+            // Cyan as the status line draws it at 256 colors, not as black, its 16-color stand-in
+            expect(rendered.getRawFrame()).toContain('\x1b[38;5;30mModel: Claude');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it.each([
+        { case: 'without custom colors', customColors: false },
+        { case: 'after the custom-colors warning', customColors: true }
+    ])('redraws the preview in the color level picked in Terminal Options ($case)', async ({ customColors }) => {
+        writeSettingsAt256Colors([
+            { id: 'model', type: 'model' },
+            ...(customColors ? [{ id: 'orange', type: 'custom-text', customText: 'Orange', color: 'ansi256:208' }] : [])
+        ]);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
+            if (customColors) {
+                await pressKey(rendered, KEYS.enter, 'Custom colors detected');
+            }
+            await pressKey(rendered, KEYS.enter, '(Truecolor)');
+
+            expect(rendered.getRawFrame()).toContain('\x1b[38;2;6;152;154mModel: Claude');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
 function createPendingRun() {
     let finish: () => void = () => undefined;
     const run = vi.fn(() => new Promise<void>((resolve) => {
@@ -769,17 +998,26 @@ function createPendingRun() {
 
 describe('App while an install or update runs', () => {
     let sandbox: AppSandbox;
+    let devReloadDir: string;
+    let devReloadStateFile: string;
     const savedEnv = { ...process.env };
+    const savedArgv = [...process.argv];
 
     beforeEach(() => {
         sandbox = setUpAppSandbox();
+        const capability = randomBytes(32).toString('hex');
+        devReloadDir = path.join(os.tmpdir(), `ccstatusline-dev-reload-${capability}`);
+        devReloadStateFile = path.join(devReloadDir, 'snapshot.json');
+        fs.mkdirSync(devReloadDir, { mode: 0o700 });
         process.env.CCSTATUSLINE_DEV_RELOAD = '1';
-        process.env.CCSTATUSLINE_DEV_RELOAD_STATE = `${sandbox.settingsPath}.reload`;
+        process.argv = [...savedArgv, `${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`];
     });
 
     afterEach(() => {
         sandbox.restore();
         process.env = { ...savedEnv };
+        process.argv = [...savedArgv];
+        fs.rmSync(devReloadDir, { recursive: true, force: true });
     });
 
     it('runs a confirmed install once, ignoring Enter, ESC and Ctrl+R until it finishes', async () => {
@@ -822,7 +1060,7 @@ describe('App while an install or update runs', () => {
             await letReactCatchUp();
             rendered.stdin.write('\u0012');
             await letReactCatchUp();
-            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(fs.existsSync(devReloadStateFile)).toBe(false);
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Working...');
             expect(rendered.getFrame()).not.toContain('Select update style');
@@ -872,7 +1110,7 @@ describe('App while an install or update runs', () => {
             await letReactCatchUp();
             rendered.stdin.write('\u0012');
             await letReactCatchUp();
-            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(fs.existsSync(devReloadStateFile)).toBe(false);
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Updating npm global install to v');
             expect(rendered.getFrame()).not.toContain('Exit');

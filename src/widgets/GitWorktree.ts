@@ -22,6 +22,7 @@ import {
     getSymbolKeybind,
     renderSymbolOverrideEditor
 } from './shared/symbol-override';
+import { getGraphemes } from './shared/text-cursor';
 
 const DEFAULT_SYMBOL = '𖠰';
 
@@ -88,9 +89,9 @@ export class GitWorktreeWidget implements Widget {
         }
         const parts = worktree.split('/');
         if (parts.length === 1) {
-            return Array.from(worktree)[0] ?? '';
+            return getGraphemes(worktree)[0] ?? '';
         }
-        return parts.map((part, index) => (index === parts.length - 1 ? part : Array.from(part)[0] ?? '')).join('/');
+        return parts.map((part, index) => (index === parts.length - 1 ? part : getGraphemes(part)[0] ?? '')).join('/');
     }
 
     private getGitWorktree(context: RenderContext): string | null {

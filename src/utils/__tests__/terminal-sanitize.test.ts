@@ -14,10 +14,17 @@ const BEL = '\x07';
 const ST = `${ESC}\\`;
 
 describe('sanitizeTerminalText', () => {
-    it('leaves plain text, Unicode and tabs and newlines alone', () => {
-        const text = 'main ✓ 日本語 👩‍💻 \uE0A0\tnext\nline';
+    it('leaves plain text, Unicode and newlines alone', () => {
+        const text = 'main ✓ 日本語 👩‍💻 \uE0A0 next\nline';
 
         expect(sanitizeTerminalText(text)).toBe(text);
+    });
+
+    // How far a tab moves depends on the column it lands in, which isn't
+    // known until the line is laid out
+    it('prints a tab as one space', () => {
+        expect(sanitizeTerminalText('0\t3')).toBe('0 3');
+        expect(sanitizeTerminalText(`${ESC}[32m1.2G\t.${ESC}[39m\t`)).toBe(`${ESC}[32m1.2G .${ESC}[39m `);
     });
 
     it.each([

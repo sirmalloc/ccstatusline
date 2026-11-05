@@ -36,10 +36,12 @@ import {
     uninstallStatusLine
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
+import { updateColorMap } from '../utils/colors';
 import {
     applyImport,
     exportConfig,
     getConfigLoadError,
+    getConfigLoadNotice,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
@@ -103,7 +105,6 @@ import {
     RefreshIntervalMenu,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu,
     UninstallMenu,
     UpdateCheckerMenu,
     getMainMenuInstallSelectionIndex,
@@ -129,7 +130,6 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
-    | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'confirm'
@@ -491,6 +491,7 @@ export function applyTuiImport(
 ): Settings {
     const nextSettings = applyImport(current, imported, mode, presentKeys);
     chalk.level = nextSettings.colorLevel;
+    updateColorMap();
     return nextSettings;
 }
 
@@ -511,6 +512,14 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
     }
 
     return `⚠ ${configLoadError} — showing defaults; saving here overwrites the file.`;
+}
+
+export function buildConfigLoadNotice(configLoadNotice: string | null): string | null {
+    if (!configLoadNotice) {
+        return null;
+    }
+
+    return `⚠ ${configLoadNotice} — showing the migrated settings; saving here backs up the file first.`;
 }
 
 export function buildInvalidConfigSaveConfirm(
@@ -542,6 +551,7 @@ export const App: React.FC = () => {
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+    const [configLoadNotice, setConfigLoadNotice] = useState<string | null>(null);
     const [screen, setScreen] = useState<AppScreen>(restored?.screen ?? 'main');
     const [selectedLine, setSelectedLine] = useState(restored?.selectedLine ?? 0);
     const [previewWidgets, setPreviewWidgets] = useState<WidgetItem[] | null>(null);
@@ -558,7 +568,6 @@ export const App: React.FC = () => {
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
     const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
-    const [previewIsTruncated, setPreviewIsTruncated] = useState(false);
     const [currentRefreshInterval, setCurrentRefreshInterval] = useState<number | null>(null);
     const [supportsRefreshInterval] = useState(() => isClaudeCodeVersionAtLeast('2.1.97'));
     const [commandAvailability] = useState(() => getPackageCommandAvailability());
@@ -593,12 +602,17 @@ export const App: React.FC = () => {
             const initialSettings = restored?.settings ?? loadedSettings;
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = initialSettings.colorLevel;
+            // The color codes were built at the level chalk detected for this
+            // terminal, which can be lower than the configured one
+            updateColorMap();
             setSettings(initialSettings);
             setOriginalSettings(cloneSettings(restored?.originalSettings ?? loadedSettings));
             // Capture why settings.json was rejected (if at all) so the TUI can warn and
-            // guard saves. Read it here, in the load callback: the module-scoped signal is
-            // reset by any later loadSettings/saveInstallationMetadata call.
+            // guard saves, and whether its migration is held unsaved. Read them here, in the
+            // load callback: the module-scoped signals are reset by any later
+            // loadSettings/saveInstallationMetadata call.
             setConfigLoadError(getConfigLoadError());
+            setConfigLoadNotice(getConfigLoadNotice());
         });
         void isInstalled()
             .then(setIsClaudeInstalled)
@@ -699,8 +713,9 @@ export const App: React.FC = () => {
                         const skippedHooks = await saveSettings(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
-                        // File is valid again after an explicit save → clear the banner + guard.
+                        // File is valid and current again after an explicit save → clear the banners + guard.
                         setConfigLoadError(null);
+                        setConfigLoadNotice(null);
                         if (skippedHooks) {
                             setFlashMessage(null);
                             setFlowNotice(buildSkippedHooksNotice(skippedHooks, screen === 'flowNotice' ? 'main' : screen));
@@ -782,8 +797,9 @@ export const App: React.FC = () => {
                         });
 
                         // Install re-ran loadSettings internally — re-sync the captured
-                        // config-load error so the banner/guard reflect the file's current state.
+                        // config-load error and notice so the banners/guard reflect the file's current state.
                         setConfigLoadError(getConfigLoadError());
+                        setConfigLoadNotice(getConfigLoadNotice());
 
                         const installedStatusLineState = await loadClaudeStatusLineState();
                         setIsClaudeInstalled(true);
@@ -883,6 +899,7 @@ export const App: React.FC = () => {
 
                     await saveInstallationMetadata(installation);
                     setConfigLoadError(getConfigLoadError());
+                    setConfigLoadNotice(getConfigLoadNotice());
                     setSettings(prev => prev
                         ? { ...prev, installation }
                         : prev);
@@ -1044,6 +1061,7 @@ export const App: React.FC = () => {
 
             await saveInstallationMetadata(installation);
             setConfigLoadError(getConfigLoadError());
+            setConfigLoadNotice(getConfigLoadNotice());
             setSettings(prev => prev
                 ? { ...prev, installation }
                 : prev);
@@ -1086,6 +1104,7 @@ export const App: React.FC = () => {
                 try {
                     await uninstallStatusLine();
                     setConfigLoadError(getConfigLoadError());
+                    setConfigLoadNotice(getConfigLoadNotice());
                     removedClaudeSettings = true;
 
                     for (const packageManager of selection.packageManagers) {
@@ -1308,6 +1327,7 @@ export const App: React.FC = () => {
     };
 
     const configWarning = buildConfigLoadWarning(configLoadError);
+    const configNotice = buildConfigLoadNotice(configLoadNotice);
     // Label drafts and the picker's highlighted widget affect only the preview until Enter accepts them.
     const previewLines = screen === 'items' && previewWidgets
         ? settings.lines.map((line, index) => index === selectedLine ? previewWidgets : line)
@@ -1334,6 +1354,9 @@ export const App: React.FC = () => {
             {configWarning && (
                 <Text color='red' wrap='wrap'>{configWarning}</Text>
             )}
+            {configNotice && (
+                <Text color='yellow' wrap='wrap'>{configNotice}</Text>
+            )}
             {isCustomConfigPath() && (
                 <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
             )}
@@ -1342,7 +1365,6 @@ export const App: React.FC = () => {
                 lines={previewLines}
                 terminalWidth={terminalWidth}
                 settings={settings}
-                onTruncationChange={setPreviewIsTruncated}
             />
 
             <Box marginTop={1}>
@@ -1361,9 +1383,7 @@ export const App: React.FC = () => {
                         initialSelection={menuSelections.main}
                         onSelectionChange={(index) => { setMenuSelections(prev => ({ ...prev, main: index })); }}
                         powerlineFontStatus={powerlineFontStatus}
-                        settings={settings}
                         installation={effectiveInstallation}
-                        previewIsTruncated={previewIsTruncated}
                     />
                 )}
                 {screen === 'lines' && (
@@ -1447,25 +1467,10 @@ export const App: React.FC = () => {
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
                         }}
-                        onBack={(target?: string) => {
-                            if (target === 'width') {
-                                setScreen('terminalWidth');
-                            } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections(prev => ({ ...prev, main: 3 }));
-                                setScreen('main');
-                            }
-                        }}
-                    />
-                )}
-                {screen === 'terminalWidth' && (
-                    <TerminalWidthMenu
-                        settings={settings}
-                        onUpdate={(updatedSettings) => {
-                            setSettings(updatedSettings);
-                        }}
                         onBack={() => {
-                            setScreen('terminalConfig');
+                            // Save that we came from 'terminalConfig' menu (index 3)
+                            setMenuSelections(prev => ({ ...prev, main: 3 }));
+                            setScreen('main');
                         }}
                     />
                 )}

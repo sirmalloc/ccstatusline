@@ -69,7 +69,9 @@ export function SearchableOptionEditor<T extends SearchableOption>({
     onCancel
 }: Readonly<SearchableOptionEditorProps<T>>): React.ReactElement {
     const [query, setQuery] = useState('');
-    const [selectedIndex, setSelectedIndex] = useState(() => getInitialSelectedIndex(options, initialValue));
+    // Found in the list the empty search shows, which can order the options
+    // differently from how they're given
+    const [selectedIndex, setSelectedIndex] = useState(() => getInitialSelectedIndex(filterOptions(options, ''), initialValue));
 
     const filteredOptions = filterOptions(options, query);
     const clampedSelectedIndex = filteredOptions.length === 0
