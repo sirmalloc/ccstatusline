@@ -159,6 +159,8 @@ The color editor can adjust foreground color, background color, bold, dim, and g
 
 - Use `←` / `→` to cycle the selected foreground or background color.
 - Press `f` to switch between foreground and background editing.
+- Press `a` (256-color or truecolor mode) to pick from the 256-color palette. Arrow keys move through a grid of all 256 colors while the preview follows; type a number to jump straight to that color. `Enter` keeps the color, `ESC` restores the previous one.
+- Press `h` (truecolor mode) to enter a hex color.
 - Press `b` to toggle bold.
 - Press `d` to cycle dim styling: off → whole widget → parenthesized text only → off.
 - Press `r` to reset styling on the selected widget, or `c` to clear styling on every widget in the line.
