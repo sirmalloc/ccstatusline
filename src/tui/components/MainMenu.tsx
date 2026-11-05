@@ -219,6 +219,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
 
+            {/* initialSelection is the highlighted row's index. Saving swaps Save &
+                Exit and Exit without saving for Exit, which moves the entries
+                below, and the highlight must stay on its entry, not its row. */}
             <List
                 items={menuItems}
                 marginTop={1}
@@ -231,6 +234,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 }}
                 initialSelection={initialSelection}
                 onSelectionChange={(_, index) => onSelectionChange?.(index)}
+                keepHighlightOnItemsChange={true}
             />
         </Box>
     );

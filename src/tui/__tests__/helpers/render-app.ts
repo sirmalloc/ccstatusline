@@ -12,6 +12,7 @@ import {
 } from 'vitest';
 
 import * as claudeSettings from '../../../utils/claude-settings';
+import { updateColorMap } from '../../../utils/colors';
 import { initConfigPath } from '../../../utils/config';
 import * as globalCommandResolution from '../../../utils/global-command-resolution';
 import * as powerline from '../../../utils/powerline';
@@ -55,8 +56,9 @@ export interface AppSandbox {
 // stub the Claude status line and install state they need on top of this.
 export function setUpAppSandbox(): AppSandbox {
     const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    // The TUI sets chalk's global color level from the settings it loads, so
-    // it's put back for the test files that run after this one
+    // The TUI sets chalk's global color level from the settings it loads, and
+    // the color codes built for it, so both are put back for the test files
+    // that run after this one
     const originalChalkLevel = chalk.level;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-app-'));
     const settingsPath = path.join(dir, 'settings.json');
@@ -78,6 +80,7 @@ export function setUpAppSandbox(): AppSandbox {
         restore: () => {
             vi.restoreAllMocks();
             chalk.level = originalChalkLevel;
+            updateColorMap();
             initConfigPath();
             if (originalClaudeConfigDir === undefined) {
                 delete process.env.CLAUDE_CONFIG_DIR;
@@ -111,6 +114,7 @@ export function renderApp() {
         stdin,
         // Debug mode writes whole frames, so the last chunk is the current screen
         getFrame: () => stripAnsi(chunks.at(-1) ?? ''),
+        getRawFrame: () => chunks.at(-1) ?? '',
         // Resolves once the TUI exits on its own, e.g. after Save & Exit
         waitUntilExit: () => instance.waitUntilExit(),
         cleanup: () => {

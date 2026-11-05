@@ -1134,24 +1134,18 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 // whole UTC day, and the token fingerprint doesn't: Claude Code saves a new
 // refresh token each time it refreshes the access token. The profile endpoint
 // names the account and organization the credentials belong to, which a
-// refresh doesn't change. Each fingerprint is looked up once and the answer
-// kept in usage-account.json; a failed lookup holds off that fingerprint only.
+// refresh doesn't change. Each fingerprint is looked up once, by the profile
+// request fetchAccountEmail also makes (lookUpProfile), and the answer kept in
+// usage-account.json.
 const USAGE_ACCOUNT_CACHE_FILE = path.join(CACHE_DIR, 'usage-account.json');
 // Each token refresh adds a fingerprint, a few a day per login; this keeps a
 // few days of them for the logins used side by side.
 const MAX_CACHED_USAGE_ACCOUNTS = 32;
 
-// The fields Claude Code itself requires of this response.
-const ProfileAccountIdsSchema = z.looseObject({
-    account: z.looseObject({ uuid: z.string().min(1) }),
-    organization: z.looseObject({ uuid: z.string().min(1) })
-});
-// Each entry names its fingerprint's account, or holds off that
-// fingerprint's lookup until blockedUntil.
+// Each entry names its fingerprint's account.
 const UsageAccountEntriesSchema = z.array(z.object({
     tokenHash: z.string(),
-    accountKey: z.string().min(1).optional(),
-    blockedUntil: z.number().optional()
+    accountKey: z.string().min(1)
 }));
 
 type UsageAccountEntry = z.infer<typeof UsageAccountEntriesSchema>[number];
@@ -1184,40 +1178,15 @@ function findUsageAccount(tokenHash: string): UsageAccount | null {
         : { key: accountKey, fingerprints: entries.filter(entry => entry.accountKey === accountKey).map(entry => entry.tokenHash) };
 }
 
-// Bounded like the usage lock, so a deadline written under a wrong clock
-// can't stop lookups for good.
-function isUsageAccountLookupBlocked(entry: UsageAccountEntry | undefined, now: number): boolean {
-    return entry?.blockedUntil !== undefined && entry.blockedUntil > now && entry.blockedUntil <= now + MAX_LOCK_HORIZON;
-}
-
-// Holds the fingerprint off before its request is sent, under the lock, so
-// renders running side by side send one request between them. False when
-// it's already named or held off, or the hold-off can't be recorded.
-function claimUsageAccountLookup(tokenHash: string, now: number): boolean {
-    let claimed = false;
-    try {
-        ensureCacheDirExists();
-        withCacheLock(USAGE_ACCOUNT_CACHE_FILE, () => {
-            const entries = readUsageAccountEntries();
-            const entry = entries.find(existing => existing.tokenHash === tokenHash);
-            if (entry?.accountKey === undefined && !isUsageAccountLookupBlocked(entry, now)) {
-                fs.writeFileSync(USAGE_ACCOUNT_CACHE_FILE, JSON.stringify(withUsageAccountEntry(entries, { tokenHash, blockedUntil: now + LOCK_MAX_AGE })));
-                claimed = true;
-            }
-        });
-    } catch {
-        // Not recorded, so not sent either
-    }
-    return claimed;
-}
-
+// Under the lock: lookups for two logins can answer side by side.
 function storeUsageAccountEntry(entry: UsageAccountEntry): void {
     try {
+        ensureCacheDirExists();
         withCacheLock(USAGE_ACCOUNT_CACHE_FILE, () => {
             fs.writeFileSync(USAGE_ACCOUNT_CACHE_FILE, JSON.stringify(withUsageAccountEntry(readUsageAccountEntries(), entry)));
         });
     } catch {
-        // The hold-off from the claim stays, and the lookup is repeated after it
+        // Not kept, so the next render looks it up again
     }
 }
 
@@ -1233,6 +1202,12 @@ function getAccountEmailPath(tokenHash: string, suffix: 'json' | 'lock' | 'infli
 }
 
 const ProfileApiResponseSchema = z.looseObject({ account: z.looseObject({ email: z.string().min(1).nullable().optional() }).nullable().optional() });
+// The fields Claude Code itself requires of this response, parsed apart from
+// the email so that neither part's absence costs the other.
+const ProfileAccountIdsSchema = z.looseObject({
+    account: z.looseObject({ uuid: z.string().min(1) }),
+    organization: z.looseObject({ uuid: z.string().min(1) })
+});
 const CachedAccountEmailSchema = z.object({
     tokenHash: z.string(),
     email: z.string().min(1)
@@ -1347,6 +1322,70 @@ function writeAccountEmailLock(tokenHash: string, blockedUntil: number): void {
     }
 }
 
+interface ProfileAnswer {
+    email: string | null;
+    // The account and organization, fingerprinted like the tokens so that
+    // neither cache file names them
+    accountKey: string | null;
+}
+
+function parseProfileAnswer(body: string): ProfileAnswer {
+    const ids = parseJsonWithSchema(body, ProfileAccountIdsSchema);
+    return {
+        email: parseJsonWithSchema(body, ProfileApiResponseSchema)?.account?.email ?? null,
+        accountKey: ids ? `account:${fingerprintUsageToken(`${ids.organization.uuid}/${ids.account.uuid}`)}` : null
+    };
+}
+
+// One profile request per login answers both fetchAccountEmail and
+// lookUpUsageAccount, each keeping its part in its own cache. It runs under
+// the login's lease, and when it leaves out the part the caller asked for,
+// it holds that login off. Null when held off, when the lease is another
+// render's, or when isAnswered finds that render has answered.
+async function lookUpProfile(
+    credentials: UsageCredentials,
+    tokenHash: string,
+    part: keyof ProfileAnswer,
+    isAnswered: () => boolean
+): Promise<ProfileAnswer | null> {
+    const now = Math.floor(Date.now() / 1000);
+    if (readAccountEmailBackoff(tokenHash, now)) {
+        return null;
+    }
+    const owner = acquireAccountEmailLease(tokenHash, now);
+    if (owner === null) {
+        return null;
+    }
+
+    try {
+        // Another render may have finished between the caller's read and the lease.
+        if (isAnswered() || readAccountEmailBackoff(tokenHash, Math.floor(Date.now() / 1000))) {
+            return null;
+        }
+        const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
+            .catch((): UsageApiFetchResult => ({ kind: 'error' }));
+        if (!ownsAccountEmailLease(tokenHash, owner)) {
+            return null;
+        }
+        const answer = response.kind === 'success' ? parseProfileAnswer(response.body) : { email: null, accountKey: null };
+        if (answer.email !== null) {
+            writeCachedAccountEmail(tokenHash, answer.email, owner);
+        }
+        if (answer.accountKey !== null) {
+            storeUsageAccountEntry({ tokenHash, accountKey: answer.accountKey });
+        }
+        if (answer[part] === null) {
+            // Kept within the horizon readAccountEmailBackoff trusts, or a
+            // Retry-After further off would be read back as no backoff at all
+            const responseTime = Math.floor(Date.now() / 1000);
+            writeAccountEmailLock(tokenHash, responseTime + (response.kind === 'rate-limited' ? Math.min(response.retryAfterSeconds, MAX_LOCK_HORIZON) : LOCK_MAX_AGE));
+        }
+        return answer;
+    } finally {
+        releaseAccountEmailLease(tokenHash, owner);
+    }
+}
+
 /**
  * The account and organization the last usage fetch's credentials belong to,
  * or null without credentials or while the lookup fails. Asks the profile
@@ -1360,31 +1399,15 @@ export async function lookUpUsageAccount(): Promise<UsageAccount | null> {
         return null;
     }
 
-    const now = Math.floor(Date.now() / 1000);
     const cached = findUsageAccount(tokenHash);
-    if (cached || !claimUsageAccountLookup(tokenHash, now)) {
-        // Another render may have just named it
-        return cached ?? findUsageAccount(tokenHash);
+    if (cached) {
+        return cached;
     }
 
-    const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
-        .catch((): UsageApiFetchResult => ({ kind: 'error' }));
-    const profile = response.kind === 'success' ? parseJsonWithSchema(response.body, ProfileAccountIdsSchema) : null;
-    if (!profile) {
-        // Kept within the horizon isUsageAccountLookupBlocked trusts, or a
-        // Retry-After further off would be read back as no backoff at all
-        storeUsageAccountEntry({
-            tokenHash,
-            blockedUntil: now + (response.kind === 'rate-limited' ? Math.min(response.retryAfterSeconds, MAX_LOCK_HORIZON) : LOCK_MAX_AGE)
-        });
-        return null;
-    }
-
-    // Fingerprinted like the tokens, so neither cache file names the account
-    const accountId = `${profile.organization.uuid}/${profile.account.uuid}`;
-    const accountKey = `account:${fingerprintUsageToken(accountId)}`;
-    storeUsageAccountEntry({ tokenHash, accountKey });
-    return findUsageAccount(tokenHash) ?? { key: accountKey, fingerprints: [tokenHash] };
+    const answer = await lookUpProfile(credentials, tokenHash, 'accountKey', () => findUsageAccount(tokenHash) !== null);
+    // Read back for the account's other fingerprints, or another render's answer
+    const accountKey = answer?.accountKey;
+    return findUsageAccount(tokenHash) ?? (accountKey ? { key: accountKey, fingerprints: [tokenHash] } : null);
 }
 
 /**
@@ -1407,40 +1430,8 @@ export async function fetchAccountEmail(): Promise<AccountEmailResult> {
         return { status: 'available', email: cached };
     }
 
-    if (readAccountEmailBackoff(tokenHash, now)) {
-        return { status: 'unavailable' };
-    }
-    const owner = acquireAccountEmailLease(tokenHash, now);
-    if (owner === null) {
-        return { status: 'unavailable' };
-    }
-
-    try {
-        // Another render may have finished between our first read and lease.
-        const latest = readCachedAccountEmail(tokenHash);
-        if (latest !== null) {
-            return { status: 'available', email: latest };
-        }
-        if (readAccountEmailBackoff(tokenHash, Math.floor(Date.now() / 1000))) {
-            return { status: 'unavailable' };
-        }
-        const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
-            .catch((): UsageApiFetchResult => ({ kind: 'error' }));
-        if (!ownsAccountEmailLease(tokenHash, owner)) {
-            return { status: 'unavailable' };
-        }
-        const email = response.kind === 'success'
-            ? parseJsonWithSchema(response.body, ProfileApiResponseSchema)?.account?.email ?? null
-            : null;
-        if (email === null) {
-            const responseTime = Math.floor(Date.now() / 1000);
-            writeAccountEmailLock(tokenHash, responseTime + (response.kind === 'rate-limited' ? response.retryAfterSeconds : LOCK_MAX_AGE));
-            return { status: 'unavailable' };
-        }
-
-        writeCachedAccountEmail(tokenHash, email, owner);
-        return { status: 'available', email };
-    } finally {
-        releaseAccountEmailLease(tokenHash, owner);
-    }
+    const answer = await lookUpProfile(credentials, tokenHash, 'email', () => readCachedAccountEmail(tokenHash) !== null);
+    // Without an answer of its own, another render's may be cached
+    const email = answer ? answer.email : readCachedAccountEmail(tokenHash);
+    return email === null ? { status: 'unavailable' } : { status: 'available', email };
 }
