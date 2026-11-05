@@ -18,7 +18,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/ccstatusline.svg)](https://nodejs.org)
-[![install size](https://packagephobia.com/badge?p=ccstatusline)](https://packagephobia.com/result?p=ccstatusline)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/sirmalloc/ccstatusline/graphs/commit-activity)
 
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge.svg)](https://github.com/hesreallyhim/awesome-claude-code)
@@ -69,7 +69,6 @@ The interactive configuration tool provides a terminal UI where you can:
 - Configure multiple separate status lines
 - Add/remove/reorder status line widgets
 - Customize colors for each widget
-- Configure flex separator behavior
 - Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
 - Export JSON backups and preview imported configs before replacing or merging settings

@@ -22,7 +22,6 @@ function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
         ...DEFAULT_SETTINGS,
         defaultPadding: '',
-        flexMode: 'full',
         ...overrides,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,

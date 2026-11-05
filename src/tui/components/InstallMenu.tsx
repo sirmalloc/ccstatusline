@@ -193,7 +193,8 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                             setUpdateStyle(value);
                             setStep('manager');
                         }}
-                        initialSelection={0}
+                        // Going back from the package manager step mounts this List again
+                        initialSelection={updateStyle === 'auto-update' ? 1 : 0}
                         showBackButton={true}
                     />
                 </>
