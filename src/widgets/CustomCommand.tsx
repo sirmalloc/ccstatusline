@@ -24,6 +24,8 @@ import { shouldInsertInput } from '../utils/input-guards';
 import { BlinkingCursor } from './shared/BlinkingCursor';
 import { applyMaxWidth } from './shared/max-width';
 
+const MAX_WIDGET_TTL_MS = 60_000;
+
 export class CustomCommandWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Executes a custom shell command and displays output'; }
@@ -33,9 +35,6 @@ export class CustomCommandWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const cmd = item.commandPath ?? 'No command';
         const truncatedCmd = cmd.length > 20 ? `${cmd.substring(0, 17)}...` : cmd;
-        const displayText = `${this.getDisplayName()} (${truncatedCmd})`;
-
-        // Build modifiers string
         const modifiers: string[] = [];
         if (item.maxWidth) {
             modifiers.push(`max:${item.maxWidth}`);
@@ -43,12 +42,15 @@ export class CustomCommandWidget implements Widget {
         if (item.timeout && item.timeout !== 1000) {
             modifiers.push(`timeout:${item.timeout}ms`);
         }
+        if (typeof item.ttlMs === 'number') {
+            modifiers.push(`ttl:${item.ttlMs}ms`);
+        }
         if (item.preserveColors) {
             modifiers.push('preserve');
         }
 
         return {
-            displayText,
+            displayText: `${this.getDisplayName()} (${truncatedCmd})`,
             modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
@@ -70,11 +72,15 @@ export class CustomCommandWidget implements Widget {
                     ? { ...payload, terminal_width: context.terminalWidth }
                     : payload
             );
+            const widgetTtlMs = item.ttlMs;
+            const ttlSeconds = typeof widgetTtlMs === 'number' && Number.isFinite(widgetTtlMs)
+                ? Math.min(MAX_WIDGET_TTL_MS, Math.max(0, widgetTtlMs)) / 1000
+                : context.customCommandCacheTtlSeconds;
             const result = runCustomCommand({
                 command: item.commandPath,
                 input: jsonInput,
                 timeoutMs: item.timeout ?? 1000,
-                ttlSeconds: context.customCommandCacheTtlSeconds,
+                ttlSeconds,
                 sessionId: context.data.session_id,
                 terminalWidth: context.terminalWidth
             });
@@ -85,9 +91,7 @@ export class CustomCommandWidget implements Widget {
 
             let output = result.stdout;
 
-            // Strip ANSI codes if preserveColors is false
             if (!item.preserveColors) {
-                // Strip ANSI/OSC escape sequences and keep only visible text
                 output = getVisibleText(output);
             }
 
@@ -118,6 +122,7 @@ export class CustomCommandWidget implements Widget {
             { key: 'e', label: '(e)dit cmd', action: 'edit-command' },
             { key: 'w', label: '(w)idth', action: 'edit-width' },
             { key: 't', label: '(t)imeout', action: 'edit-timeout' },
+            { key: 'y', label: '(y) cache TTL', action: 'edit-ttl' },
             { key: 'p', label: '(p)reserve colors', action: 'toggle-preserve' }
         ];
     }
@@ -132,12 +137,11 @@ export class CustomCommandWidget implements Widget {
 
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean {
-        // Only supports colors if preserveColors is false
         return !item.preserveColors;
     }
 }
 
-interface EditorMode { type: 'command' | 'width' | 'timeout' | null }
+interface EditorMode { type: 'command' | 'width' | 'timeout' | 'ttl' | null }
 
 const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const getMode = (): EditorMode['type'] => {
@@ -145,6 +149,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             case 'edit-command': return 'command';
             case 'edit-width': return 'width';
             case 'edit-timeout': return 'timeout';
+            case 'edit-ttl': return 'ttl';
             default: return 'command';
         }
     };
@@ -153,6 +158,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
     const [commandCursorPos, setCommandCursorPos] = useState(commandInput.length);
     const [widthInput, setWidthInput] = useState(widget.maxWidth?.toString() ?? '');
     const [timeoutInput, setTimeoutInput] = useState(widget.timeout?.toString() ?? '1000');
+    const [ttlInput, setTtlInput] = useState(widget.ttlMs?.toString() ?? '');
 
     useInput((input, key) => {
         if (mode === 'command') {
@@ -209,6 +215,24 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
                 setTimeoutInput(timeoutInput + input);
             }
+        } else if (mode === 'ttl') {
+            if (key.return) {
+                const ttlMs = Number.parseInt(ttlInput, 10);
+                if (!Number.isNaN(ttlMs) && ttlMs > 0) {
+                    onComplete({ ...widget, ttlMs: Math.min(ttlMs, MAX_WIDGET_TTL_MS) });
+                } else if (!Number.isNaN(ttlMs) && ttlMs === 0) {
+                    onComplete({ ...widget, ttlMs: 0 });
+                } else {
+                    const { ttlMs: _unused, ...rest } = widget;
+                    onComplete(rest);
+                }
+            } else if (key.escape) {
+                onCancel();
+            } else if (key.backspace) {
+                setTtlInput(ttlInput.slice(0, -1));
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
+                setTtlInput(ttlInput + input);
+            }
         }
     });
 
@@ -242,6 +266,17 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 <Box>
                     <Text>Enter timeout in milliseconds (default 1000): </Text>
                     <Text>{timeoutInput}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
+                </Box>
+                <Text dimColor>Press Enter to save, ESC to cancel</Text>
+            </Box>
+        );
+    } else if (mode === 'ttl') {
+        return (
+            <Box flexDirection='column'>
+                <Box>
+                    <Text>Enter cache TTL in milliseconds (blank uses global, 0 disables, max 60000): </Text>
+                    <Text>{ttlInput}</Text>
                     <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>

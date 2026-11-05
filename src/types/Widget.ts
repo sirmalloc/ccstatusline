@@ -21,6 +21,7 @@ export const WidgetItemSchema = z.object({
     maxWidth: z.number().optional(),
     preserveColors: z.boolean().optional(),
     timeout: z.number().optional(),
+    ttlMs: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
     excludeFromAutoAlign: z.boolean().optional(),
     metadata: z.record(z.string(), z.string()).optional()
