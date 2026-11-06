@@ -28,6 +28,7 @@ describe('SpendLimitUsageWidget', () => {
         const widget = new SpendLimitUsageWidget();
 
         expect(widget.getDisplayName()).toBe('Spend Limit Usage');
+        expect(widget.getDefaultColor()).toBe('brightMagenta');
         expect(widget.getCategory()).toBe('Usage');
         expect(widget.getLabelPrefix()).toBe('Spend Limit: ');
         expect(widget.supportsRawValue()).toBe(true);
@@ -78,5 +79,9 @@ describe('SpendLimitUsageWidget', () => {
         const keybinds = new SpendLimitUsageWidget().getCustomKeybinds(baseItem);
 
         expect(keybinds.map(keybind => keybind.action)).toEqual(['toggle-progress', 'toggle-invert']);
+    });
+
+    it('offers no state to hide, because it never shows a usage API error', () => {
+        expect(new SpendLimitUsageWidget().getHideableStates()).toEqual([]);
     });
 });

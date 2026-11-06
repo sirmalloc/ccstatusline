@@ -11,6 +11,8 @@ import type { TokenMetrics } from './TokenMetrics';
 
 export interface RenderUsageData {
     sessionUsage?: number;
+    // API observation accepted in place of an idle session's payload.
+    sessionUsageObservedAtMs?: number;
     sessionResetAt?: string;
     weeklyUsage?: number;
     weeklyResetAt?: string;
@@ -28,6 +30,7 @@ export interface RenderUsageData {
     extraUsageUsed?: number;
     extraUsageUtilization?: number;
     extraUsageCurrency?: string;
+    extraUsageUsedToday?: number;
     apiSessionUsage?: number;
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
@@ -50,6 +53,10 @@ export interface CompactionData {
 
 export interface RenderContext {
     data?: StatusJSON;
+    // Claude Code's JSON as it arrived, for Custom Command's stdin. The
+    // validated `data` drops nested fields the schema doesn't list and turns
+    // number strings into numbers.
+    rawData?: Record<string, unknown>;
     tokenMetrics?: TokenMetrics | null;
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;

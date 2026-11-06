@@ -9,7 +9,8 @@ import {
     V4_HIDE_FLAG_RULES,
     detectVersion,
     migrateConfig,
-    needsMigration
+    needsMigration,
+    normalizeVersionlessConfig
 } from '../migrations';
 import {
     getAllWidgetTypes,
@@ -33,6 +34,40 @@ describe('migrations', () => {
     it('does not migrate a config whose version is present but not a number', () => {
         expect(needsMigration({ version: '4' }, 4)).toBe(false);
         expect(needsMigration({ version: null }, 4)).toBe(false);
+    });
+
+    it('does not migrate a config without a version that holds settings added after v1', () => {
+        expect(needsMigration({ lines: [], powerline: { enabled: true } }, 4)).toBe(false);
+        expect(needsMigration({ gitCacheTtlSeconds: 30 }, 4)).toBe(false);
+    });
+
+    it('normalizes versionless modern hide flags without mutating the input or adding a version', () => {
+        const data = {
+            powerline: { enabled: true },
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hideNoGit: 'true' } }]],
+            gitCacheTtlSeconds: 30
+        };
+        const normalized = normalizeVersionlessConfig(data);
+        expect(normalized).toEqual({
+            ...data,
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hide: 'no-git' } }]]
+        });
+        expect(data.lines[0]?.[0]?.metadata).toEqual({ hideNoGit: 'true' });
+        expect(normalizeVersionlessConfig(normalized)).toEqual(normalized);
+    });
+
+    it.each([undefined, 3, 4, '4', null])('leaves configs without modern versionless detection alone (version: %s)', (version) => {
+        const data = {
+            ...(version === undefined ? {} : { version, powerline: { enabled: true } }),
+            lines: [[{ id: 'branch', type: 'git-branch', metadata: { hideNoGit: 'true' } }]]
+        };
+        expect(normalizeVersionlessConfig(data)).toBe(data);
+    });
+
+    it('still migrates a config without a version that holds only v1-era settings', () => {
+        expect(needsMigration({ lines: [], flexMode: 'full', defaultSeparator: '|' }, 4)).toBe(true);
+        // Pre-v2 keys that no later version kept still read as v1
+        expect(needsMigration({ items: [], colors: {} }, 4)).toBe(true);
     });
 
     it('returns original value for non-record migration input', () => {
@@ -60,8 +95,8 @@ describe('migrations', () => {
         }, 2) as Record<string, unknown>;
 
         expect(migrated.version).toBe(2);
-        expect(migrated.flexMode).toBe('full');
-        expect(migrated.compactThreshold).toBe(70);
+        expect(migrated.flexMode).toBeUndefined();
+        expect(migrated.compactThreshold).toBeUndefined();
         expect(migrated.colorLevel).toBe(3);
         expect(migrated.defaultSeparator).toBe('|');
         expect(migrated.defaultPadding).toBe(' ');
@@ -108,10 +143,10 @@ describe('v3 to v4 hide flag migration', () => {
     }
 
     it('bumps the version without touching unrelated data', () => {
-        const migrated = migrateConfig({ version: 3, flexMode: 'full' }, 4) as Record<string, unknown>;
+        const migrated = migrateConfig({ version: 3, colorLevel: 3 }, 4) as Record<string, unknown>;
 
         expect(migrated.version).toBe(4);
-        expect(migrated.flexMode).toBe('full');
+        expect(migrated.colorLevel).toBe(3);
         expect(migrated.updatemessage).toBeUndefined();
     });
 

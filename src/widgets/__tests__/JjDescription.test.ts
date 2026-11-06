@@ -56,8 +56,9 @@ describe('JjDescriptionWidget', () => {
         mockExecFileSync.mockReturnValueOnce('fix: update readme');
 
         expect(render({ cwd: '/my/project' })).toBe('fix: update readme');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            '--color=never',
             'log',
             '--no-graph',
             '-r',

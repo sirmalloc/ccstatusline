@@ -1,10 +1,16 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
     describe,
     expect,
     it
 } from 'vitest';
 
-import { resolveExecutable } from '../executable-path';
+import {
+    findAllOnPosixPath,
+    resolveExecutable
+} from '../executable-path';
 
 function windows(files: string[], env: NodeJS.ProcessEnv = { Path: 'C:\\Windows\\System32;C:\\Program Files\\Git\\cmd' }) {
     const present = new Set(files.map(file => file.toLowerCase()));
@@ -57,5 +63,74 @@ describe('resolveExecutable', () => {
 
     it('leaves a path alone', () => {
         expect(resolveExecutable('C:\\tools\\git.exe', windows([]))).toBe('C:\\tools\\git.exe');
+    });
+});
+
+function posix(executables: string[], pathValue: string) {
+    const present = new Set(executables);
+    return {
+        env: { PATH: pathValue },
+        isExecutableFile: (candidate: string) => present.has(candidate)
+    };
+}
+
+describe('findAllOnPosixPath', () => {
+    it('lists every match in PATH order, as which -a does', () => {
+        const search = posix(
+            ['/usr/local/bin/ccstatusline', '/home/alice/.bun/bin/ccstatusline'],
+            '/home/alice/.bun/bin:/usr/bin:/usr/local/bin'
+        );
+
+        expect(findAllOnPosixPath('ccstatusline', search)).toEqual([
+            '/home/alice/.bun/bin/ccstatusline',
+            '/usr/local/bin/ccstatusline'
+        ]);
+    });
+
+    it('lists a directory that PATH repeats once', () => {
+        expect(findAllOnPosixPath('npm', posix(['/usr/bin/npm'], '/usr/bin:/bin:/usr/bin'))).toEqual(['/usr/bin/npm']);
+    });
+
+    it('skips empty and relative PATH entries', () => {
+        expect(findAllOnPosixPath('npm', posix(['./npm', 'node_modules/.bin/npm', '/bin/npm'], '/usr/bin::node_modules/.bin:/bin'))).toEqual(['/bin/npm']);
+    });
+
+    it('finds nothing without a PATH', () => {
+        expect(findAllOnPosixPath('npm', { env: {}, isExecutableFile: () => true })).toEqual([]);
+    });
+
+    // A test or a caller may swap in a new env object; the lookup must see it
+    it.skipIf(process.platform === 'win32')('reads PATH from process.env as it is when called', () => {
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-path-env-'));
+        const originalEnv = process.env;
+        try {
+            fs.writeFileSync(path.join(binDir, 'npm'), '#!/bin/sh\n', { mode: 0o755 });
+            process.env = { ...originalEnv, PATH: binDir };
+
+            expect(findAllOnPosixPath('npm')).toEqual([path.join(binDir, 'npm')]);
+        } finally {
+            process.env = originalEnv;
+            fs.rmSync(binDir, { recursive: true, force: true });
+        }
+    });
+
+    it.skipIf(process.platform === 'win32')('only lists files the user can run', () => {
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-path-scan-'));
+        const originalPath = process.env.PATH;
+        try {
+            fs.writeFileSync(path.join(binDir, 'npm'), '#!/bin/sh\n', { mode: 0o755 });
+            fs.writeFileSync(path.join(binDir, 'bun'), '#!/bin/sh\n', { mode: 0o644 });
+            fs.mkdirSync(path.join(binDir, 'bunx'));
+            fs.symlinkSync('npm', path.join(binDir, 'npx'));
+            process.env.PATH = binDir;
+
+            expect(findAllOnPosixPath('npm')).toEqual([path.join(binDir, 'npm')]);
+            expect(findAllOnPosixPath('npx')).toEqual([path.join(binDir, 'npx')]);
+            expect(findAllOnPosixPath('bun')).toEqual([]);
+            expect(findAllOnPosixPath('bunx')).toEqual([]);
+        } finally {
+            process.env.PATH = originalPath;
+            fs.rmSync(binDir, { recursive: true, force: true });
+        }
     });
 });
