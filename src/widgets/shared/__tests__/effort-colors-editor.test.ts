@@ -1,13 +1,9 @@
 import chalk from 'chalk';
-import { render } from 'ink';
-import { PassThrough } from 'node:stream';
-import React from 'react';
 import stripAnsi from 'strip-ansi';
 import {
     describe,
     expect,
-    it,
-    vi
+    it
 } from 'vitest';
 
 import {
@@ -18,149 +14,17 @@ import type { WidgetItem } from '../../../types/Widget';
 import { updateColorMap } from '../../../utils/colors';
 import { EffortColorsEditor } from '../effort-colors-editor';
 
-class MockTtyStream extends PassThrough {
-    isTTY = true;
-    columns = 120;
-    rows = 40;
-
-    setRawMode() {
-        return this;
-    }
-
-    ref() {
-        return this;
-    }
-
-    unref() {
-        return this;
-    }
-}
-
-interface CapturedWriteStream extends NodeJS.WriteStream {
-    clearOutput: () => void;
-    getOutput: () => string;
-}
-
-function createMockStdout(): CapturedWriteStream {
-    const stream = new MockTtyStream();
-    const chunks: string[] = [];
-
-    stream.on('data', (chunk: Buffer | string) => {
-        chunks.push(chunk.toString());
-    });
-
-    return Object.assign(stream as unknown as NodeJS.WriteStream, {
-        clearOutput() {
-            chunks.length = 0;
-        },
-        getOutput() {
-            return chunks.join('');
-        }
-    });
-}
-
-// Lets work React has already queued run first. Its scheduler runs on
-// setImmediate, and it attaches input listeners in an effect just after
-// drawing a frame, so a key sent as soon as the frame shows could be lost.
-async function letReactCatchUp() {
-    for (let turn = 0; turn < 2; turn++) {
-        await new Promise((resolve) => {
-            setImmediate(resolve);
-        });
-    }
-}
-
-// Polls until the condition holds; a fixed delay races Ink on a busy machine
-async function waitUntil(condition: () => boolean, timeoutMs = 3000): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    do {
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
-        if (condition()) {
-            await letReactCatchUp();
-            return true;
-        }
-    } while (Date.now() < deadline);
-    return false;
-}
-
-// Long enough for a key to be handled, for checks that it did nothing
-function settle() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 150);
-    });
-}
-
-const ESC = '\x1b';
-const ENTER = '\r';
-const DOWN = '\x1b[B';
-const RIGHT = '\x1b[C';
-const LEFT = '\x1b[D';
+import {
+    DOWN,
+    ENTER,
+    ESC,
+    LEFT,
+    RIGHT,
+    renderWidgetEditor
+} from './helpers/widget-editor-harness';
 
 function renderEditor(widget: WidgetItem, settings?: Settings) {
-    const stdin = new MockTtyStream() as unknown as NodeJS.ReadStream;
-    const stdout = createMockStdout();
-    const stderr = createMockStdout();
-    const onComplete = vi.fn<(widget: WidgetItem) => void>();
-    const onCancel = vi.fn<() => void>();
-
-    const instance = render(
-        React.createElement(EffortColorsEditor, { widget, onComplete, onCancel, settings }),
-        { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
-    );
-
-    const endings = () => onComplete.mock.calls.length + onCancel.mock.calls.length;
-
-    return {
-        onComplete,
-        onCancel,
-        // The editor is drawn and listening for keys
-        ready: async () => {
-            if (!(await waitUntil(() => stdout.getOutput().length > 0))) {
-                throw new Error('The editor never drew');
-            }
-        },
-        // Every key here redraws the editor or ends it, so each waits for that
-        // before the next key goes out
-        press: async (...inputs: string[]) => {
-            for (const input of inputs) {
-                const drawn = stdout.getOutput().length;
-                const ended = endings();
-                stdin.write(input);
-                if (!(await waitUntil(() => stdout.getOutput().length > drawn || endings() > ended))) {
-                    throw new Error(`No redraw after ${JSON.stringify(input)}`);
-                }
-            }
-        },
-        // For keys that should do nothing
-        pressIgnored: async (...inputs: string[]) => {
-            for (const input of inputs) {
-                stdin.write(input);
-            }
-            await settle();
-        },
-        // Output written since the previous call, i.e. the latest frame(s)
-        takeOutput: () => {
-            const output = stripAnsi(stdout.getOutput());
-            stdout.clearOutput();
-            return output;
-        },
-        // The same, with the color codes left in
-        takeColoredOutput: () => {
-            const output = stdout.getOutput();
-            stdout.clearOutput();
-            return output;
-        },
-        savedMetadata: () => onComplete.mock.calls.at(-1)?.[0].metadata,
-        cleanup: () => {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    };
+    return renderWidgetEditor(EffortColorsEditor, widget, settings);
 }
 
 const rawWithParens: WidgetItem = { id: 'e', type: 'thinking-effort', rawValue: true, metadata: { brackets: '()' } };
@@ -189,6 +53,22 @@ describe('EffortColorsEditor', () => {
             const output = editor.takeOutput();
             expect(output).toContain('Sample: (max)');
             expect(output).toMatch(/▶\s+brackets/);
+        } finally {
+            editor.cleanup();
+        }
+    });
+
+    it('samples the label in the widget color around the level color, as the status line draws it', async () => {
+        const editor = renderEditor({
+            id: 'e',
+            type: 'thinking-effort',
+            color: 'hex:112233',
+            metadata: { 'brackets': '()', 'bracketColor': 'widget', 'levelColors': 'true', 'levelColor.low': 'hex:ff8800' }
+        });
+
+        try {
+            await editor.ready();
+            expect(editor.takeColoredOutput()).toContain('Sample: \x1b[38;5;235m(Thinking: \x1b[38;5;208mlow\x1b[38;5;235m)');
         } finally {
             editor.cleanup();
         }
