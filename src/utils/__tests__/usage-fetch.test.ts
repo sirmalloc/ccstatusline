@@ -75,6 +75,8 @@ interface ProbeOptions {
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
+    // Runs the probe as if on this platform, e.g. darwin for the keychain lookup
+    platform?: NodeJS.Platform;
     requiredFields?: string[];
     responseBody?: string;
     responseHeaders?: Record<string, string>;
@@ -208,6 +210,10 @@ https.request = (...args) => {
     return request;
 };
 
+if (process.env.TEST_PLATFORM) {
+    Object.defineProperty(process, 'platform', { value: process.env.TEST_PLATFORM });
+}
+
 const { fetchAccountEmail, fetchUsageData, getUsageAccountKey, getUsageFetchedAtMs, isStaleUsageFallback, lookUpUsageAccount } = await import(${JSON.stringify(usageModulePath)});
 
 const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
@@ -291,7 +297,8 @@ process.stdout.write(JSON.stringify({
 
         // Keep the macOS Keychain stub in sync with credential changes made by
         // the tests, so every platform exercises the same login and tokens.
-        fs.writeFileSync(securityScript, '#!/bin/sh\n/bin/cat "$CLAUDE_CONFIG_DIR/.credentials.json"\n');
+        // Like `security`, it exits 44 (errSecItemNotFound) when there is none.
+        fs.writeFileSync(securityScript, '#!/bin/sh\n/bin/cat "$CLAUDE_CONFIG_DIR/.credentials.json" 2>/dev/null || exit 44\n');
         fs.chmodSync(securityScript, 0o755);
         fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
 
@@ -374,6 +381,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.noProxy !== undefined) {
             env.NO_PROXY = options.noProxy;
+        }
+
+        if (options.platform !== undefined) {
+            env.TEST_PLATFORM = options.platform;
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -2496,6 +2507,791 @@ describe('fetchUsageData error handling', () => {
             expect(result.first).toEqual({ error: 'timeout' });
             expect(result.second).toEqual({ error: 'timeout' });
             expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+});
+
+interface KeychainStub {
+    bin: string;
+    calls: () => string[];
+    removeItem: (service: string) => void;
+    setItem: (service: string, claudeAiOauth: { accessToken: string; refreshToken?: string }) => void;
+    setMode: (mode: 'answer' | 'locked' | 'timeout') => void;
+    writeKeychainLockDuringNextCall: (contents: string) => void;
+}
+
+const DEFAULT_KEYCHAIN_SERVICE = 'Claude Code-credentials';
+const FIND_DEFAULT_ITEM = `find-generic-password -s ${DEFAULT_KEYCHAIN_SERVICE} -w`;
+// After a missing default item, the same service under the OS username
+const FIND_DEFAULT_ACCOUNT_ITEM = `find-generic-password -s ${DEFAULT_KEYCHAIN_SERVICE} -a ${os.userInfo().username} -w`;
+
+function makeConfigDirService(configDir: string): string {
+    return `${DEFAULT_KEYCHAIN_SERVICE}-${createHash('sha256').update(configDir).digest('hex').slice(0, 8)}`;
+}
+
+function fingerprint(token: string): string {
+    return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+// The default profile (~/.claude) of a home, as usageFilePath and
+// seedUsageCache take it
+function defaultProfile(home: string): TokenHome {
+    return { bin: '', claudeConfig: path.join(home, '.claude'), home };
+}
+
+// A stand-in for macOS `security` that logs every call and answers from one
+// file per keychain item, exiting 44 (errSecItemNotFound) for a missing item.
+// In 'locked' mode every call exits 36 (errSecInteractionNotAllowed), as for
+// a locked keychain that may not prompt; in 'timeout' mode none answers.
+// Setting or removing an item also changes the login keychain's database
+// file, as any write to the keychain does. writeKeychainLockDuringNextCall puts a keychain
+// backoff in place while the next call runs, as another profile's render
+// recording its own failure during that call would.
+function createKeychainStub(home: string): KeychainStub {
+    const bin = path.join(home, 'keychain-stub');
+    const itemsDir = path.join(bin, 'items');
+    const keychainFile = path.join(home, 'Library', 'Keychains', 'login.keychain-db');
+    fs.mkdirSync(itemsDir, { recursive: true });
+    fs.mkdirSync(path.dirname(keychainFile), { recursive: true });
+    fs.writeFileSync(keychainFile, '');
+    fs.writeFileSync(path.join(bin, 'security'), [
+        '#!/bin/sh',
+        `dir='${bin}'`,
+        'printf \'%s\\n\' "$*" >> "$dir/calls.log"',
+        '[ -f "$dir/keychain-lock" ] && /bin/mv "$dir/keychain-lock" "$HOME/.cache/ccstatusline/usage-keychain.lock"',
+        'case "$(/bin/cat "$dir/mode" 2>/dev/null)" in',
+        '    locked) exit 36 ;;',
+        '    timeout) exec /bin/sleep 10 ;;',
+        'esac',
+        'if [ "$1" = dump-keychain ]; then',
+        '    for item in "$dir"/items/*; do',
+        '        [ -f "$item" ] && printf \'keychain: "login.keychain-db"\\n    "svce"<blob>="%s"\\n\' "${item##*/}"',
+        '    done',
+        '    exit 0',
+        'fi',
+        '[ -f "$dir/items/$3" ] && exec /bin/cat "$dir/items/$3"',
+        'exit 44',
+        ''
+    ].join('\n'));
+    fs.chmodSync(path.join(bin, 'security'), 0o755);
+
+    return {
+        bin,
+        calls: () => {
+            try {
+                return fs.readFileSync(path.join(bin, 'calls.log'), 'utf8').split('\n').filter(line => line !== '');
+            } catch {
+                return [];
+            }
+        },
+        removeItem: (service) => {
+            fs.rmSync(path.join(itemsDir, service));
+            fs.appendFileSync(keychainFile, '.');
+        },
+        setItem: (service, claudeAiOauth) => {
+            fs.writeFileSync(path.join(itemsDir, service), JSON.stringify({ claudeAiOauth }));
+            fs.appendFileSync(keychainFile, '.');
+        },
+        setMode: (mode) => {
+            fs.writeFileSync(path.join(bin, 'mode'), mode);
+        },
+        writeKeychainLockDuringNextCall: (contents) => {
+            fs.writeFileSync(path.join(bin, 'keychain-lock'), contents);
+        }
+    };
+}
+
+// Each probe is its own process, as each status line render is, with the
+// macOS keychain lookup answered by the stub above.
+describe('fetchUsageData keychain reads on macOS', () => {
+    const accountAResponseBody = JSON.stringify({
+        five_hour: { utilization: 42, resets_at: '2030-01-01T00:00:00.000Z' },
+        seven_day: { utilization: 17, resets_at: '2030-01-07T00:00:00.000Z' }
+    });
+    const accountBResponseBody = JSON.stringify({
+        five_hour: { utilization: 55, resets_at: '2030-01-02T00:00:00.000Z' },
+        seven_day: { utilization: 21, resets_at: '2030-01-08T00:00:00.000Z' }
+    });
+    const rateLimitedFetch = { mode: 'status', statusCode: 429, responseHeaders: { 'retry-after': '300' } } as const;
+    // A render of Extra Usage Today, which also asks the profile endpoint
+    // which account the login belongs to
+    const accountLookup: Partial<ProbeOptions> = {
+        requiredFields: ['extraUsageEnabled', 'extraUsageUsed'],
+        responseBody: JSON.stringify({
+            five_hour: { utilization: 42, resets_at: '2030-01-01T00:00:00.000Z' },
+            seven_day: { utilization: 17, resets_at: '2030-01-07T00:00:00.000Z' },
+            extra_usage: { is_enabled: true, monthly_limit: 20000, used_credits: 10000, utilization: 50, currency: 'USD' }
+        }),
+        target: 'usage-account'
+    };
+    const profileFound: ProbeReply = {
+        mode: 'success',
+        responseBody: JSON.stringify({ account: { uuid: 'account-uuid' }, organization: { uuid: 'organization-uuid' } })
+    };
+
+    function createRenderer(harness: ReturnType<typeof createProbeHarness>, home: string, keychain: KeychainStub) {
+        return (nowMs: number, options: Partial<ProbeOptions> = {}) => harness.runProbe({
+            home,
+            mode: 'success',
+            nowMs,
+            pathDir: keychain.bin,
+            platform: 'darwin',
+            requiredFields: ['sessionUsage'],
+            responseBody: accountAResponseBody,
+            ...options
+        });
+    }
+
+    it('serves a fresh cache for an unchanged login without running security', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-steady');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            for (const offsetMs of [10000, 60000, 170000]) {
+                const result = renderAt(startMs + offsetMs);
+                expect(result.first.sessionUsage).toBe(42);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('notices a login written to the keychain on the next render', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-switch');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const switched = renderAt(startMs + 5000, { responseBody: accountBResponseBody });
+            expect(switched.requestCount).toBe(1);
+            expect(switched.first.sessionUsage).toBe(55);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads a login kept in the credentials file once, and notices when the file changes', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-credentials-file');
+            const keychain = createKeychainStub(home);
+            const claudeConfig = path.join(home, '.claude');
+            fs.mkdirSync(claudeConfig, { recursive: true });
+            writeUsageCredentials(claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+            const lookup = [FIND_DEFAULT_ITEM, FIND_DEFAULT_ACCOUNT_ITEM, 'dump-keychain'];
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual(lookup);
+
+            const unchanged = renderAt(startMs + 10000);
+            expect(unchanged.first.sessionUsage).toBe(42);
+            expect(unchanged.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual(lookup);
+
+            writeUsageCredentials(claudeConfig, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const switched = renderAt(startMs + 20000, { responseBody: accountBResponseBody });
+            expect(switched.requestCount).toBe(1);
+            expect(switched.first.sessionUsage).toBe(55);
+            expect(keychain.calls()).toEqual([...lookup, ...lookup]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps the cache through an access-token refresh, reading the keychain once for it', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-refresh');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a1', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a2', refreshToken: 'refresh-a' });
+            for (const offsetMs of [10000, 20000]) {
+                const result = renderAt(startMs + offsetMs, { mode: 'unexpected' });
+                expect(result.first.sessionUsage).toBe(42);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['locked', 'timeout'] as const)('stops at a keychain in %s mode and leaves it alone for five minutes across renders', (mode) => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome(`keychain-${mode}`);
+            const keychain = createKeychainStub(home);
+            keychain.setMode(mode);
+            // Claude Code also keeps this login in its credentials file
+            const claudeConfig = path.join(home, '.claude');
+            fs.mkdirSync(claudeConfig, { recursive: true });
+            writeUsageCredentials(claudeConfig, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            // No dump and no suffixed items after the failed read
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // A later render, with the cache too old to answer, honors the
+            // backoff the first one recorded
+            const backedOff = renderAt(startMs + 200000);
+            expect(backedOff.requestCount).toBe(1);
+            expect(backedOff.first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            renderAt(startMs + 301000);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    }, 30000);
+
+    it('shows No credentials while a locked keychain holds the only login, with one security call per five minutes', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-locked-only-login');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            keychain.setMode('locked');
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first).toEqual({ error: 'no-credentials' });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // Past the 30-second backoff for a lookup that found no login
+            expect(renderAt(startMs + 40000).first).toEqual({ error: 'no-credentials' });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            renderAt(startMs + 301000);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads the keychain again once it is written, so a login switch during a backoff shows on the next render', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-switch-during-backoff');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+
+            keychain.setMode('locked');
+            expect(renderAt(startMs + 200000).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            // Unlocked, then a login to another account writes the keychain,
+            // well within the five minutes
+            keychain.setMode('answer');
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const switched = renderAt(startMs + 235000, { responseBody: accountBResponseBody });
+            expect(switched.requestCount).toBe(1);
+            expect(switched.first.sessionUsage).toBe(55);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps each profile\'s keychain backoff, and one profile\'s never suppresses another\'s lookup', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-profiles-backoff');
+            const keychain = createKeychainStub(home);
+            const workConfig = path.join(home, 'claude-work');
+            const personalConfig = path.join(home, 'claude-personal');
+            const findWork = `find-generic-password -s ${makeConfigDirService(workConfig)} -w`;
+            const findPersonal = `find-generic-password -s ${makeConfigDirService(personalConfig)} -w`;
+            keychain.setItem(makeConfigDirService(workConfig), { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            keychain.setItem(makeConfigDirService(personalConfig), { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            keychain.setMode('locked');
+            renderAt(startMs, { claudeConfigDir: workConfig });
+            expect(keychain.calls()).toEqual([findWork]);
+
+            keychain.setMode('answer');
+            const personal = renderAt(startMs + 10000, { claudeConfigDir: personalConfig, responseBody: accountBResponseBody });
+            expect(personal.first.sessionUsage).toBe(55);
+            expect(keychain.calls()).toEqual([findWork, findPersonal]);
+
+            // Both profiles' backoffs stand side by side
+            keychain.setMode('locked');
+            renderAt(startMs + 200000, { claudeConfigDir: personalConfig });
+            renderAt(startMs + 250000, { claudeConfigDir: workConfig });
+            renderAt(startMs + 260000, { claudeConfigDir: personalConfig });
+            expect(keychain.calls()).toEqual([findWork, findPersonal, findPersonal]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads a profile\'s keychain again after another profile\'s token refresh, and never shows that profile\'s usage', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-profiles-refresh-during-backoff');
+            const keychain = createKeychainStub(home);
+            const workConfig = path.join(home, 'claude-work');
+            const personalConfig = path.join(home, 'claude-personal');
+            const findWork = `find-generic-password -s ${makeConfigDirService(workConfig)} -w`;
+            const findPersonal = `find-generic-password -s ${makeConfigDirService(personalConfig)} -w`;
+            keychain.setItem(makeConfigDirService(workConfig), { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            keychain.setItem(makeConfigDirService(personalConfig), { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs, { claudeConfigDir: workConfig }).first.sessionUsage).toBe(42);
+            expect(renderAt(startMs + 1000, { claudeConfigDir: personalConfig, responseBody: accountBResponseBody }).first.sessionUsage).toBe(55);
+
+            keychain.setMode('locked');
+            renderAt(startMs + 200000, { claudeConfigDir: workConfig });
+            expect(keychain.calls()).toEqual([findWork, findPersonal, findWork]);
+
+            // Unlocked, the personal profile's access token is refreshed,
+            // which writes the keychain the work profile's login is kept in
+            keychain.setMode('answer');
+            keychain.setItem(makeConfigDirService(personalConfig), { accessToken: 'access-b2', refreshToken: 'refresh-b' });
+            const work = renderAt(startMs + 235000, { claudeConfigDir: workConfig });
+            expect(work.requestCount).toBe(1);
+            expect(work.first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([findWork, findPersonal, findWork, findWork]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps another profile\'s keychain backoff recorded while this profile\'s read was failing', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-profiles-overlapping-reads');
+            const keychain = createKeychainStub(home);
+            const workConfig = path.join(home, 'claude-work');
+            const personalConfig = path.join(home, 'claude-personal');
+            const findWork = `find-generic-password -s ${makeConfigDirService(workConfig)} -w`;
+            const findPersonal = `find-generic-password -s ${makeConfigDirService(personalConfig)} -w`;
+            const keychainLock = path.join(home, '.cache', 'ccstatusline', 'usage-keychain.lock');
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            keychain.setMode('locked');
+            renderAt(startMs, { claudeConfigDir: workConfig });
+
+            // The work profile's backoff lands while the personal profile's
+            // read is still waiting, as when both renders hit a keychain
+            // that doesn't answer for seconds
+            keychain.writeKeychainLockDuringNextCall(fs.readFileSync(keychainLock, 'utf8'));
+            fs.rmSync(keychainLock);
+            renderAt(startMs + 1000, { claudeConfigDir: personalConfig });
+
+            renderAt(startMs + 10000, { claudeConfigDir: workConfig });
+            renderAt(startMs + 11000, { claudeConfigDir: personalConfig });
+            expect(keychain.calls()).toEqual([findWork, findPersonal]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps looking past a missing item, to suffixed items and then the credentials file', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-missing-item');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(`${DEFAULT_KEYCHAIN_SERVICE}-1a2b3c4d`, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+            const lookup = [FIND_DEFAULT_ITEM, FIND_DEFAULT_ACCOUNT_ITEM, 'dump-keychain', `find-generic-password -s ${DEFAULT_KEYCHAIN_SERVICE}-1a2b3c4d -w`];
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual(lookup);
+
+            const refreshed = renderAt(startMs + 200000);
+            expect(refreshed.requestCount).toBe(1);
+            expect(keychain.calls()).toEqual([...lookup, ...lookup]);
+            expect(fs.existsSync(path.join(home, '.cache', 'ccstatusline', 'usage-keychain.lock'))).toBe(false);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('shows No credentials without a login anywhere and repeats the lookup only after 30 seconds', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-no-login');
+            const keychain = createKeychainStub(home);
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+            const lookup = [FIND_DEFAULT_ITEM, FIND_DEFAULT_ACCOUNT_ITEM, 'dump-keychain'];
+
+            expect(renderAt(startMs).first).toEqual({ error: 'no-credentials' });
+            expect(renderAt(startMs + 10000).first).toEqual({ error: 'no-credentials' });
+            expect(keychain.calls()).toEqual(lookup);
+
+            renderAt(startMs + 31000);
+            expect(keychain.calls()).toEqual([...lookup, ...lookup]);
+            expect(fs.existsSync(path.join(home, '.cache', 'ccstatusline', 'usage-keychain.lock'))).toBe(false);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads a CLAUDE_CONFIG_DIR profile\'s own item once and serves its fresh cache after', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-profile');
+            const keychain = createKeychainStub(home);
+            const workConfig = path.join(home, 'claude-work');
+            const findWork = `find-generic-password -s ${makeConfigDirService(workConfig)} -w`;
+            keychain.setItem(makeConfigDirService(workConfig), { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs, { claudeConfigDir: workConfig }).first.sessionUsage).toBe(42);
+            const cached = renderAt(startMs + 10000, { claudeConfigDir: workConfig });
+            expect(cached.first.sessionUsage).toBe(42);
+            expect(cached.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([findWork]);
+
+            // The default profile does its own lookup, and the work login's
+            // cache doesn't stand in for its login
+            const other = renderAt(startMs + 20000, { responseBody: accountBResponseBody });
+            expect(other.requestCount).toBe(1);
+            expect(other.first.sessionUsage).toBe(55);
+            expect(keychain.calls()).toEqual([findWork, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves the known login\'s stale cache while the keychain is locked, but not another login\'s', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-locked-stale');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+
+            keychain.setMode('locked');
+            const stale = renderAt(startMs + 200000, { mode: 'unexpected' });
+            expect(stale.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(stale.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            // Another login's cache, which the locked keychain can't vouch for
+            seedUsageCache(defaultProfile(home), { sessionUsage: 5, tokenHash: fingerprint('refresh-b') });
+            const other = renderAt(startMs + 260000, { mode: 'unexpected' });
+            expect(other.first).toEqual({ error: 'no-credentials' });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('doesn\'t take a credentials file login read past a failed keychain for the keychain\'s login', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-locked-file-login');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            // An older login left in the credentials file
+            const claudeConfig = path.join(home, '.claude');
+            fs.mkdirSync(claudeConfig, { recursive: true });
+            writeUsageCredentials(claudeConfig, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            keychain.setMode('locked');
+            expect(renderAt(startMs, { responseBody: accountBResponseBody }).first.sessionUsage).toBe(55);
+
+            // The keychain answers again once its backoff is over, while the
+            // file login's cache is still fresh
+            keychain.setMode('answer');
+            const cacheFile = usageFilePath(defaultProfile(home), 'json');
+            fs.utimesSync(cacheFile, (startMs + 300000) / 1000, (startMs + 300000) / 1000);
+            const answered = renderAt(startMs + 301000);
+            expect(answered.requestCount).toBe(1);
+            expect(answered.first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['a rate limit (429, Retry-After 300)', rateLimitedFetch, 300],
+        ['an unreachable usage API', { mode: 'error' }, 30]
+    ] as const)('serves the stale cache of the login read past a failed keychain through the backoff after %s', (_failure, failedFetch, backoffSeconds) => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome(`keychain-locked-file-login-backoff-${backoffSeconds}`);
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            // An older login left in the credentials file
+            const claudeConfig = path.join(home, '.claude');
+            fs.mkdirSync(claudeConfig, { recursive: true });
+            writeUsageCredentials(claudeConfig, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+            const snapshot = {
+                sessionUsage: 55,
+                sessionResetAt: '2030-01-02T00:00:00.000Z',
+                weeklyUsage: 21,
+                weeklyResetAt: '2030-01-08T00:00:00.000Z'
+            };
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+
+            // The keychain locks, and with the cache too old to answer the
+            // usage is fetched for the credentials file login
+            keychain.setMode('locked');
+            expect(renderAt(startMs + 200000, { responseBody: accountBResponseBody }).first).toEqual(snapshot);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            const failed = renderAt(startMs + 480000, failedFetch);
+            expect(failed.requestCount).toBe(1);
+            expect(failed.first).toEqual(snapshot);
+
+            // Within the keychain's backoff, then past it, while the usage
+            // backoff holds: the last render reads the keychain once more
+            for (const offsetMs of [490000, 505000]) {
+                const result = renderAt(startMs + offsetMs, { mode: 'unexpected' });
+                expect(result.first).toEqual(snapshot);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['a rate limit (429, Retry-After 300)', rateLimitedFetch, 300],
+        ['an unreachable usage API', { mode: 'error' }, 30]
+    ] as const)('serves the stale cache through the backoff after %s without running security', (_failure, failedFetch, backoffSeconds) => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome(`keychain-usage-backoff-${backoffSeconds}`);
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+            const snapshot = {
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            };
+
+            expect(renderAt(startMs).first).toEqual(snapshot);
+
+            // The cache is too old to answer, and the refetch fails
+            const failed = renderAt(startMs + 200000, failedFetch);
+            expect(failed.requestCount).toBe(1);
+            expect(failed.first).toEqual(snapshot);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            // No request is made while the backoff holds, so these renders
+            // don't read the credentials
+            for (const offsetMs of [210000, 190000 + backoffSeconds * 1000]) {
+                const result = renderAt(startMs + offsetMs, { mode: 'unexpected' });
+                expect(result.first).toEqual(snapshot);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            // The first request after it reads them once
+            const retried = renderAt(startMs + 201000 + backoffSeconds * 1000, failedFetch);
+            expect(retried.requestCount).toBe(1);
+            expect(retried.first).toEqual(snapshot);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('shows No credentials on the next render after a logout during a usage backoff', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-logout-during-usage-backoff');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            // Rate limited before any usage was cached
+            expect(renderAt(startMs, rateLimitedFetch).first).toEqual({ error: 'rate-limited' });
+            expect(renderAt(startMs + 10000, { mode: 'unexpected' }).first).toEqual({ error: 'rate-limited' });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // A logout deletes the item, which writes the keychain
+            keychain.removeItem(DEFAULT_KEYCHAIN_SERVICE);
+            const loggedOut = renderAt(startMs + 20000, { mode: 'unexpected' });
+            expect(loggedOut.first).toEqual({ error: 'no-credentials' });
+            expect(loggedOut.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM, FIND_DEFAULT_ACCOUNT_ITEM, 'dump-keychain']);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('shows a login switch during a usage backoff on the next render', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-switch-during-usage-backoff');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs).first.sessionUsage).toBe(42);
+            expect(renderAt(startMs + 200000, rateLimitedFetch).first.sessionUsage).toBe(42);
+            expect(renderAt(startMs + 210000, { mode: 'unexpected' }).first.sessionUsage).toBe(42);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            // The other account's usage waits for the backoff to end, and the
+            // first account's no longer stands in for it
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-b', refreshToken: 'refresh-b' });
+            const switched = renderAt(startMs + 220000, { mode: 'unexpected' });
+            expect(switched.first).toEqual({ error: 'rate-limited' });
+            expect(switched.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+
+            const fetched = renderAt(startMs + 501000, { responseBody: accountBResponseBody });
+            expect(fetched.requestCount).toBe(1);
+            expect(fetched.first.sessionUsage).toBe(55);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('names the account on a render the fresh cache answers, without running security', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-cached');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            const first = renderAt(startMs, { ...accountLookup, profileReply: profileFound });
+            expect((first.first as { account: { key: string } | null }).account?.key).toMatch(/^account:[0-9a-f]{16}$/);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            const cached = renderAt(startMs + 10000, { ...accountLookup, mode: 'unexpected' });
+            expect(cached.first).toEqual(first.first);
+            expect(cached.accountKey).toBe(fingerprint('refresh-a'));
+            expect(cached.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads the keychain once for an account lookup still to be made on a render the fresh cache answers', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-lookup');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            // The lookup fails, which holds it off for 30 seconds
+            expect(renderAt(startMs, { ...accountLookup, profileReply: { mode: 'error' } }).first).toEqual({ account: null });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // Past that, with the usage cache still fresh
+            const named = renderAt(startMs + 40000, { ...accountLookup, profileReply: profileFound });
+            expect((named.first as { account: { key: string } | null }).account?.key).toMatch(/^account:[0-9a-f]{16}$/);
+            expect(named.requestPaths).toEqual(['/api/oauth/profile']);
+            expect(named.profileAuthorization).toBe('Bearer access-a');
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads no keychain item for an account lookup that a failed one holds off', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-held-off');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs, { ...accountLookup, profileReply: { mode: 'error' } }).first).toEqual({ account: null });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // Served from the fresh cache while the failed lookup holds the login off
+            for (const offsetMs of [5000, 10000, 20000]) {
+                const result = renderAt(startMs + offsetMs, { ...accountLookup, mode: 'unexpected' });
+                expect(result.first).toEqual({ account: null });
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
         } finally {
             harness.cleanup();
         }

@@ -63,7 +63,8 @@ describe('getUsageToken dump-keychain behavior', () => {
             }
 
             if (args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials') {
-                throw new Error('missing exact credential');
+                // `security` exits 44 (errSecItemNotFound) for a missing item
+                throw Object.assign(new Error('missing exact credential'), { status: 44 });
             }
 
             if (args[0] === 'dump-keychain') {
