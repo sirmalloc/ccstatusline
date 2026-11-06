@@ -25,6 +25,7 @@ export interface UsageData {
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
     extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
+    extraUsageUsedToday?: number;  // in cents, spent since 00:00 UTC; worked out per render, never cached
     apiSessionUsage?: number;      // the usage API's own sessionUsage, never rate_limits'; see usage-prefetch.ts
     error?: UsageError;
 }
@@ -37,7 +38,9 @@ export interface UsageWindowMetrics {
     remainingPercent: number;
 }
 
-export type UsageDataField = Exclude<keyof UsageData, 'error' | 'apiSessionUsage'>;
+// Fields a usage fetch can supply and the cache stores. extraUsageUsedToday is
+// worked out from them per render, so it can't be required from a fetch.
+export type UsageDataField = Exclude<keyof UsageData, 'error' | 'extraUsageUsedToday' | 'apiSessionUsage'>;
 
 // Fields that exist only in the statusline payload, never in the usage API
 // response or its on-disk cache.

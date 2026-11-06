@@ -1,9 +1,12 @@
 export {
     fetchAccountEmail,
     fetchUsageData,
+    getUsageAccountKey,
     getUsageFetchedAtMs,
     getUsageLoginFingerprint,
-    isStaleUsageFallback
+    isStaleUsageFallback,
+    lookUpUsageAccount,
+    type UsageAccount
 } from './usage-fetch';
 export {
     formatUsageDuration,
