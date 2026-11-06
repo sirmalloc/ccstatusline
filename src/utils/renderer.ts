@@ -378,22 +378,25 @@ function renderPowerlineStatusLine(
     if (autoAlign) {
         // Apply padding to current line's widgets based on pre-calculated max widths
         let alignmentPos = 0;
-        for (let i = 0; i < widgetElements.length; i++) {
+        let i = 0;
+        while (i < widgetElements.length) {
             const element = widgetElements[i];
-            if (!element)
-                continue;
 
             // An excluded widget, and everything after it on this line, keeps its
             // natural width (mirrors the skip in calculateMaxWidthsFromPreRendered).
-            if (element.widget.excludeFromAutoAlign)
+            if (element?.widget.excludeFromAutoAlign)
                 break;
+
+            // The widget to look at next: the following one, unless this one
+            // heads a merge group that gets padded below
+            let next = i + 1;
 
             // Check if previous widget was merged with this one
             const prevWidget = i > 0 ? widgetElements[i - 1] : null;
             const isPreviousMerged = prevWidget?.mergesWithNext;
 
             // Only apply alignment to non-merged widgets (widgets that follow a merge are excluded)
-            if (!isPreviousMerged) {
+            if (element && !isPreviousMerged) {
                 const maxWidth = preCalculatedMaxWidths[alignmentPos];
                 if (maxWidth !== undefined) {
                     // Calculate combined width if this widget merges with following ones
@@ -416,11 +419,13 @@ function renderPowerlineStatusLine(
                         }
                     }
 
-                    // Skip over merged widgets
-                    i = j;
+                    // Continue after the widgets merged into this one
+                    next = j + 1;
                 }
                 alignmentPos++;
             }
+
+            i = next;
         }
     }
 

@@ -101,4 +101,33 @@ describe('renderStatusLine auto-align exemption', () => {
     it('exempts the excluded widget and the rest of its line from alignment padding', () => {
         expect(getVisibleWidth(renderFirstLine(false))).toBeGreaterThan(getVisibleWidth(renderFirstLine(true)));
     });
+
+    function renderLines(lines: WidgetItem[][], maxWidths?: number[]): string[] {
+        const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+        const preRendered = preRenderAllWidgets(lines, settings, context);
+        const widths = maxWidths ?? calculateMaxWidthsFromPreRendered(preRendered, settings);
+        return lines.map((line, lineIndex) => renderStatusLine(line, settings, { ...context, lineIndex }, preRendered[lineIndex] ?? [], widths));
+    }
+
+    it('ignores an exclusion on a widget merged into the previous one and pads the columns after it', () => {
+        const [first, second] = renderLines([
+            [text('a', { merge: true }), text('b', { excludeFromAutoAlign: true }), text('c')],
+            [text('AAAAA'), text('CCCCC')]
+        ]);
+
+        expect(getVisibleWidth(first ?? '')).toBe(getVisibleWidth(second ?? ''));
+    });
+
+    it('leaves a merged line at its natural widths when no column widths were worked out', () => {
+        const line = [text('a', { merge: true }), text('b'), text('c')];
+        const unaligned = renderStatusLine(
+            line,
+            createSettings({ powerline: { ...DEFAULT_SETTINGS.powerline, enabled: true } }),
+            { isPreview: false, terminalWidth: 200, lineIndex: 0 },
+            preRenderAllWidgets([line], settings, { isPreview: false, terminalWidth: 200 })[0] ?? [],
+            []
+        );
+
+        expect(renderLines([line], [])[0]).toBe(unaligned);
+    });
 });

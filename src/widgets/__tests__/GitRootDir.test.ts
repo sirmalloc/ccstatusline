@@ -113,6 +113,20 @@ describe('GitRootDirWidget', () => {
         expect(render()).toBe('C:');
     });
 
+    it('should handle trailing windows separators', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('C:\\Work\\my-repo\\/');
+
+        expect(render()).toBe('my-repo');
+    });
+
+    it('should render a path of only separators unchanged', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('//');
+
+        expect(render()).toBe('//');
+    });
+
     it('should render encoded vscode IDE links for repository roots', () => {
         const widget = new GitRootDirWidget();
         mockExecFileSync.mockReturnValueOnce('true\n');
