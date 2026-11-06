@@ -335,6 +335,25 @@ describe('npm registry request', () => {
         expect(destroy).toHaveBeenCalledOnce();
     });
 
+    it.each([302, 503, undefined])('closes a stalled HTTP %s response before rejecting', async (statusCode) => {
+        const destroy = vi.fn();
+        const stalledErrorRequest: RegistryRequestFn = (_url, _options, onResponse) => Object.assign(new EventEmitter(), {
+            destroy,
+            end() {
+                // Headers arrive, but the server never finishes the body.
+                onResponse(Object.assign(new EventEmitter(), {
+                    statusCode,
+                    resume: () => undefined,
+                    setEncoding: () => undefined
+                }));
+            }
+        });
+
+        await expect(fetchLatestNpmVersion(5000, stalledErrorRequest))
+            .rejects.toThrow(`npm registry returned HTTP ${statusCode ?? 'unknown'}`);
+        expect(destroy).toHaveBeenCalledOnce();
+    });
+
     // A host:port with no scheme is an HTTP proxy, as curl reads it
     it.each([
         ['', 'http://proxy.example:8080'],

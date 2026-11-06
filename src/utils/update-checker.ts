@@ -319,7 +319,9 @@ export function fetchLatestNpmVersion(
             },
             (response) => {
                 if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-                    response.resume();
+                    // The error body may never finish. Close the connection before
+                    // fail clears the deadline so it cannot keep the process alive.
+                    request.destroy();
                     fail(new Error(`npm registry returned HTTP ${response.statusCode ?? 'unknown'}`));
                     return;
                 }
