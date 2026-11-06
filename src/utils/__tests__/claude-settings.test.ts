@@ -17,13 +17,16 @@ import {
     CCSTATUSLINE_COMMANDS,
     buildStatusLineCommand,
     classifyInstallation,
+    getAutoCompactConfig,
     getClaudeCodeVersion,
     getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    getPackageCommandAvailability,
     getRefreshInterval,
     getRemoteControlStatus,
     getSandboxConfig,
+    getStatusLineConfigPath,
     getVoiceConfig,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
@@ -92,6 +95,72 @@ afterAll(() => {
     } else {
         process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
     }
+});
+
+describe('getAutoCompactConfig', () => {
+    function writeLayer(relativePath: string, value: unknown): void {
+        const file = path.join(testClaudeConfigDir, relativePath);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(value));
+    }
+
+    it('reads token counts from the overridden Claude config directory', () => {
+        writeLayer('settings.json', { autoCompactWindow: 200000, autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 200000 });
+    });
+
+    it.each([true, false])('falls back to the legacy toggle %s without taking its window', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: enabled, autoCompactWindow: 100000 });
+        writeLayer('settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled, windowSize: 300000 });
+    });
+
+    it('reads the legacy preference from the home directory without a config override', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+        writeLayer('.claude.json', { autoCompactEnabled: false });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(false);
+    });
+
+    it.each([true, false])('prioritizes an explicit settings toggle %s over the legacy preference', (enabled) => {
+        writeLayer('.claude.json', { autoCompactEnabled: !enabled });
+        writeLayer('settings.json', { autoCompactEnabled: enabled });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).enabled).toBe(enabled);
+    });
+
+    it.each(['{ invalid JSON', 'null', '{"autoCompactEnabled":"false"}', '{}'])('ignores invalid legacy preferences: %s', (content) => {
+        fs.writeFileSync(getClaudeJsonPath(), content);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: undefined, windowSize: undefined });
+    });
+
+    it('merges each field independently with local settings above project and user settings', () => {
+        writeLayer('settings.json', { autoCompactWindow: 800000, autoCompactEnabled: false });
+        writeLayer('settings.local.json', { autoCompactWindow: 600000 });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 400000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.local.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: true, windowSize: 200000 });
+    });
+
+    it('ignores malformed fields individually and never rewrites malformed JSON', () => {
+        writeLayer('settings.json', { autoCompactWindow: 500000, autoCompactEnabled: true });
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: '60', autoCompactEnabled: false });
+        const localFile = path.join(testClaudeConfigDir, 'project/.claude/settings.local.json');
+        fs.writeFileSync(localFile, '{ invalid JSON');
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project'))).toEqual({ enabled: false, windowSize: 500000 });
+        expect(fs.readFileSync(localFile, 'utf-8')).toBe('{ invalid JSON');
+    });
+
+    it.each([80, 0, -1, 1000001, 200000.5, null, '200000'])('ignores an invalid window of %s', (window) => {
+        writeLayer('settings.json', { autoCompactWindow: window });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBeUndefined();
+    });
+
+    it('refreshes settings and does not leak values between projects', () => {
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 200000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(200000);
+        writeLayer('project/.claude/settings.json', { autoCompactWindow: 300000 });
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'project')).windowSize).toBe(300000);
+        expect(getAutoCompactConfig(path.join(testClaudeConfigDir, 'other')).windowSize).toBeUndefined();
+    });
 });
 
 describe('isKnownCommand', () => {
@@ -310,6 +379,23 @@ describe('buildCommand via installStatusLine', () => {
         ]);
     });
 
+    it('installs hooks for a config path containing a literal $HOME', async () => {
+        const configPath = path.join(testClaudeConfigDir, '$HOME', 'settings.json');
+        config.initConfigPath(configPath);
+        fs.mkdirSync(path.dirname(configPath));
+        fs.writeFileSync(configPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }]]
+        }));
+
+        await installStatusLine({ commandMode: 'global' });
+
+        const claudeSettings = await loadClaudeSettings();
+        const hooks = (claudeSettings.hooks ?? {}) as Record<string, unknown[]>;
+        expect(hooks.PreToolUse).toHaveLength(1);
+        expect(hooks.UserPromptSubmit).toHaveLength(1);
+    });
+
     it('should sync hooks from the final global statusline command', async () => {
         const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
         config.initConfigPath(configPath);
@@ -337,6 +423,63 @@ describe('buildCommand via installStatusLine', () => {
                 hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
             }
         ]);
+    });
+});
+
+describe('getStatusLineConfigPath', () => {
+    it('reads the config a command loads as the shell passes its --config path on', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        config.initConfigPath();
+        const defaultPath = config.getConfigPath();
+        const home = os.homedir();
+
+        expect(getStatusLineConfigPath(CCSTATUSLINE_COMMANDS.NPM)).toBe(defaultPath);
+        expect(getStatusLineConfigPath('~/.claude/ccstatusline-wrapper.sh')).toBe(defaultPath);
+        expect(getStatusLineConfigPath('ccstatusline --config ~/a.json')).toBe(path.join(home, 'a.json'));
+        expect(getStatusLineConfigPath('ccstatusline --config "$HOME/my configs/a.json" --hook')).toBe(path.join(home, 'my configs', 'a.json'));
+        expect(getStatusLineConfigPath('ccstatusline --config my\\ configs/a.json')).toBe(path.resolve('my configs/a.json'));
+        expect(getStatusLineConfigPath('ccstatusline --config')).toBeNull();
+        expect(getStatusLineConfigPath('ccstatusline --config --hook')).toBeNull();
+    });
+
+    it('reads back the config path of every command buildStatusLineCommand writes', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        const getConfigPath = vi.spyOn(config, 'getConfigPath');
+
+        for (const configPath of ['/tmp/settings.json', '/my path/settings.json', '/my\'path/settings.json', '/a "b" $c `d` \\e/settings.json', '/tmp/$HOME/settings.json', '/tmp/${HOME}/settings.json']) {
+            getConfigPath.mockReturnValue(configPath);
+            expect(getStatusLineConfigPath(buildStatusLineCommand('auto-npx'))).toBe(configPath);
+        }
+    });
+
+    it.each([
+        ['\'~/a.json\'', '~/a.json'],
+        ['"~/a.json"', '~/a.json'],
+        ['\\~/a.json', '~/a.json'],
+        ['\'$HOME/a.json\'', '$HOME/a.json'],
+        ['\'${HOME}/a.json\'', '${HOME}/a.json'],
+        ['\\$HOME/a.json', '$HOME/a.json'],
+        ['"\\$HOME/a.json"', '$HOME/a.json'],
+        ['"\\${HOME}/a.json"', '${HOME}/a.json'],
+        ['""~/a.json', '~/a.json'],
+        ['$HOME_suffix/a.json', '$HOME_suffix/a.json'],
+        ['$HOME2/a.json', '$HOME2/a.json']
+    ])('keeps literal home references in %s', (argument, expected) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        expect(getStatusLineConfigPath(`ccstatusline --config ${argument}`)).toBe(path.resolve(expected));
+    });
+
+    it.each(['$HOME', '${HOME}', '"$HOME"', '"${HOME}"', '~'])('expands unescaped %s with mixed quoting', (homeReference) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        expect(getStatusLineConfigPath(`ccstatusline --config ${homeReference}/'my configs/$HOME'/a.json`))
+            .toBe(path.join(os.homedir(), 'my configs', '$HOME', 'a.json'));
+    });
+
+    it('keeps the backslashes of a Windows path', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+
+        expect(getStatusLineConfigPath('ccstatusline --config "C:\\Users\\me\\my configs\\a.json"')).toBe(path.resolve('C:\\Users\\me\\my configs\\a.json'));
+        expect(getStatusLineConfigPath('ccstatusline --config "C:\\$HOME\\a.json"')).toBe(path.resolve('C:\\$HOME\\a.json'));
     });
 });
 
@@ -798,7 +941,7 @@ describe('backup and error handling behavior', () => {
     it.each([
         {
             name: 'fails validation',
-            content: JSON.stringify({ flexMode: 'not-a-mode', lines: [[{ id: 'skills-1', type: 'skills' }]] })
+            content: JSON.stringify({ colorLevel: 'not-a-level', lines: [[{ id: 'skills-1', type: 'skills' }]] })
         },
         {
             name: 'is not valid JSON',
@@ -899,6 +1042,34 @@ describe('isClaudeCodeVersionAtLeast', () => {
     it('should return false when claude is not installed', () => {
         vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
         expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+});
+
+describe('getPackageCommandAvailability', () => {
+    const originalPath = process.env.PATH;
+
+    afterEach(() => {
+        process.env.PATH = originalPath;
+    });
+
+    // Minimal Linux images (Fedora, UBI, Arch without the which package) have no `which`
+    it.skipIf(process.platform === 'win32')('finds package managers on PATH when there is no which command', () => {
+        const binDir = path.join(testClaudeConfigDir, 'bin');
+        fs.mkdirSync(path.join(binDir, 'bunx'), { recursive: true });
+        fs.writeFileSync(path.join(binDir, 'npm'), '#!/bin/sh\n', { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, 'npx'), '#!/bin/sh\n', { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, 'bun'), '#!/bin/sh\n', { mode: 0o644 });
+        process.env.PATH = binDir;
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation((command) => {
+            throw Object.assign(new Error(`spawnSync ${command} ENOENT`), { code: 'ENOENT' });
+        });
+
+        expect(getPackageCommandAvailability()).toEqual({
+            npm: true,
+            npx: true,
+            bun: false,
+            bunx: false
+        });
     });
 });
 

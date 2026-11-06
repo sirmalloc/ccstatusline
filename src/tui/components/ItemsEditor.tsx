@@ -723,37 +723,41 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                                                 {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                             </Text>
                                         </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                        {/* One Text, because Ink measures a toned or joined emoji as
+                                            several columns and a sibling Text would overwrite its end */}
+                                        <Text>
+                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                            </Text>
+                                            {modifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {modifierText}
+                                                </Text>
+                                            )}
+                                            {numberFormatModifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {numberFormatModifierText}
+                                                </Text>
+                                            )}
+                                            {hideModifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {hideModifierText}
+                                                </Text>
+                                            )}
+                                            {labelModifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {labelModifierText}
+                                                </Text>
+                                            )}
+                                            {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                            {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                            {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                            {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && !isMergedIntoPreviousWidget(widgets, index) && <Text dimColor> (no-align)</Text>}
                                         </Text>
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
-                                        )}
-                                        {numberFormatModifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {numberFormatModifierText}
-                                            </Text>
-                                        )}
-                                        {hideModifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {hideModifierText}
-                                            </Text>
-                                        )}
-                                        {labelModifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {labelModifierText}
-                                            </Text>
-                                        )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                        {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && !isMergedIntoPreviousWidget(widgets, index) && <Text dimColor> (no-align)</Text>}
                                     </Box>
                                 );
                             })}

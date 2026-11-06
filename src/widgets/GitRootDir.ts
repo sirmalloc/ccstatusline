@@ -38,7 +38,8 @@ const LEGACY_CURSOR_LINK_KEY = 'linkToCursor';
 const TOGGLE_LINK_ACTION = 'toggle-link';
 const IDE_LINK_LABELS: Record<IdeLinkMode, string> = {
     vscode: 'link-vscode',
-    cursor: 'link-cursor'
+    cursor: 'link-cursor',
+    zed: 'link-zed'
 };
 
 export class GitRootDirWidget implements Widget {
@@ -104,11 +105,11 @@ export class GitRootDirWidget implements Widget {
     }
 
     private getRootDirName(rootDir: string): string {
-        const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
-        const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
-        const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
+        // Splitting drops the empty parts that trailing separators leave. Only a
+        // path of separators alone, such as "/", has no part left and shows as is
+        const parts = rootDir.split(/[\\/]/).filter(Boolean);
         const lastPart = parts[parts.length - 1];
-        return lastPart && lastPart.length > 0 ? lastPart : normalizedRootDir;
+        return lastPart && lastPart.length > 0 ? lastPart : rootDir;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

@@ -1,12 +1,16 @@
+import * as fs from 'node:fs';
+
 import type { ClaudeSettings } from '../types/ClaudeSettings';
 import type { Settings } from '../types/Settings';
 import type { Widget } from '../types/Widget';
 
 import {
     getExistingStatusLine,
+    getStatusLineConfigPath,
     loadClaudeSettings,
     saveClaudeSettings
 } from './claude-settings';
+import { getConfigPath } from './config';
 import { getWidget } from './widgets';
 
 export interface WidgetHookDef {
@@ -143,6 +147,16 @@ function getActiveHookDefs(widgets: WidgetWithHooks[]): WidgetHookDef[] {
     return defs;
 }
 
+async function resolveHookConfigPath(configPath: string): Promise<string> {
+    try {
+        return await fs.promises.realpath(configPath);
+    } catch {
+        // A config may not exist yet (for example, during installation). Keep
+        // the already absolute path as a fallback when it cannot be resolved.
+        return configPath;
+    }
+}
+
 /**
  * Points Claude Code's ccstatusline-managed hooks at the status line command, for
  * the widgets in settings that need them. Returns the hooks it had to leave out,
@@ -169,6 +183,20 @@ export async function syncWidgetHooks(settings: Settings): Promise<SkippedWidget
         return statusCommand && needed.length > 0
             ? { statusCommand, widgetNames: hookWidgets.map(widget => widget.getDisplayName()) }
             : null;
+    }
+    // The hooks serve the config that command loads. Another one, opened with
+    // --config or the default while the command names a --config, doesn't
+    // decide them, so they stay as they are.
+    const statusConfigPath = getStatusLineConfigPath(statusCommand);
+    if (statusConfigPath === null) {
+        return null;
+    }
+    const [statusTarget, editedTarget] = await Promise.all([
+        resolveHookConfigPath(statusConfigPath),
+        resolveHookConfigPath(getConfigPath())
+    ]);
+    if (statusTarget !== editedTarget) {
+        return null;
     }
     const hookCommand = `${statusCommand} --hook`;
 
