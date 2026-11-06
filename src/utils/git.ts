@@ -175,7 +175,9 @@ function readTextFile(filePath: string): string {
 
 // Whether the repository's own config files could define a filter driver,
 // directly or through an include. Reading them is far cheaper than asking git,
-// and most repositories have none.
+// and most repositories have none. Git takes the section name straight after
+// the bracket, so the words elsewhere (a partial clone's partialclonefilter, a
+// branch or a URL) cannot define one.
 function mayDefineFilters(gitDir: string): boolean {
     const commonDir = readTextFile(path.join(gitDir, 'commondir')).trim();
     const configDirs = [gitDir, ...(commonDir ? [path.resolve(gitDir, commonDir)] : [])];
@@ -184,7 +186,7 @@ function mayDefineFilters(gitDir: string): boolean {
         .map(readTextFile)
         .join('\n');
 
-    return /filter|include/i.test(configText);
+    return /\[(?:filter|include)/i.test(configText);
 }
 
 function gitExecOptions(cwd: string | undefined) {

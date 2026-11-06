@@ -162,6 +162,22 @@ describe.skipIf(process.platform === 'win32')('git hardening against repository 
         expect(plainGitRuns(dir, 'status', '--porcelain')).toBe(true);
     });
 
+    it.each([
+        ['upper case', '[FILTER "evil"]'],
+        ['the dotted form', '[filter.evil]'],
+        ['a second section on one line', '[core] [filter "evil"]']
+    ])('does not run filter drivers from a section written in %s', (name, section) => {
+        const dir = makeRepo(`written-${name.replace(/ /g, '-')}`, '* filter=evil\n');
+        const filter = script('written-filter.sh', `touch "${marker}"; cat`);
+        fs.appendFileSync(path.join(dir, '.git', 'config'), `${section}\n\tclean = ${filter}\n`);
+        touchLater(dir);
+
+        execGit(['status', '--porcelain', '-z'], dir);
+
+        expect(ran()).toBe(false);
+        expect(plainGitRuns(dir, 'status', '--porcelain')).toBe(true);
+    });
+
     it('keeps running filter drivers from the user\'s own config', () => {
         fs.writeFileSync(globalConfig, '[filter "upper"]\n\tclean = tr a-z A-Z\n');
         try {
