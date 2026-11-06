@@ -31,7 +31,8 @@ import {
     applyParensDim,
     bgToFg,
     getColorAnsiCode,
-    getPowerlineTheme
+    getPowerlineTheme,
+    restoreForegroundAfterRuns
 } from './colors';
 import {
     isGradientSpec,
@@ -41,6 +42,7 @@ import { getTerminalWidth } from './terminal';
 import { sanitizeTerminalText } from './terminal-sanitize';
 import {
     getWidget,
+    widgetColorsOnlyItsRuns,
     widgetPreservesColors
 } from './widgets';
 
@@ -74,6 +76,12 @@ function hasForegroundOverride(settings: Settings): boolean {
 // remains independent of foreground preservation.
 function preservesIntrinsicForeground(item: WidgetItem, settings: Settings): boolean {
     return widgetPreservesColors(item) && !hasForegroundOverride(settings);
+}
+
+// Whether the item's text carries foreground codes of its own, for all of it
+// or only some runs; a global foreground override strips them
+function embedsForegroundCodes(item: WidgetItem): boolean {
+    return widgetPreservesColors(item) || widgetColorsOnlyItsRuns(item);
 }
 
 // Split the default padding string into the leading/trailing pieces that
@@ -258,9 +266,9 @@ function renderPowerlineStatusLine(
             const padding = settings.defaultPadding ?? '';
             const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
 
-            // If override FG color is set and this widget preserves its own colors,
+            // If override FG color is set and this widget carries its own colors,
             // we need to strip the ANSI codes from the widget text
-            if (hasForegroundOverride(settings) && widgetPreservesColors(widget)) {
+            if (hasForegroundOverride(settings) && embedsForegroundCodes(widget)) {
                 // Strip ANSI color codes when override is active
                 widgetText = stripSgrCodes(widgetText);
             }
@@ -378,22 +386,25 @@ function renderPowerlineStatusLine(
     if (autoAlign) {
         // Apply padding to current line's widgets based on pre-calculated max widths
         let alignmentPos = 0;
-        for (let i = 0; i < widgetElements.length; i++) {
+        let i = 0;
+        while (i < widgetElements.length) {
             const element = widgetElements[i];
-            if (!element)
-                continue;
 
             // An excluded widget, and everything after it on this line, keeps its
             // natural width (mirrors the skip in calculateMaxWidthsFromPreRendered).
-            if (element.widget.excludeFromAutoAlign)
+            if (element?.widget.excludeFromAutoAlign)
                 break;
+
+            // The widget to look at next: the following one, unless this one
+            // heads a merge group that gets padded below
+            let next = i + 1;
 
             // Check if previous widget was merged with this one
             const prevWidget = i > 0 ? widgetElements[i - 1] : null;
             const isPreviousMerged = prevWidget?.mergesWithNext;
 
             // Only apply alignment to non-merged widgets (widgets that follow a merge are excluded)
-            if (!isPreviousMerged) {
+            if (element && !isPreviousMerged) {
                 const maxWidth = preCalculatedMaxWidths[alignmentPos];
                 if (maxWidth !== undefined) {
                     // Calculate combined width if this widget merges with following ones
@@ -416,11 +427,13 @@ function renderPowerlineStatusLine(
                         }
                     }
 
-                    // Skip over merged widgets
-                    i = j;
+                    // Continue after the widgets merged into this one
+                    next = j + 1;
                 }
                 alignmentPos++;
             }
+
+            i = next;
         }
     }
 
@@ -504,9 +517,10 @@ function renderPowerlineStatusLine(
             ? applyParensDim(segmentContent, shouldBold)
             : segmentContent;
 
-        if (widget.fgColor && !isPreserveColors && !textGradientStops) {
-            widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
-        }
+        const fgCode = widget.fgColor && !isPreserveColors && !textGradientStops
+            ? getColorAnsiCode(widget.fgColor, colorLevel, false)
+            : '';
+        widgetContent += fgCode;
         // Always apply background for consistency in powerline mode
         if (widget.bgColor) {
             widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
@@ -521,6 +535,8 @@ function renderPowerlineStatusLine(
             );
             widgetContent += gradientResult.text;
             powerlineGradientColumn = gradientResult.nextColumn;
+        } else if (fgCode && widgetColorsOnlyItsRuns(widget.widget)) {
+            widgetContent += restoreForegroundAfterRuns(styledContent, fgCode);
         } else {
             widgetContent += styledContent;
         }
@@ -912,7 +928,7 @@ export function calculateMaxWidthsFromPreRendered(
     const maxWidths: number[] = [];
     const defaultPadding = settings.defaultPadding ?? '';
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(defaultPadding, settings.defaultPaddingSide);
-    const paddingPairLength = sideLeadingPadding.length + sideTrailingPadding.length;
+    const paddingPairLength = getVisibleWidth(sideLeadingPadding) + getVisibleWidth(sideTrailingPadding);
 
     for (const preRenderedLine of preRenderedLines) {
         const isSeparatorBoundary = (entry: PreRenderedWidget | undefined): boolean => (
@@ -1043,7 +1059,7 @@ export function renderStatusLine(
     );
 
     // Helper to apply colors with optional background, bold, and dim
-    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens', keepColoredRuns?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
         // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
         // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
@@ -1062,7 +1078,7 @@ export function renderStatusLine(
         const bgColor = resolveBackgroundColor(backgroundColor);
 
         const shouldBold = (settings.globalBold) || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim, keepColoredRuns);
     };
 
     const terminalWidth = resolveEffectiveTerminalWidth(context.terminalWidth ?? getTerminalWidth());
@@ -1228,9 +1244,12 @@ export function renderStatusLine(
                         mergesWithNext: Boolean(widget.merge) && !mergeEndsAtEmptyWidget(i)
                     });
                 } else {
-                    // Normal widget rendering with colors
+                    // Normal widget rendering with colors, around any runs the
+                    // widget colors itself unless a global override owns the foreground
+                    const colorsOwnRuns = widgetColorsOnlyItsRuns(widget);
+                    const text = colorsOwnRuns && hasForegroundOverride(settings) ? stripSgrCodes(widgetText) : widgetText;
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
+                        content: applyColorsWithOverride(text, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim, colorsOwnRuns),
                         type: widget.type,
                         widget,
                         mergesWithNext: Boolean(widget.merge) && !mergeEndsAtEmptyWidget(i)

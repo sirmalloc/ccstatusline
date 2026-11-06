@@ -9,13 +9,18 @@ import {
     SESSION_UNDER_LIMIT_HIDEABLE_STATE
 } from '../widgets/shared/usage-display';
 
+import { observeExtraUsageSpend } from './daily-spend';
+import { getLastResponseAtMs } from './session-usage-history';
 import type {
     PayloadResetAt,
     UsageData
 } from './usage';
 import {
     fetchUsageData,
-    isStaleUsageFallback
+    getUsageAccountKey,
+    getUsageFetchedAtMs,
+    isStaleUsageFallback,
+    lookUpUsageAccount
 } from './usage';
 import type { UsageDataField } from './usage-types';
 import {
@@ -41,6 +46,7 @@ const BASE_USAGE_WIDGET_TYPES = [
     'extra-usage-used',
     'extra-usage-limit',
     'extra-usage-daily-budget',
+    'extra-usage-today',
     'spend-limit-usage',
     'spend-limit-amount'
 ];
@@ -114,8 +120,42 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageLimit' },
         { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-today': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageUsed' }
     ]
 };
+
+const SPEND_TODAY_WIDGET_TYPES = new Set<string>(['extra-usage-today']);
+
+function needsSpendToday(lines: WidgetItem[][]): boolean {
+    return lines.some(line => line.some(item => SPEND_TODAY_WIDGET_TYPES.has(item.type)));
+}
+
+// Today's spend needs the month-to-date total, the login it belongs to (the
+// daily state file keeps each login's start-of-day total separately), and when
+// the usage API returned it: a cached total fetched before midnight is not
+// today's. The login's token fingerprint changes each time Claude Code
+// refreshes its tokens, so the record is kept under the account the profile
+// lookup names, and under the fingerprint only until that lookup answers.
+async function withSpendToday(data: UsageData, lines: WidgetItem[][]): Promise<UsageData> {
+    if (!needsSpendToday(lines) || data.extraUsageUsed === undefined) {
+        return data;
+    }
+
+    const accountKey = getUsageAccountKey();
+    const fetchedAtMs = getUsageFetchedAtMs();
+    if (accountKey === null || fetchedAtMs === undefined) {
+        return data;
+    }
+
+    const account = await lookUpUsageAccount();
+    const spentToday = account
+        ? observeExtraUsageSpend(account.key, data.extraUsageUsed, fetchedAtMs, undefined, account.fingerprints)
+        : observeExtraUsageSpend(accountKey, data.extraUsageUsed, fetchedAtMs);
+    return spentToday === undefined ? data : { ...data, extraUsageUsedToday: spentToday };
+}
 
 const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     'session-usage': { field: 'sessionResetAt' },
@@ -134,6 +174,78 @@ const SESSION_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionU
 function readsSessionLimit(item: WidgetItem): boolean {
     return (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key))
         || (item.type === 'session-usage' && isHidden(item, SESSION_AT_LIMIT_HIDEABLE_STATE.key));
+}
+
+// Claude Code sends the usage percents with each of this session's API
+// responses, so in a session left idle they stay where its last response left
+// them while other sessions and devices use up the limits. Once that response
+// is older than the usage API cache's lifetime, the API may know more, so the
+// prefetch asks it too (a failure leaves the payload's percents), and a newer
+// answer replaces them (see refreshIdlePayloadUsage).
+const PAYLOAD_USAGE_TRUSTED_MS = 3 * 60 * 1000;
+// One window's reset time differs by under a second between the payload (whole
+// seconds) and the usage API (fractional ones)
+const SAME_WINDOW_MS = 60 * 1000;
+
+const PAYLOAD_USAGE_WINDOWS: { usageField: UsageDataField; resetField: UsageDataField }[] = [
+    { usageField: 'sessionUsage', resetField: 'sessionResetAt' },
+    { usageField: 'weeklyUsage', resetField: 'weeklyResetAt' },
+    ...WEEKLY_MODEL_USAGE_BUCKETS
+        .filter(bucket => bucket.apiBucketKey)
+        .map(bucket => ({ usageField: bucket.usageField, resetField: bucket.resetField }))
+];
+
+// The windows a widget on the line reads whose percent the payload supplies
+function getPayloadUsageFields(rateLimitsData: UsageData | null, requirements: UsageFieldRequirement[]): UsageDataField[] {
+    return PAYLOAD_USAGE_WINDOWS
+        .map(({ usageField }) => usageField)
+        .filter(field => rateLimitsData?.[field] !== undefined && requirements.some(requirement => requirement.field === field));
+}
+
+// When the payload's percents were reported, if that's long enough ago that the
+// usage API may know more. Null when they're recent, or when the transcript has
+// no response to date them by (a new one after /clear): then they stand.
+function getIdlePayloadUsageTime(data: StatusJSON | undefined, nowMs: number): number | null {
+    const seenAtMs = getLastResponseAtMs(data?.transcript_path);
+    return seenAtMs !== undefined && nowMs - seenAtMs > PAYLOAD_USAGE_TRUSTED_MS ? seenAtMs : null;
+}
+
+function parseResetAtMs(value: unknown): number {
+    return typeof value === 'string' ? Date.parse(value) : Number.NaN;
+}
+
+// Takes the usage API's percent for each window of an idle session's payload
+// when the API sent it after the session's last response. It must be the same
+// window, and no lower: usage never falls within a window, so a lower one is
+// another login's (the credentials changed since the session's last
+// response). Once the payload's window has reset, the API's current one wins.
+function refreshIdlePayloadUsage(usageData: UsageData, rateLimitsData: UsageData, apiData: UsageData, payloadSeenAtMs: number, nowMs: number): void {
+    const fetchedAtMs = getUsageFetchedAtMs();
+    if (fetchedAtMs === undefined || fetchedAtMs <= payloadSeenAtMs) {
+        return;
+    }
+
+    for (const { usageField, resetField } of PAYLOAD_USAGE_WINDOWS) {
+        const payloadPercent = rateLimitsData[usageField];
+        const apiPercent = apiData[usageField];
+        if (typeof payloadPercent !== 'number' || typeof apiPercent !== 'number') {
+            continue;
+        }
+
+        const payloadResetAtMs = parseResetAtMs(rateLimitsData[resetField]);
+        const apiResetAtMs = parseResetAtMs(apiData[resetField]);
+        const isSameWindow = Math.abs(payloadResetAtMs - apiResetAtMs) <= SAME_WINDOW_MS;
+        // The API sends no reset time for a window nothing has used yet
+        const isApiWindowCurrent = Number.isNaN(apiResetAtMs) || apiResetAtMs > nowMs;
+        const isPayloadWindowOver = payloadResetAtMs <= nowMs && isApiWindowCurrent;
+        if (isSameWindow ? apiPercent >= payloadPercent : isPayloadWindowOver) {
+            setUsageField(usageData, usageField, apiPercent);
+            setUsageField(usageData, resetField, apiData[resetField]);
+            if (usageField === 'sessionUsage') {
+                usageData.sessionUsageObservedAtMs = fetchedAtMs;
+            }
+        }
+    }
 }
 
 // A cached answer can outlive its block: the cache is reused for minutes, and
@@ -303,6 +415,13 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
+    const nowMs = Date.now();
+    const payloadUsageFields = getPayloadUsageFields(rateLimitsData, requirements);
+    const payloadSeenAtMs = payloadUsageFields.length > 0 ? getIdlePayloadUsageTime(data, nowMs) : null;
+    if (payloadSeenAtMs !== null) {
+        requirements.push(...payloadUsageFields.map(field => ({ field, fromApi: true, suppressFetchError: true })));
+    }
+
     const missingRequirements = getMissingFetchRequirements(rateLimitsData, requirements);
     const missingFields = missingRequirements.fields;
 
@@ -321,10 +440,14 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     }
 
     const usageData = mergeUsageData(rateLimitsData, apiData);
+    if (payloadSeenAtMs !== null && rateLimitsData && !apiData.error) {
+        refreshIdlePayloadUsage(usageData, rateLimitsData, apiData, payloadSeenAtMs, nowMs);
+    }
+
     // A stale fallback is the last good cache, served while the API can't be reached
     // once it has outlived a refresh, so like a failed fetch it leaves the payload's percent to decide
     if (requirements.includes(SESSION_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData) && !isStaleUsageFallback(apiData)) {
         usageData.apiSessionUsage = apiData.sessionUsage;
     }
-    return usageData;
+    return withSpendToday(usageData, lines);
 }

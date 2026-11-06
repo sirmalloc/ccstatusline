@@ -136,7 +136,15 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                         } else {
                             newSeparators[selectedIndex] = char;
                         }
-                        updateSeparators(newSeparators);
+                        // A preset glyph gets the inversion ← → gives it, so a left-facing one
+                        // is inverted. A custom code point's direction is unknown, so its
+                        // slot keeps its inversion and (t) changes it
+                        let newInvertBgs: boolean[] | undefined;
+                        if (mode === 'separator' && presetSeparators.some(p => p.char === char)) {
+                            newInvertBgs = newSeparators.map((_, i) => invertBgs[i] ?? false);
+                            newInvertBgs[separators.length === 0 ? 0 : selectedIndex] = char === '\uE0B2' || char === '\uE0B6';
+                        }
+                        updateSeparators(newSeparators, newInvertBgs);
                         setHexInputMode(false);
                         setHexInput('');
                         setCursorPos(0);
