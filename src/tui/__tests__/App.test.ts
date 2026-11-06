@@ -1174,6 +1174,136 @@ describe('App while an install or update runs', () => {
     });
 });
 
+describe('App when Claude settings.json breaks while the TUI is open', () => {
+    let sandbox: AppSandbox;
+    let claudeSettingsPath: string;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        claudeSettingsPath = claudeSettings.getClaudeSettingsPath();
+        fs.mkdirSync(path.dirname(claudeSettingsPath), { recursive: true });
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    const managedHooks = {
+        UserPromptSubmit: [
+            {
+                _tag: 'ccstatusline-managed',
+                hooks: [{ type: 'command', command: 'ccstatusline --hook' }]
+            }
+        ]
+    };
+
+    it.each([
+        {
+            name: 'settings.json no longer parses',
+            // A hand edit in another window leaves a trailing comma
+            content: '{ "statusLine": { "type": "command", "command": "ccstatusline", "padding": 0 }, }',
+            mode: 0o644
+        },
+        {
+            name: 'a read-only settings.json has lost its statusLine but kept the managed hooks',
+            content: JSON.stringify({ hooks: managedHooks }),
+            mode: 0o444
+        }
+    ])('fails the uninstall and keeps the npm global package when $name', async ({ content, mode }) => {
+        const installation: InstallationMetadata = { method: 'pinned', installedVersion: getPackageVersion() };
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({ ...DEFAULT_SETTINGS, installation }));
+        fs.writeFileSync(claudeSettingsPath, JSON.stringify({
+            statusLine: { type: 'command', command: 'ccstatusline', padding: 0 },
+            hooks: managedHooks
+        }));
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: null,
+            warning: null
+        });
+        vi.spyOn(globalPackageManager, 'inspectGlobalPackageInstallations').mockReturnValue([
+            { packageManager: 'npm', available: true, installed: true, binDir: '/usr/local/bin' },
+            { packageManager: 'bun', available: false, installed: false, binDir: null }
+        ]);
+        // Stands in for `npm uninstall -g ccstatusline`
+        const globalUninstall = vi.spyOn(globalPackageManager, 'runGlobalPackageUninstall').mockResolvedValue(undefined);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('🧰 Manage Installation');
+            });
+            fs.writeFileSync(claudeSettingsPath, content);
+            fs.chmodSync(claudeSettingsPath, mode);
+
+            await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+            await pressKey(rendered, KEYS.up, '▶  🚪 Exit');
+            await pressKey(rendered, KEYS.up, '▶  🧰 Manage Installation');
+            await pressKey(rendered, KEYS.enter, '▶  🔄 Check for Updates');
+            await pressKey(rendered, KEYS.down, '▶  🔌 Uninstall');
+            await pressKey(rendered, KEYS.enter, 'Remove from Claude Code settings only');
+            await pressKey(rendered, KEYS.down, '▶  Remove Claude settings and npm global package');
+            await pressKey(rendered, KEYS.enter, 'npm uninstall -g ccstatusline');
+            await pressKey(rendered, KEYS.enter, '✗ Uninstall failed');
+
+            expect(globalUninstall).not.toHaveBeenCalled();
+            expect(fs.readFileSync(claudeSettingsPath, 'utf-8')).toBe(content);
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { installation?: InstallationMetadata };
+            expect(saved.installation).toEqual(installation);
+
+            await pressKey(rendered, KEYS.escape, '▶  🔄 Check for Updates');
+            await pressKey(rendered, KEYS.escape, 'Main Menu');
+            expect(rendered.getFrame()).toContain('🧰 Manage Installation');
+            expect(rendered.getFrame()).not.toContain('📦 Install to Claude Code');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    const installedStatusLine = { type: 'command', command: 'npx -y ccstatusline@latest', padding: 0, refreshInterval: 10 };
+
+    it.each([
+        {
+            name: 'no longer parses',
+            content: `{ "statusLine": ${JSON.stringify(installedStatusLine)}, }`
+        },
+        {
+            name: 'has lost its statusLine',
+            content: JSON.stringify({ effortLevel: 'high' })
+        }
+    ])('keeps the refresh interval and reports the failed save when settings.json $name', async ({ content }) => {
+        fs.writeFileSync(claudeSettingsPath, JSON.stringify({ statusLine: installedStatusLine }));
+        vi.spyOn(claudeSettings, 'isClaudeCodeVersionAtLeast').mockReturnValue(true);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('🔌 Uninstall from Claude Code');
+            });
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.down, '▶  🌐 Global Overrides');
+            await pressKey(rendered, KEYS.down, '▶  🔧 Configure Status Line');
+            await pressKey(rendered, KEYS.enter, '🔄 Refresh Interval (10s)');
+            fs.writeFileSync(claudeSettingsPath, content);
+
+            await pressKey(rendered, KEYS.enter, 'Enter refresh interval in seconds (1-60): 10s');
+            await pressKey(rendered, '\x7f', 'Enter refresh interval in seconds (1-60): 1s');
+            await pressKey(rendered, '5', 'Enter refresh interval in seconds (1-60): 15s');
+            await pressKey(rendered, KEYS.enter, '✗ Failed to save refresh interval');
+            expect(fs.readFileSync(claudeSettingsPath, 'utf-8')).toBe(content);
+
+            await pressKey(rendered, KEYS.enter, '🔄 Refresh Interval (10s)');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
 describe('App Check for Updates', () => {
     let sandbox: AppSandbox;
 

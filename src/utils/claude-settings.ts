@@ -503,22 +503,25 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
+// A missing settings file loads as {}; any error here means the file exists
+// but could not be read or parsed. Writers abort with this error rather than
+// save over the file, which would discard the user's other Claude Code
+// settings, or return as if their change had been made.
+async function loadClaudeSettingsForUpdate(retry: string): Promise<ClaudeSettings> {
+    try {
+        return await loadClaudeSettings({ logErrors: false });
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then ${retry}.`, { cause: error });
+    }
+}
+
 export async function installStatusLine({
     commandMode,
     supportsRefreshInterval = false,
     installationMetadata
 }: InstallStatusLineOptions): Promise<void> {
-    let settings: ClaudeSettings;
-
-    // A missing settings file loads as {}; any error here means the file exists
-    // but could not be read or parsed. Abort rather than overwrite it with only
-    // our statusLine, which would discard the user's other Claude Code settings.
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
-    }
+    const settings = await loadClaudeSettingsForUpdate('install again');
 
     await backupClaudeSettings('.orig');
 
@@ -552,28 +555,23 @@ export async function installStatusLine({
 }
 
 export async function uninstallStatusLine(): Promise<void> {
-    let settings: ClaudeSettings;
+    // Throwing here, before anything is removed, keeps the installation
+    // metadata and hooks in place and stops the caller from going on to
+    // remove the global package that statusLine still runs.
+    const settings = await loadClaudeSettingsForUpdate('uninstall again');
 
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        console.error('Warning: Could not read existing Claude settings.');
-        return; // if we can't read, return... what are we uninstalling?
-    }
-
-    if (settings.statusLine) {
-        delete settings.statusLine;
+    // statusLine and the managed hooks go in one write. If it fails, both
+    // stay and the metadata isn't cleared, so the caller doesn't go on to
+    // remove the binary they run. With neither there, the file isn't written.
+    const { stripManagedHooksFromSettings } = await import('./hooks');
+    const hadStatusLine = Boolean(settings.statusLine);
+    delete settings.statusLine;
+    const hadManagedHooks = stripManagedHooksFromSettings(settings);
+    if (hadStatusLine || hadManagedHooks) {
         await saveClaudeSettings(settings);
     }
 
     await saveInstallationMetadata(undefined);
-
-    try {
-        const { removeManagedHooks } = await import('./hooks');
-        await removeManagedHooks();
-    } catch {
-        // Ignore hook cleanup failures during uninstall
-    }
 }
 
 export async function getExistingStatusLine(): Promise<string | null> {
@@ -595,16 +593,10 @@ export async function getRefreshInterval(): Promise<number | null> {
 }
 
 export async function setRefreshInterval(interval: number | null): Promise<void> {
-    let settings: ClaudeSettings;
-
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        return;
-    }
+    const settings = await loadClaudeSettingsForUpdate('try again');
 
     if (!settings.statusLine) {
-        return;
+        throw new Error(`No status line is configured in ${getClaudeSettingsPath()}, so there is no refresh interval to set. Install ccstatusline to Claude Code again.`);
     }
 
     if (interval === null) {

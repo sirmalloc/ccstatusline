@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 
+import type { ClaudeSettings } from '../types/ClaudeSettings';
 import type { Settings } from '../types/Settings';
 import type { Widget } from '../types/Widget';
 
@@ -48,8 +49,18 @@ function isCcstatuslineManagedEntry(entry: HookEntry): boolean {
     return entry._tag === HOOK_TAG;
 }
 
-function isLegacyCcstatuslineHookCommand(hook: { type: string; command: string }): boolean {
-    return CCSTATUSLINE_HOOK_PATTERN.test(hook.command);
+function isLegacyCcstatuslineHookCommand(hook: unknown): boolean {
+    return typeof hook === 'object'
+        && hook !== null
+        && 'command' in hook
+        && typeof hook.command === 'string'
+        && CCSTATUSLINE_HOOK_PATTERN.test(hook.command);
+}
+
+// settings.json is edited by hand, so an event's value or an entry may not
+// have the shape Claude Code expects. Anything that isn't ours is left as is.
+function isHookEntry(entry: unknown): entry is HookEntry {
+    return typeof entry === 'object' && entry !== null;
 }
 
 function stripManagedHookEntry(entry: HookEntry): HookEntry | null {
@@ -57,7 +68,7 @@ function stripManagedHookEntry(entry: HookEntry): HookEntry | null {
         return null;
     }
 
-    if (!entry.hooks) {
+    if (!Array.isArray(entry.hooks)) {
         return entry;
     }
 
@@ -78,13 +89,34 @@ function stripManagedHookEntry(entry: HookEntry): HookEntry | null {
 
 function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
     for (const event of Object.keys(hooks)) {
-        hooks[event] = (hooks[event] ?? [])
-            .map(stripManagedHookEntry)
-            .filter((entry): entry is HookEntry => entry !== null);
-        if (hooks[event].length === 0) {
+        const entries: unknown = hooks[event];
+        if (!Array.isArray(entries)) {
+            continue;
+        }
+        const remaining: unknown[] = [];
+        for (const entry of entries as unknown[]) {
+            if (!isHookEntry(entry)) {
+                remaining.push(entry);
+                continue;
+            }
+            const stripped = stripManagedHookEntry(entry);
+            if (stripped) {
+                remaining.push(stripped);
+            }
+        }
+        hooks[event] = remaining as HookEntry[];
+        if (remaining.length === 0) {
             Reflect.deleteProperty(hooks, event);
         }
     }
+}
+
+function hasManagedHooks(hooks: Record<string, HookEntry[]>): boolean {
+    return Object.keys(hooks).some((event) => {
+        const entries: unknown = hooks[event];
+        return Array.isArray(entries)
+            && (entries as unknown[]).some(entry => isHookEntry(entry) && stripManagedHookEntry(entry) !== entry);
+    });
 }
 
 function getHookWidgets(settings: Settings): WidgetWithHooks[] {
@@ -186,12 +218,25 @@ export async function syncWidgetHooks(settings: Settings): Promise<SkippedWidget
     return null;
 }
 
-export async function removeManagedHooks(): Promise<void> {
-    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+// Removes our hooks from loaded Claude settings without saving them, and says
+// whether there were any.
+export function stripManagedHooksFromSettings(claudeSettings: ClaudeSettings): boolean {
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
+    if (!hasManagedHooks(hooks)) {
+        return false;
+    }
 
     stripManagedHooks(hooks);
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-    await saveClaudeSettings(claudeSettings);
+    return true;
+}
+
+export async function removeManagedHooks(): Promise<void> {
+    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+
+    // With none of ours there the file is left alone
+    if (stripManagedHooksFromSettings(claudeSettings)) {
+        await saveClaudeSettings(claudeSettings);
+    }
 }
