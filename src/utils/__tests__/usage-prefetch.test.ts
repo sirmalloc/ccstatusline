@@ -1180,6 +1180,30 @@ describe('today\'s extra usage spend', () => {
         expect(mockObserveSpend.mock.calls).toEqual([]);
     });
 
+    it('fetches nothing for Daily Cost Rate unless it uses billed spend', async () => {
+        const lines = makeLines([{ id: '1', type: 'daily-cost-rate' }]);
+
+        expect(hasUsageDependentWidgets(lines)).toBe(false);
+        expect(await prefetchUsageDataIfNeeded(lines, {})).toBeNull();
+        expect(mockFetchUsageData.mock.calls).toEqual([]);
+    });
+
+    it('works out today\'s spend for Daily Cost Rate when it uses billed spend', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(FETCHED_AT);
+        const lines = makeLines([{ id: '1', type: 'daily-cost-rate', metadata: { billedSpend: 'true' } }]);
+
+        expect(hasUsageDependentWidgets(lines)).toBe(true);
+        expect(await prefetchUsageDataIfNeeded(lines, {})).toEqual({
+            extraUsageEnabled: true,
+            extraUsageUsed: 12345,
+            extraUsageUsedToday: 825
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]
+        ]);
+    });
+
     it('only works out today\'s spend when a widget shows it', async () => {
         vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
 

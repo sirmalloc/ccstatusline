@@ -126,8 +126,19 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
 
 const SPEND_TODAY_WIDGET_TYPES = new Set<string>(['extra-usage-today']);
 
+// Daily Cost Rate only needs the usage fetch when it divides billed spend;
+// with Claude Code's own session costs it needs nothing from the API.
+const BILLED_SPEND_REQUIREMENTS: UsageFieldRequirement[] = [
+    { field: 'extraUsageEnabled' },
+    { field: 'extraUsageUsed' }
+];
+
+function isBilledDailyCostRate(item: WidgetItem): boolean {
+    return item.type === 'daily-cost-rate' && item.metadata?.billedSpend === 'true';
+}
+
 function needsSpendToday(lines: WidgetItem[][]): boolean {
-    return lines.some(line => line.some(item => SPEND_TODAY_WIDGET_TYPES.has(item.type)));
+    return lines.some(line => line.some(item => SPEND_TODAY_WIDGET_TYPES.has(item.type) || isBilledDailyCostRate(item)));
 }
 
 // Today's spend needs the month-to-date total, the login it belongs to (the
@@ -254,7 +265,7 @@ function isFromCurrentBlock(apiData: UsageData): boolean {
 }
 
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
-    return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
+    return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type) || isBilledDailyCostRate(item)));
 }
 
 function isUsageCursorEnabled(item: WidgetItem): boolean {
@@ -271,6 +282,10 @@ function getUsageFieldRequirements(lines: WidgetItem[][]): UsageFieldRequirement
             const cursorRequirement = USAGE_CURSOR_REQUIREMENTS[item.type];
             if (cursorRequirement && isUsageCursorEnabled(item)) {
                 requirements.push(cursorRequirement);
+            }
+
+            if (isBilledDailyCostRate(item)) {
+                requirements.push(...BILLED_SPEND_REQUIREMENTS);
             }
 
             if (readsSessionLimit(item)) {

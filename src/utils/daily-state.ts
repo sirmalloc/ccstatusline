@@ -22,10 +22,28 @@ export interface SpendDayRecord {
     lastSeenAt: number;
 }
 
+/** A Claude Code session's cumulative cost and time, and where they stood when the UTC day began. */
+export interface SessionDayRecord {
+    lastSeenDay: string;
+    lastSeenAt: number;
+    /** When the session started, going by its duration. */
+    startedAt: number;
+    /** When the session was first seen, or seen again after Claude Code restarted its totals; its clock time counts from then. */
+    firstSeenAt: number;
+    /** When it was first seen, or seen again after a restart, on the day it was last seen; that day's starting point was taken then. */
+    dayFirstSeenAt: number;
+    cost: number;
+    apiMs: number;
+    dayStartCost: number;
+    dayStartApiMs: number;
+}
+
 export interface DailyState {
     version: typeof STATE_VERSION;
     /** Keyed by the login's account, or its token fingerprint until the account is known, so accounts never mix. */
     spend: Record<string, SpendDayRecord>;
+    /** Keyed by Claude Code profile (its CLAUDE_CONFIG_DIR), then by session id. */
+    sessions: Record<string, Record<string, SessionDayRecord>>;
 }
 
 export interface DailyStateDeps {
@@ -81,8 +99,47 @@ function isSpendDayRecord(value: unknown): value is SpendDayRecord {
         && isFiniteNumber(entry.lastSeenAt);
 }
 
+function isSessionDayRecord(value: unknown): value is SessionDayRecord {
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+
+    const entry = value as Record<string, unknown>;
+    return typeof entry.lastSeenDay === 'string'
+        && isFiniteNumber(entry.lastSeenAt)
+        && isFiniteNumber(entry.startedAt)
+        && isFiniteNumber(entry.firstSeenAt)
+        && isFiniteNumber(entry.dayFirstSeenAt)
+        && isFiniteNumber(entry.cost)
+        && isFiniteNumber(entry.apiMs)
+        && isFiniteNumber(entry.dayStartCost)
+        && isFiniteNumber(entry.dayStartApiMs);
+}
+
+function readSessions(value: unknown): DailyState['sessions'] {
+    const sessions: DailyState['sessions'] = {};
+    if (typeof value !== 'object' || value === null) {
+        return sessions;
+    }
+
+    for (const [profileKey, profile] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof profile !== 'object' || profile === null) {
+            continue;
+        }
+
+        const records: Record<string, SessionDayRecord> = {};
+        for (const [sessionId, record] of Object.entries(profile)) {
+            if (isSessionDayRecord(record)) {
+                records[sessionId] = record;
+            }
+        }
+        sessions[profileKey] = records;
+    }
+    return sessions;
+}
+
 function emptyState(): DailyState {
-    return { version: STATE_VERSION, spend: {} };
+    return { version: STATE_VERSION, spend: {}, sessions: {} };
 }
 
 /** Reads the state file. A missing or corrupt file, or an invalid record, reads as absent; never throws. */
@@ -93,7 +150,7 @@ export function readDailyState(deps: DailyStateDeps = defaultDeps): DailyState {
             return emptyState();
         }
 
-        const data = parsed as { version?: unknown; spend?: unknown };
+        const data = parsed as { version?: unknown; spend?: unknown; sessions?: unknown };
         if (data.version !== STATE_VERSION || typeof data.spend !== 'object' || data.spend === null) {
             return emptyState();
         }
@@ -105,7 +162,7 @@ export function readDailyState(deps: DailyStateDeps = defaultDeps): DailyState {
             }
         }
 
-        return { version: STATE_VERSION, spend };
+        return { version: STATE_VERSION, spend, sessions: readSessions(data.sessions) };
     } catch {
         return emptyState();
     }
@@ -118,7 +175,16 @@ function prune(state: DailyState, nowMs: number): DailyState {
     const spend = Object.fromEntries(
         Object.entries(state.spend).filter(([, entry]) => entry.lastSeenDay >= oldestKept)
     );
-    return { ...state, spend };
+    const sessions: DailyState['sessions'] = {};
+    for (const [profileKey, profile] of Object.entries(state.sessions)) {
+        const kept = Object.fromEntries(
+            Object.entries(profile).filter(([, entry]) => entry.lastSeenDay >= oldestKept)
+        );
+        if (Object.keys(kept).length > 0) {
+            sessions[profileKey] = kept;
+        }
+    }
+    return { ...state, spend, sessions };
 }
 
 // Another write's temp file this old has been left behind, not still being

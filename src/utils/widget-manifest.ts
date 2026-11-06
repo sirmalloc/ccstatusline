@@ -71,6 +71,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'session-clock', create: () => new widgets.SessionClockWidget() },
     { type: 'session-cost', create: () => new widgets.SessionCostWidget() },
     { type: 'session-cost-rate', create: () => new widgets.SessionCostRateWidget() },
+    { type: 'daily-cost-rate', create: () => new widgets.DailyCostRateWidget() },
     { type: 'block-timer', create: () => new widgets.BlockTimerWidget() },
     { type: 'terminal-width', create: () => new widgets.TerminalWidthWidget() },
     { type: 'version', create: () => new widgets.VersionWidget() },

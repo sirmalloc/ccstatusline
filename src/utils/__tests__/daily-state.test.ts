@@ -10,6 +10,7 @@ import {
 import type {
     DailyState,
     DailyStateDeps,
+    SessionDayRecord,
     SpendDayRecord
 } from '../daily-state';
 import {
@@ -79,6 +80,20 @@ function makeDeps(initial: string | null, now = NOW): DailyStateDeps & { files: 
     };
 }
 
+function sessionRecord(lastSeenDay: string): SessionDayRecord {
+    return {
+        lastSeenDay,
+        lastSeenAt: Date.parse(`${lastSeenDay}T12:00:00Z`),
+        startedAt: Date.parse(`${lastSeenDay}T10:00:00Z`),
+        firstSeenAt: Date.parse(`${lastSeenDay}T10:00:00Z`),
+        dayFirstSeenAt: Date.parse(`${lastSeenDay}T10:00:00Z`),
+        cost: 2.5,
+        apiMs: 600_000,
+        dayStartCost: 0,
+        dayStartApiMs: 0
+    };
+}
+
 function record(lastSeenDay: string, used = 1000): SpendDayRecord {
     return { day: lastSeenDay, baselineUsed: used, lastSeenDay, lastSeenUsed: used, lastSeenAt: Date.parse(`${lastSeenDay}T12:00:00Z`) };
 }
@@ -103,19 +118,19 @@ describe('daily state file', () => {
     });
 
     it('reads a missing file as empty state', () => {
-        expect(readDailyState(makeDeps(null))).toEqual({ version: 1, spend: {} });
+        expect(readDailyState(makeDeps(null))).toEqual({ version: 1, spend: {}, sessions: {} });
     });
 
     it('reads a corrupt file, another version, or invalid records as empty', () => {
-        expect(readDailyState(makeDeps('{not json'))).toEqual({ version: 1, spend: {} });
-        expect(readDailyState(makeDeps(JSON.stringify({ version: 2, spend: { a: record('2026-10-05') } })))).toEqual({ version: 1, spend: {} });
+        expect(readDailyState(makeDeps('{not json'))).toEqual({ version: 1, spend: {}, sessions: {} });
+        expect(readDailyState(makeDeps(JSON.stringify({ version: 2, spend: { a: record('2026-10-05') } })))).toEqual({ version: 1, spend: {}, sessions: {} });
         expect(readDailyState(makeDeps(JSON.stringify({
             version: 1,
             spend: {
                 good: record('2026-10-05'),
                 bad: { day: '2026-10-05', baselineUsed: 'lots' }
             }
-        })))).toEqual({ version: 1, spend: { good: record('2026-10-05') } });
+        })))).toEqual({ version: 1, spend: { good: record('2026-10-05') }, sessions: {} });
     });
 
     it('writes through a temp file and rename, and reads the result back', () => {
@@ -125,7 +140,7 @@ describe('daily state file', () => {
 
         expect(ran).toBe(true);
         expect([...deps.files.keys()]).toEqual([STATE_PATH]);
-        expect(readDailyState(deps)).toEqual({ version: 1, spend: { acct: record('2026-10-05', 12345) } });
+        expect(readDailyState(deps)).toEqual({ version: 1, spend: { acct: record('2026-10-05', 12345) }, sessions: {} });
     });
 
     it('removes the temp file when the rename fails, keeping the old state', () => {
@@ -200,12 +215,41 @@ describe('daily state file', () => {
                 today: record('2026-10-05'),
                 yesterday: record('2026-10-04'),
                 stale: record('2026-10-03')
-            }
+            },
+            sessions: {}
         };
 
         updateDailyState(() => state, deps);
 
         expect(Object.keys(readDailyState(deps).spend).sort()).toEqual(['today', 'yesterday']);
+    });
+
+    it('reads sessions per profile and drops invalid session records', () => {
+        const session = sessionRecord('2026-10-05');
+
+        expect(readDailyState(makeDeps(JSON.stringify({
+            version: 1,
+            spend: {},
+            sessions: {
+                default: { good: session, bad: { lastSeenDay: '2026-10-05', cost: 'free' } },
+                broken: 'not an object'
+            }
+        }))).sessions).toEqual({ default: { good: session } });
+    });
+
+    it('drops sessions last seen before yesterday, and profiles left empty, when writing', () => {
+        const deps = makeDeps(null);
+
+        updateDailyState(() => ({
+            version: 1,
+            spend: {},
+            sessions: {
+                default: { today: sessionRecord('2026-10-05'), stale: sessionRecord('2026-10-03') },
+                old: { stale: sessionRecord('2026-10-02') }
+            }
+        }), deps);
+
+        expect(readDailyState(deps).sessions).toEqual({ default: { today: sessionRecord('2026-10-05') } });
     });
 
     it('skips the update while another writer holds a fresh lock', () => {
