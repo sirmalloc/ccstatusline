@@ -2615,6 +2615,21 @@ describe('fetchUsageData keychain reads on macOS', () => {
         seven_day: { utilization: 21, resets_at: '2030-01-08T00:00:00.000Z' }
     });
     const rateLimitedFetch = { mode: 'status', statusCode: 429, responseHeaders: { 'retry-after': '300' } } as const;
+    // A render of Extra Usage Today, which also asks the profile endpoint
+    // which account the login belongs to
+    const accountLookup: Partial<ProbeOptions> = {
+        requiredFields: ['extraUsageEnabled', 'extraUsageUsed'],
+        responseBody: JSON.stringify({
+            five_hour: { utilization: 42, resets_at: '2030-01-01T00:00:00.000Z' },
+            seven_day: { utilization: 17, resets_at: '2030-01-07T00:00:00.000Z' },
+            extra_usage: { is_enabled: true, monthly_limit: 20000, used_credits: 10000, utilization: 50, currency: 'USD' }
+        }),
+        target: 'usage-account'
+    };
+    const profileFound: ProbeReply = {
+        mode: 'success',
+        responseBody: JSON.stringify({ account: { uuid: 'account-uuid' }, organization: { uuid: 'organization-uuid' } })
+    };
 
     function createRenderer(harness: ReturnType<typeof createProbeHarness>, home: string, keychain: KeychainStub) {
         return (nowMs: number, options: Partial<ProbeOptions> = {}) => harness.runProbe({
@@ -3203,6 +3218,80 @@ describe('fetchUsageData keychain reads on macOS', () => {
             const fetched = renderAt(startMs + 501000, { responseBody: accountBResponseBody });
             expect(fetched.requestCount).toBe(1);
             expect(fetched.first.sessionUsage).toBe(55);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('names the account on a render the fresh cache answers, without running security', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-cached');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            const first = renderAt(startMs, { ...accountLookup, profileReply: profileFound });
+            expect((first.first as { account: { key: string } | null }).account?.key).toMatch(/^account:[0-9a-f]{16}$/);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            const cached = renderAt(startMs + 10000, { ...accountLookup, mode: 'unexpected' });
+            expect(cached.first).toEqual(first.first);
+            expect(cached.accountKey).toBe(fingerprint('refresh-a'));
+            expect(cached.requestCount).toBe(0);
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads the keychain once for an account lookup still to be made on a render the fresh cache answers', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-lookup');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            // The lookup fails, which holds it off for 30 seconds
+            expect(renderAt(startMs, { ...accountLookup, profileReply: { mode: 'error' } }).first).toEqual({ account: null });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // Past that, with the usage cache still fresh
+            const named = renderAt(startMs + 40000, { ...accountLookup, profileReply: profileFound });
+            expect((named.first as { account: { key: string } | null }).account?.key).toMatch(/^account:[0-9a-f]{16}$/);
+            expect(named.requestPaths).toEqual(['/api/oauth/profile']);
+            expect(named.profileAuthorization).toBe('Bearer access-a');
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM, FIND_DEFAULT_ITEM]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reads no keychain item for an account lookup that a failed one holds off', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const { home } = harness.createEmptyHome('keychain-account-held-off');
+            const keychain = createKeychainStub(home);
+            keychain.setItem(DEFAULT_KEYCHAIN_SERVICE, { accessToken: 'access-a', refreshToken: 'refresh-a' });
+            const renderAt = createRenderer(harness, home, keychain);
+            const startMs = Date.now();
+
+            expect(renderAt(startMs, { ...accountLookup, profileReply: { mode: 'error' } }).first).toEqual({ account: null });
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
+
+            // Served from the fresh cache while the failed lookup holds the login off
+            for (const offsetMs of [5000, 10000, 20000]) {
+                const result = renderAt(startMs + offsetMs, { ...accountLookup, mode: 'unexpected' });
+                expect(result.first).toEqual({ account: null });
+                expect(result.requestCount).toBe(0);
+            }
+            expect(keychain.calls()).toEqual([FIND_DEFAULT_ITEM]);
         } finally {
             harness.cleanup();
         }
