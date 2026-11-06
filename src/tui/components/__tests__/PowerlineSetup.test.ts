@@ -22,6 +22,7 @@ import {
     PowerlineSetup,
     buildPowerlineSetupMenuItems,
     getCapDisplay,
+    getFontInstallMessageColor,
     getSeparatorDisplay,
     getThemeDisplay,
     type PowerlineSetupProps
@@ -85,6 +86,22 @@ describe('PowerlineSetup helpers', () => {
         expect(getCapDisplay(config, 'start')).toBe('\uE0B2 - Triangle');
         expect(getCapDisplay(config, 'end')).toBe('\uE0B0 - Triangle');
         expect(getThemeDisplay(config)).toBe('Gruvbox');
+    });
+
+    // The Windows success message doesn't say "success"
+    it('colors a font install message by whether the install worked', () => {
+        expect(getFontInstallMessageColor({
+            success: true,
+            message: 'Installed 3 Powerline fonts. Please restart your terminal and select a Powerline font from your terminal settings.'
+        })).toBe('green');
+        expect(getFontInstallMessageColor({
+            success: true,
+            message: 'Powerline fonts installed successfully! Please restart your terminal and select a Powerline font'
+        })).toBe('green');
+        expect(getFontInstallMessageColor({
+            success: false,
+            message: 'Failed to install Powerline fonts: No fonts were installed. You can manually install fonts from: https://github.com/powerline/fonts'
+        })).toBe('red');
     });
 
     it('builds powerline setup items with disabled states and sublabels', () => {
@@ -172,6 +189,318 @@ describe('PowerlineSetup helpers', () => {
             const updatedSettings = onUpdate.mock.calls[0]?.[0];
             expect(updatedSettings).toBeDefined();
             expect(updatedSettings?.powerline.continueThemeAcrossLines).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('keeps a chosen Custom theme when (t) turns Powerline off and on again', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Each update is drawn again with the new settings, as the app does
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>((settings) => {
+            instance.rerender(React.createElement(PowerlineSetup, { ...props, settings }));
+        });
+        const props: PowerlineSetupProps = {
+            settings: {
+                ...DEFAULT_SETTINGS,
+                lines: [[{ id: '1', type: 'model', color: 'red', backgroundColor: 'bgYellow' }]],
+                powerline: {
+                    ...DEFAULT_SETTINGS.powerline,
+                    enabled: true,
+                    theme: 'custom'
+                }
+            },
+            powerlineFontStatus: { installed: true },
+            onUpdate,
+            onBack: vi.fn(),
+            onInstallFonts: vi.fn(),
+            installingFonts: false,
+            fontInstallMessage: null,
+            onClearMessage: vi.fn()
+        };
+        const instance = render(
+            React.createElement(PowerlineSetup, props),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✓ Enabled');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✗ Disabled');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalledTimes(2);
+            });
+
+            const updatedSettings = onUpdate.mock.calls[1]?.[0];
+            expect(updatedSettings?.powerline.enabled).toBe(true);
+            expect(updatedSettings?.powerline.theme).toBe('custom');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it.each([
+        ['unset', undefined, ''],
+        ['none', '', ''],
+        ['two spaces', '  ', '  ']
+    ])('restores the default padding (%s) when (t) turns Powerline on and off again', async (_name, padding, restored) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Each update is drawn again with the new settings, as the app does
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>((settings) => {
+            instance.rerender(React.createElement(PowerlineSetup, { ...props, settings }));
+        });
+        const props: PowerlineSetupProps = {
+            settings: {
+                ...DEFAULT_SETTINGS,
+                lines: [[{ id: '1', type: 'model' }, { id: '2', type: 'context-length' }]],
+                defaultSeparator: '|',
+                defaultPadding: padding
+            },
+            powerlineFontStatus: { installed: true },
+            onUpdate,
+            onBack: vi.fn(),
+            onInstallFonts: vi.fn(),
+            installingFonts: false,
+            fontInstallMessage: null,
+            onClearMessage: vi.fn()
+        };
+        const instance = render(
+            React.createElement(PowerlineSetup, props),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✗ Disabled');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✓ Enabled');
+            });
+            expect(onUpdate.mock.calls[0]?.[0].defaultPadding).toBe(' ');
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalledTimes(2);
+            });
+
+            const updatedSettings = onUpdate.mock.calls[1]?.[0];
+            expect(updatedSettings?.powerline.enabled).toBe(false);
+            expect(updatedSettings?.defaultPadding).toBe(restored);
+            expect(updatedSettings?.powerline.paddingToRestore).toBeUndefined();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    // A padding set while Powerline was on is the user's own choice
+    it('keeps a default padding changed since Powerline was turned on when (t) turns it off', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>();
+        const instance = render(
+            React.createElement(PowerlineSetup, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    defaultPadding: '  ',
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: 'nord-aurora',
+                        paddingToRestore: ''
+                    }
+                },
+                powerlineFontStatus: { installed: true },
+                onUpdate,
+                onBack: vi.fn(),
+                onInstallFonts: vi.fn(),
+                installingFonts: false,
+                fontInstallMessage: null,
+                onClearMessage: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✓ Enabled');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings?.powerline.enabled).toBe(false);
+            expect(updatedSettings?.defaultPadding).toBe('  ');
+            expect(updatedSettings?.powerline.paddingToRestore).toBeUndefined();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    // Turning Powerline on with manual separators asks first; the separators,
+    // a chosen Custom theme and the padding from before all come back with it off
+    it('keeps manual separators, a Custom theme and the default padding when (t) turns Powerline on and off again', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Each update is drawn again with the new settings, as the app does
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>((settings) => {
+            instance.rerender(React.createElement(PowerlineSetup, { ...props, settings }));
+        });
+        const props: PowerlineSetupProps = {
+            settings: {
+                ...DEFAULT_SETTINGS,
+                lines: [[{ id: '1', type: 'model' }, { id: '2', type: 'separator' }, { id: '3', type: 'context-length' }]],
+                defaultPadding: '  ',
+                powerline: {
+                    ...DEFAULT_SETTINGS.powerline,
+                    enabled: false,
+                    theme: 'custom'
+                }
+            },
+            powerlineFontStatus: { installed: true },
+            onUpdate,
+            onBack: vi.fn(),
+            onInstallFonts: vi.fn(),
+            installingFonts: false,
+            fontInstallMessage: null,
+            onClearMessage: vi.fn()
+        };
+        const instance = render(
+            React.createElement(PowerlineSetup, props),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✗ Disabled');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Do you want to continue?');
+            });
+
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('✓ Enabled');
+            });
+            const enabledSettings = onUpdate.mock.calls[0]?.[0];
+            expect(enabledSettings?.lines[0]?.map(item => item.type)).toEqual(['model', 'separator', 'context-length']);
+            expect(enabledSettings?.powerline.theme).toBe('custom');
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalledTimes(2);
+            });
+
+            const disabledSettings = onUpdate.mock.calls[1]?.[0];
+            expect(disabledSettings?.powerline.enabled).toBe(false);
+            expect(disabledSettings?.lines[0]?.map(item => item.type)).toEqual(['model', 'separator', 'context-length']);
+            expect(disabledSettings?.powerline.theme).toBe('custom');
+            expect(disabledSettings?.defaultPadding).toBe('  ');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('shows the font install result it is given', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(PowerlineSetup, {
+                settings: DEFAULT_SETTINGS,
+                powerlineFontStatus: { installed: true },
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                onInstallFonts: vi.fn(),
+                installingFonts: false,
+                fontInstallMessage: {
+                    success: true,
+                    message: 'Installed 3 Powerline fonts. Please restart your terminal and select a Powerline font from your terminal settings.'
+                },
+                onClearMessage: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Installed 3 Powerline fonts.');
+                expect(stdout.getOutput()).toContain('Press any key to continue...');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();

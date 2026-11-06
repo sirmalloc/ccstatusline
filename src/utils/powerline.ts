@@ -156,12 +156,62 @@ export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
     }
 }
 
+export interface FontInstallResult {
+    success: boolean;
+    message: string;
+}
+
+// Only git failing to start means it isn't installed. A clone that fails
+// offline or behind a proxy names git in its error too
+function isGitMissing(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) {
+        return false;
+    }
+    const { code, path: command } = error as NodeJS.ErrnoException;
+    return code === 'ENOENT' && command === 'git';
+}
+
+// git's own error lines in English, such as "fatal: unable to access ...:
+// Could not resolve host"
+const GIT_ERROR_LINE = /^(?:fatal|error):/;
+
+// Why the install failed, as a sentence. A failed command's error repeats its
+// whole command line and output, so this is the signal that stopped it, or
+// one line of its stderr: git's first error line, or else its first line
+// that doesn't name the temp folder, such as the macOS git stub's "No
+// developer tools were found" when the Command Line Tools aren't installed.
+// That skips git's progress line, "Cloning into '<temp folder>'...", which
+// git translates, as it does its error prefixes
+function describeInstallError(error: unknown, command: string, tempDir: string | undefined): string {
+    const failure = typeof error === 'object' && error !== null
+        ? error as { signal?: unknown; stderr?: unknown }
+        : undefined;
+    let reason = error instanceof Error ? error.message : String(error);
+    if (typeof failure?.signal === 'string') {
+        reason = `${command} was stopped by ${failure.signal}`;
+    } else if (typeof failure?.stderr === 'string') {
+        const lines = failure.stderr.split('\n')
+            .map(line => line.trim())
+            .filter(line => line !== '');
+        reason = lines.find(line => GIT_ERROR_LINE.test(line))
+            ?? lines.find(line => tempDir === undefined || !line.includes(tempDir))
+            ?? reason;
+    }
+
+    return /[.!?]$/.test(reason) ? reason : `${reason}.`;
+}
+
 /**
  * Install Powerline fonts on the system
  */
-export async function installPowerlineFonts(): Promise<{ success: boolean; message: string }> {
+export async function installPowerlineFonts(): Promise<FontInstallResult> {
     // Ensure this is always async
     await Promise.resolve();
+
+    // The command running now, named if a signal stops it
+    let command = 'git';
+    // The folder the fonts are cloned into, named by git's progress line
+    let tempDir: string | undefined;
 
     try {
         const platform = os.platform();
@@ -196,7 +246,7 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
         // A new folder only this account can use for the download: os.tmpdir()
         // is shared on Linux, and a folder another account created first would
         // let it swap install.sh between the clone and running it
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-powerline-fonts-'));
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-powerline-fonts-'));
 
         try {
             // Clone Powerline fonts repository
@@ -219,6 +269,7 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     fs.chmodSync(installScript, 0o755);
 
                     // Run install script
+                    command = 'install.sh';
                     execFileSync(installScript, [], {
                         cwd: tempDir,
                         stdio: 'pipe',
@@ -309,10 +360,7 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
             }
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Provide helpful error messages
-        if (errorMessage.includes('git')) {
+        if (isGitMissing(error)) {
             return {
                 success: false,
                 message: 'Git is required to install Powerline fonts. Please install Git and try again.'
@@ -321,7 +369,7 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
 
         return {
             success: false,
-            message: `Failed to install Powerline fonts: ${errorMessage}. You can manually install fonts from: https://github.com/powerline/fonts`
+            message: `Failed to install Powerline fonts: ${describeInstallError(error, command, tempDir)} You can manually install fonts from: https://github.com/powerline/fonts`
         };
     }
 }

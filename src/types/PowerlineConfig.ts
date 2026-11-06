@@ -8,6 +8,8 @@ export const PowerlineConfigSchema = z.object({
     startCaps: z.array(z.string()).default([]),
     endCaps: z.array(z.string()).default([]),
     theme: z.string().optional(),
+    // The Default Padding that turning Powerline on replaced, put back when it's turned off
+    paddingToRestore: z.string().optional(),
     autoAlign: z.boolean().default(false),
     continueThemeAcrossLines: z.boolean().default(false)
 });

@@ -122,6 +122,7 @@ Configure global formatting preferences that apply to all widgets:
 
 - **Default Padding** - Add consistent padding around each widget
 - **Padding Side** - Choose whether default padding applies to **Both** sides (default), **Left only**, or **Right only**
+- Turning Powerline on sets Default Padding to one space. Turning Powerline off puts back the padding from before, unless you changed it while Powerline was on.
 - **Default Separator** - Automatically insert a separator between all widgets
   - Press **(p)** to edit padding
   - Press **(d)** to cycle padding side
