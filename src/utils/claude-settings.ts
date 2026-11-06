@@ -357,8 +357,9 @@ function escapesNextCharacter(command: string, index: number, quote: string | nu
 
 // Splits a command into the words a POSIX shell passes on, undoing
 // quotePathIfNeeded: whitespace separates words, quotes group them, and a
-// backslash escapes the next character. On Windows only double quotes group,
-// and a backslash is a path separator.
+// backslash escapes the next character. Expand home references while their
+// quote/escape context is available. On Windows only double quotes group,
+// a backslash is a path separator, and POSIX home references stay literal.
 function splitCommandWords(command: string): string[] {
     const posix = process.platform !== 'win32';
     const words: string[] = [];
@@ -380,6 +381,17 @@ function splitCommandWords(command: string): string[] {
         } else if (posix && escapesNextCharacter(command, index, quote)) {
             index++;
             word = (word ?? '') + command.charAt(index);
+        } else if (posix && char === '~' && quote === null && word === null
+            && (index + 1 === command.length || /[\s/]/.test(command.charAt(index + 1)))) {
+            word = os.homedir();
+        } else if (posix && char === '$' && quote !== '\'') {
+            const homeReference = /^\$(?:HOME(?![a-zA-Z0-9_])|\{HOME\})/.exec(command.slice(index));
+            if (homeReference) {
+                word = (word ?? '') + os.homedir();
+                index += homeReference[0].length - 1;
+            } else {
+                word = (word ?? '') + char;
+            }
         } else {
             word = (word ?? '') + char;
         }
@@ -389,13 +401,6 @@ function splitCommandWords(command: string): string[] {
         words.push(word);
     }
     return words;
-}
-
-// The home directory a shell puts in for a leading ~ and for $HOME
-function expandHome(filePath: string): string {
-    return filePath
-        .replace(/^~(?=$|[\\/])/, () => os.homedir())
-        .replace(/\$(?:HOME\b|\{HOME\})/g, () => os.homedir());
 }
 
 /**
@@ -414,7 +419,7 @@ export function getStatusLineConfigPath(command: string): string | null {
 
     const configPath = words[index + 1];
     return configPath && !configPath.startsWith('--')
-        ? resolveConfigPath(expandHome(configPath))
+        ? resolveConfigPath(configPath)
         : null;
 }
 

@@ -378,6 +378,23 @@ describe('buildCommand via installStatusLine', () => {
         ]);
     });
 
+    it('installs hooks for a config path containing a literal $HOME', async () => {
+        const configPath = path.join(testClaudeConfigDir, '$HOME', 'settings.json');
+        config.initConfigPath(configPath);
+        fs.mkdirSync(path.dirname(configPath));
+        fs.writeFileSync(configPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }]]
+        }));
+
+        await installStatusLine({ commandMode: 'global' });
+
+        const claudeSettings = await loadClaudeSettings();
+        const hooks = (claudeSettings.hooks ?? {}) as Record<string, unknown[]>;
+        expect(hooks.PreToolUse).toHaveLength(1);
+        expect(hooks.UserPromptSubmit).toHaveLength(1);
+    });
+
     it('should sync hooks from the final global statusline command', async () => {
         const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
         config.initConfigPath(configPath);
@@ -428,16 +445,40 @@ describe('getStatusLineConfigPath', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
         const getConfigPath = vi.spyOn(config, 'getConfigPath');
 
-        for (const configPath of ['/tmp/settings.json', '/my path/settings.json', '/my\'path/settings.json', '/a "b" $c `d` \\e/settings.json']) {
+        for (const configPath of ['/tmp/settings.json', '/my path/settings.json', '/my\'path/settings.json', '/a "b" $c `d` \\e/settings.json', '/tmp/$HOME/settings.json', '/tmp/${HOME}/settings.json']) {
             getConfigPath.mockReturnValue(configPath);
             expect(getStatusLineConfigPath(buildStatusLineCommand('auto-npx'))).toBe(configPath);
         }
+    });
+
+    it.each([
+        ['\'~/a.json\'', '~/a.json'],
+        ['"~/a.json"', '~/a.json'],
+        ['\\~/a.json', '~/a.json'],
+        ['\'$HOME/a.json\'', '$HOME/a.json'],
+        ['\'${HOME}/a.json\'', '${HOME}/a.json'],
+        ['\\$HOME/a.json', '$HOME/a.json'],
+        ['"\\$HOME/a.json"', '$HOME/a.json'],
+        ['"\\${HOME}/a.json"', '${HOME}/a.json'],
+        ['""~/a.json', '~/a.json'],
+        ['$HOME_suffix/a.json', '$HOME_suffix/a.json'],
+        ['$HOME2/a.json', '$HOME2/a.json']
+    ])('keeps literal home references in %s', (argument, expected) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        expect(getStatusLineConfigPath(`ccstatusline --config ${argument}`)).toBe(path.resolve(expected));
+    });
+
+    it.each(['$HOME', '${HOME}', '"$HOME"', '"${HOME}"', '~'])('expands unescaped %s with mixed quoting', (homeReference) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        expect(getStatusLineConfigPath(`ccstatusline --config ${homeReference}/'my configs/$HOME'/a.json`))
+            .toBe(path.join(os.homedir(), 'my configs', '$HOME', 'a.json'));
     });
 
     it('keeps the backslashes of a Windows path', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
 
         expect(getStatusLineConfigPath('ccstatusline --config "C:\\Users\\me\\my configs\\a.json"')).toBe(path.resolve('C:\\Users\\me\\my configs\\a.json'));
+        expect(getStatusLineConfigPath('ccstatusline --config "C:\\$HOME\\a.json"')).toBe(path.resolve('C:\\$HOME\\a.json'));
     });
 });
 
