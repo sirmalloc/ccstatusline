@@ -188,8 +188,12 @@ export function listRemotes(context: RenderContext): string[] {
     return output.split('\n').filter(Boolean);
 }
 
+// A forge cloned over plain HTTP (a LAN Gitea on :3000, say) serves its web
+// pages the same way, on the host:port parseRemoteUrl kept; https there would
+// fail the TLS handshake. Every other transport links to https.
 export function buildRepoWebUrl(remote: RemoteInfo): string {
-    return `https://${remote.host}/${remote.owner}/${remote.repo}`;
+    const scheme = remote.url.trim().toLowerCase().startsWith('http://') ? 'http' : 'https';
+    return `${scheme}://${remote.host}/${remote.owner}/${remote.repo}`;
 }
 
 // GitLab redirects /tree/<branch> to its canonical /-/tree/<branch>, so one

@@ -298,11 +298,6 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     throw new Error('No fonts were installed');
                 }
             }
-
-            return {
-                success: false,
-                message: 'Platform-specific installation not implemented'
-            };
         } finally {
             // Clean up temporary directory
             if (fs.existsSync(tempDir)) {

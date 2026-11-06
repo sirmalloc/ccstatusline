@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { ColorLevelSchema } from './ColorLevel';
-import { FlexModeSchema } from './FlexMode';
 import { GlobalNumberFormatSchema } from './NumberFormat';
 import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
@@ -35,8 +34,6 @@ export const InstallationMetadataSchema = z.discriminatedUnion('method', [
 // Schema for v1 settings (before version field was added)
 export const SettingsSchema_v1 = z.object({
     lines: z.array(z.array(WidgetItemSchema)).optional(),
-    flexMode: FlexModeSchema.optional(),
-    compactThreshold: z.number().optional(),
     colorLevel: ColorLevelSchema.optional(),
     defaultSeparator: z.string().optional(),
     defaultPadding: z.string().optional(),
@@ -64,8 +61,6 @@ export const SettingsSchema = z.object({
             [],
             []
         ]), // Ensure max 3 lines
-    flexMode: FlexModeSchema.default('full'),
-    compactThreshold: z.number().min(1).max(99).default(60),
     colorLevel: ColorLevelSchema.default(2),
     defaultSeparator: z.string().optional(),
     defaultPadding: z.string().optional(),

@@ -42,8 +42,6 @@
       }
     ]
   ],
-  "flexMode": "full-until-compact",
-  "compactThreshold": 75,
   "colorLevel": 2,
   "defaultSeparator": "|",
   "inheritSeparatorColors": false,

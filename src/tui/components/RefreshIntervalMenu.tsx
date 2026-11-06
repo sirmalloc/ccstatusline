@@ -19,9 +19,13 @@ function getRefreshInputValue(interval: number | null): string {
     return interval === null ? '' : String(interval);
 }
 
-function getRefreshIntervalSublabel(interval: number | null, supported: boolean): string {
+function getRefreshIntervalSublabel(interval: number | null, supported: boolean, installed: boolean): string {
     if (!supported) {
         return '(requires Claude Code >=2.1.97)';
+    }
+
+    if (!installed) {
+        return '(install first)';
     }
 
     if (interval === null) {
@@ -43,19 +47,22 @@ function getCacheTtlSublabel(ttlSeconds: number): string {
         : `(${ttlSeconds}s)`;
 }
 
+// The refresh interval is part of Claude Code's statusLine setting, so it waits
+// for an install; the cache TTLs are ccstatusline's own settings.
 export function buildConfigureStatusLineItems(
     refreshInterval: number | null,
     supportsRefreshInterval: boolean,
     gitCacheTtlSeconds: number,
     customCommandCacheTtlSeconds: number,
-    terminalWidthCacheTtlSeconds: number
+    terminalWidthCacheTtlSeconds: number,
+    isClaudeInstalled = true
 ): ListEntry<ConfigureStatusLineValue>[] {
     return [
         {
             label: '🔄 Refresh Interval',
-            sublabel: getRefreshIntervalSublabel(refreshInterval, supportsRefreshInterval),
+            sublabel: getRefreshIntervalSublabel(refreshInterval, supportsRefreshInterval, isClaudeInstalled),
             value: 'refreshInterval',
-            disabled: !supportsRefreshInterval,
+            disabled: !supportsRefreshInterval || !isClaudeInstalled,
             description: supportsRefreshInterval
                 ? 'How often Claude Code refreshes the status line by re-running the command. Enter value in seconds (1-60), or leave empty to remove.'
                 : 'This setting requires Claude Code version 2.1.97 or later. Please update Claude Code to use this feature.'
@@ -146,6 +153,9 @@ interface TtlFieldConfig {
 export interface RefreshIntervalMenuProps {
     currentInterval: number | null;
     supportsRefreshInterval: boolean;
+    // Whether Claude Code's status line is ccstatusline's own install, which
+    // the refresh interval needs
+    isClaudeInstalled?: boolean;
     gitCacheTtlSeconds: number;
     customCommandCacheTtlSeconds: number;
     terminalWidthCacheTtlSeconds: number;
@@ -159,6 +169,7 @@ export interface RefreshIntervalMenuProps {
 export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     currentInterval,
     supportsRefreshInterval,
+    isClaudeInstalled = true,
     gitCacheTtlSeconds,
     customCommandCacheTtlSeconds,
     terminalWidthCacheTtlSeconds,
@@ -173,6 +184,8 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
     const [ttlInput, setTtlInput] = useState(() => String(gitCacheTtlSeconds));
     const [validationError, setValidationError] = useState<string | null>(null);
+    // A prompt unmounts the List, so it comes back on the row that opened it
+    const [selectedItem, setSelectedItem] = useState(0);
 
     const ttlFields: Record<TtlField, TtlFieldConfig> = {
         gitCacheTtl: {
@@ -329,7 +342,8 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         supportsRefreshInterval,
                         gitCacheTtlSeconds,
                         customCommandCacheTtlSeconds,
-                        terminalWidthCacheTtlSeconds
+                        terminalWidthCacheTtlSeconds,
+                        isClaudeInstalled
                     )}
                     onSelect={(value) => {
                         if (value === 'back') {
@@ -346,6 +360,10 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         setTtlInput(String(ttlFields[value].currentValue));
                         setEditingTtlField(value);
                     }}
+                    onSelectionChange={(_, index) => {
+                        setSelectedItem(index);
+                    }}
+                    initialSelection={selectedItem}
                     showBackButton={true}
                 />
             )}
