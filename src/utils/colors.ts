@@ -6,7 +6,8 @@ import {
     applyGradientToText,
     isGradientSpec,
     parseGradientSpec,
-    rgbToAnsi256
+    rgbToAnsi256,
+    type Rgb
 } from './gradient';
 
 // Re-export for backward compatibility
@@ -135,27 +136,17 @@ export function applyParensDim(text: string, bold?: boolean): string {
     return text.replace(/\([^()]*\)/g, span => `\x1b[2m${span}${intensityReset}`);
 }
 
-export function applyColors(
-    text: string,
-    foregroundColor?: string,
-    backgroundColor?: string,
-    bold?: boolean,
-    colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16',
-    dim?: boolean | 'parens'
-): string {
-    const styledText = dim === 'parens' ? applyParensDim(text, bold) : text;
-
-    if (!foregroundColor && !backgroundColor && !bold && dim !== true) {
-        return styledText;
-    }
-
-    // Use raw ANSI codes for precise reset sequencing.
-    // This avoids style leakage (for example, bold affecting later widgets).
+// The parts of a style that wrap the text whatever its foreground: bold/dim
+// first, so they can be reset independently before color resets (a single
+// \x1b[22m clears both), then the background
+function getStyleWrap(
+    backgroundColor: string | undefined,
+    bold: boolean | undefined,
+    dim: boolean | 'parens' | undefined,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): { prefix: string; suffix: string } {
     let prefix = '';
     let suffix = '';
-
-    // Apply bold/dim first so they can be reset independently before color
-    // resets. A single \x1b[22m clears both attributes.
     if (bold) {
         prefix += '\x1b[1m';
     }
@@ -163,17 +154,37 @@ export function applyColors(
         prefix += '\x1b[2m';
     }
     if (bold || dim === true) {
-        suffix = '\x1b[22m' + suffix;
+        suffix = '\x1b[22m';
     }
 
-    // Apply background color
-    if (backgroundColor) {
-        const bgCode = getColorAnsiCode(backgroundColor, colorLevel, true);
-        if (bgCode) {
-            prefix += bgCode;
-            suffix = '\x1b[49m' + suffix;
-        }
+    const bgCode = backgroundColor ? getColorAnsiCode(backgroundColor, colorLevel, true) : '';
+    if (bgCode) {
+        prefix += bgCode;
+        suffix = '\x1b[49m' + suffix;
     }
+    return { prefix, suffix };
+}
+
+export function applyColors(
+    text: string,
+    foregroundColor?: string,
+    backgroundColor?: string,
+    bold?: boolean,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16',
+    dim?: boolean | 'parens',
+    // The text colors some runs itself (Widget.colorsOnlyItsRuns), so the
+    // foreground goes around those runs instead of over them
+    keepColoredRuns = false
+): string {
+    let styledText = dim === 'parens' ? applyParensDim(text, bold) : text;
+
+    if (!foregroundColor && !backgroundColor && !bold && dim !== true) {
+        return styledText;
+    }
+
+    // Use raw ANSI codes for precise reset sequencing.
+    // This avoids style leakage (for example, bold affecting later widgets).
+    let { prefix, suffix } = getStyleWrap(backgroundColor, bold, dim, colorLevel);
 
     // Apply foreground color
     if (foregroundColor) {
@@ -184,17 +195,61 @@ export function applyColors(
         // as the prefix guard.
         const gradientStops = parseGradientSpec(foregroundColor);
         if (gradientStops && colorLevel !== 'ansi16') {
-            return prefix + applyGradientToText(styledText, gradientStops, colorLevel) + '\x1b[39m' + suffix;
+            return prefix + applyGradientToText(styledText, gradientStops, colorLevel, keepColoredRuns) + '\x1b[39m' + suffix;
         }
 
         const fgCode = getColorAnsiCode(foregroundColor, colorLevel, false);
         if (fgCode) {
             prefix += fgCode;
             suffix = '\x1b[39m' + suffix;
+            if (keepColoredRuns) {
+                styledText = restoreForegroundAfterRuns(styledText, fgCode);
+            }
         }
     }
 
     return prefix + styledText + suffix;
+}
+
+// Widget text can color part of itself, ending each colored run with the
+// default-foreground code. Inside a colored widget that code would drop the rest
+// of the text to the terminal's default color, so it becomes the widget's own
+// foreground instead.
+export function restoreForegroundAfterRuns(text: string, foregroundCode: string): string {
+    return text.split('\x1b[39m').join(foregroundCode);
+}
+
+// The 256-color palette past the 16 basic colors: a 6x6x6 color cube (16-231)
+// and 24 grays (232-255), at xterm's values
+const CUBE_LEVELS = [0, 95, 135, 175, 215, 255];
+
+function getAnsi256Rgb(code: number): Rgb {
+    if (code >= 232) {
+        const level = 8 + 10 * (code - 232);
+        return { r: level, g: level, b: level };
+    }
+    const offset = code - 16;
+    return {
+        r: CUBE_LEVELS[Math.floor(offset / 36)] ?? 0,
+        g: CUBE_LEVELS[Math.floor(offset / 6) % 6] ?? 0,
+        b: CUBE_LEVELS[offset % 6] ?? 0
+    };
+}
+
+// The palette color closest to an RGB value. The 16 basic colors aren't
+// candidates: terminals theme them, so their real values are unknown
+function nearestAnsi256(rgb: Rgb): number {
+    let nearest = 16;
+    let nearestDistance = Infinity;
+    for (let code = 16; code < 256; code++) {
+        const entry = getAnsi256Rgb(code);
+        const distance = (entry.r - rgb.r) ** 2 + (entry.g - rgb.g) ** 2 + (entry.b - rgb.b) ** 2;
+        if (distance < nearestDistance) {
+            nearest = code;
+            nearestDistance = distance;
+        }
+    }
+    return nearest;
 }
 
 // Get raw ANSI codes for a color without the reset codes
@@ -238,13 +293,18 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
         return '';
     }
 
-    // Handle hex:XXXXXX format
+    // Handle hex:XXXXXX format. At ansi256, draw the nearest palette color, so
+    // 256-color terminals get no truecolor escapes from a hex color.
     if (colorName.startsWith('hex:')) {
         const hex = colorName.substring(4);
         if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
             const r = Number.parseInt(hex.substring(0, 2), 16);
             const g = Number.parseInt(hex.substring(2, 4), 16);
             const b = Number.parseInt(hex.substring(4, 6), 16);
+            if (colorLevel === 'ansi256') {
+                const code = nearestAnsi256({ r, g, b });
+                return isBackground ? `\x1b[48;5;${code}m` : `\x1b[38;5;${code}m`;
+            }
             return isBackground ? `\x1b[48;2;${r};${g};${b}m` : `\x1b[38;2;${r};${g};${b}m`;
         }
         return '';
