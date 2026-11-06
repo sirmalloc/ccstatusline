@@ -55,7 +55,23 @@ const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 // unlock prompt must not hold the status line until someone answers it.
 const MACOS_SECURITY_TIMEOUT_MS = 5000;
 
-export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
+// How much later than a cached usage API answer's reset end the statusline
+// payload's end for the same window may be before that answer counts as one
+// from before a reset. Both report the same instant, the payload in whole
+// seconds and the API in fractions of one, while a reset moves the end by the
+// window's whole length: 5 hours or 7 days.
+const PAYLOAD_RESET_TOLERANCE = 60; // seconds
+
+// The 5-hour and weekly reset ends Claude Code's statusline payload shows
+// (rate_limits.five_hour / seven_day resets_at), as ISO timestamps.
+export type PayloadResetAt = Pick<UsageData, 'sessionResetAt' | 'weeklyResetAt'>;
+
+const PAYLOAD_RESET_FIELDS = ['sessionResetAt', 'weeklyResetAt'] as const;
+
+export interface FetchUsageDataOptions {
+    requiredFields?: readonly UsageDataField[];
+    payloadResetAt?: PayloadResetAt;
+}
 
 // The access token is what the API is called with; the refresh token is kept
 // alongside it only to fingerprint the account (see getUsageCacheIdentity).
@@ -456,6 +472,30 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
     return requiredFields.every(field => hasRequiredUsageField(data, field));
+}
+
+// Whether the statusline payload shows a 5-hour or weekly window that began
+// after this usage API answer was given: the payload ends that window more
+// than PAYLOAD_RESET_TOLERANCE later than the answer does. Only a later end
+// counts: a session idle since before a reset keeps showing the window of its
+// last request, while another session may already have fetched the new one.
+// A window that either side gives no end for isn't compared.
+function predatesPayloadReset(data: UsageData, payloadResetAt: PayloadResetAt | undefined): boolean {
+    return PAYLOAD_RESET_FIELDS.some((field) => {
+        const payloadResetMs = Date.parse(payloadResetAt?.[field] ?? '');
+        const answerResetMs = Date.parse(data[field] ?? '');
+        if (Number.isNaN(payloadResetMs) || Number.isNaN(answerResetMs)) {
+            return false;
+        }
+        return payloadResetMs - answerResetMs > PAYLOAD_RESET_TOLERANCE * 1000;
+    });
+}
+
+// Whether a usage API answer can stand in for a new request: it holds every
+// field the caller needs, and the statusline payload shows no reset since.
+function answersUsageRequest(data: UsageData, options: FetchUsageDataOptions): boolean {
+    return hasRequiredUsageFields(data, options.requiredFields)
+        && !predatesPayloadReset(data, options.payloadResetAt);
 }
 
 function getStaleUsageOrError(
@@ -1027,7 +1067,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     // Check memory cache (fast path)
     if (cachedUsageData) {
         const cacheAge = now - usageCacheTime;
-        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
+        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && answersUsageRequest(cachedUsageData, options)) {
             return cachedUsageData;
         }
         if (cachedUsageData.error && cacheAge < usageErrorCacheMaxAge) {
@@ -1058,7 +1098,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
                 && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
-                && hasRequiredUsageFields(fileData, requiredFields)) {
+                && answersUsageRequest(fileData, options)) {
                 return cacheUsageData(fileData, now, stat.mtimeMs);
             }
         }
@@ -1117,9 +1157,11 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
 
         // Clear the in-flight lock written above only once this response satisfies
-        // the caller's requested fields. Incomplete 200 responses are cached but
-        // still need the short throttle so later renders do not refetch every time.
-        if (hasRequiredUsageFields(usageData, requiredFields)) {
+        // the caller's requested fields and shows the windows the statusline
+        // payload does. Incomplete 200 responses, and ones still from before a
+        // reset the payload shows, are cached but still need the short throttle
+        // so later renders do not refetch every time.
+        if (answersUsageRequest(usageData, options)) {
             clearOwnUsageLock(inFlightLock);
         }
 

@@ -74,6 +74,7 @@ interface ProbeOptions {
     noProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
+    payloadResetAt?: Record<string, string>;
     pathDir?: string;
     requiredFields?: string[];
     responseBody?: string;
@@ -219,13 +220,14 @@ const probeCacheDir = path.join(os.homedir(), '.cache', 'ccstatusline');
 const accountCacheFile = path.join(probeCacheDir, 'usage-account.json');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
+const payloadResetAt = process.env.TEST_PAYLOAD_RESET_AT_JSON ? JSON.parse(process.env.TEST_PAYLOAD_RESET_AT_JSON) : undefined;
 Date.now = () => nowMs;
 
 const fetchOnce = async () => {
     if (process.env.TEST_PROBE_TARGET === 'account-email') {
         return fetchAccountEmail();
     }
-    const usageData = await fetchUsageData({ requiredFields });
+    const usageData = await fetchUsageData({ requiredFields, payloadResetAt });
     if (process.env.TEST_PROBE_TARGET === 'usage-account-and-email') {
         return { account: await lookUpUsageAccount(), accountEmail: await fetchAccountEmail() };
     }
@@ -366,6 +368,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.lockWrittenDuringRequest !== undefined) {
             env.TEST_LOCK_DURING_REQUEST = options.lockWrittenDuringRequest;
+        }
+
+        if (options.payloadResetAt !== undefined) {
+            env.TEST_PAYLOAD_RESET_AT_JSON = JSON.stringify(options.payloadResetAt);
         }
 
         if (options.lowercaseHttpsProxy !== undefined) {
@@ -571,6 +577,34 @@ describe('fetchUsageData error handling', () => {
             type: 'rate_limit_error'
         }
     });
+    // The usage API's answer from just before a weekly reset (Fable at 88% in
+    // the week ending 2030-01-07), and its answers once the new week started.
+    const beforeWeeklyResetUsage = {
+        sessionUsage: 42,
+        sessionResetAt: '2030-01-07T03:00:00.000Z',
+        weeklyUsage: 97,
+        weeklyResetAt: '2030-01-07T00:00:00.000Z',
+        fableUsage: 88,
+        fableResetAt: '2030-01-07T00:00:00.000Z'
+    };
+    const beforeWeeklyResetResponseBody = JSON.stringify({
+        five_hour: { utilization: 42, resets_at: '2030-01-07T03:00:00.000Z' },
+        seven_day: { utilization: 97, resets_at: '2030-01-07T00:00:00.000Z' },
+        limits: [
+            { kind: 'weekly_scoped', percent: 88, resets_at: '2030-01-07T00:00:00.000Z', scope: { model: { display_name: 'Fable' } } }
+        ]
+    });
+    const afterWeeklyResetResponseBody = JSON.stringify({
+        five_hour: { utilization: 42, resets_at: '2030-01-07T03:00:00.000Z' },
+        seven_day: { utilization: 1, resets_at: '2030-01-14T00:00:00.000Z' },
+        limits: [
+            { kind: 'weekly_scoped', percent: 3, resets_at: '2030-01-14T00:00:00.000Z', scope: { model: { display_name: 'Fable' } } }
+        ]
+    });
+    const afterWeeklyResetPayload = {
+        sessionResetAt: '2030-01-07T03:00:00.000Z',
+        weeklyResetAt: '2030-01-14T00:00:00.000Z'
+    };
 
     // The request carries the account's bearer token, so a host the user kept
     // off the proxy must stay off it
@@ -1936,6 +1970,230 @@ describe('fetchUsageData error handling', () => {
             // A different login still invalidates the cache immediately.
             expect(result.requestCount).toBe(1);
             expect(result.first.sessionUsage).toBe(42);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches a fresh cache from before a weekly reset the statusline payload shows, once', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('weekly-reset-refetch');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home, { ...beforeWeeklyResetUsage, tokenHash: matchingHash });
+
+            // Ten seconds after the cache was written the week reset, and
+            // Claude Code's payload already ends the week seven days later.
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 10000,
+                pathDir: home.bin,
+                payloadResetAt: afterWeeklyResetPayload,
+                requiredFields: ['fableUsage'],
+                responseBody: afterWeeklyResetResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-07T03:00:00.000Z',
+                weeklyUsage: 1,
+                weeklyResetAt: '2030-01-14T00:00:00.000Z',
+                fableUsage: 3,
+                fableResetAt: '2030-01-14T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.lockExists).toBe(false);
+
+            // The next render, with the same payload: the new answer stands.
+            const nextRender = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: fs.statSync(cacheFile).mtimeMs + 10000,
+                pathDir: home.bin,
+                payloadResetAt: afterWeeklyResetPayload,
+                requiredFields: ['fableUsage']
+            });
+
+            expect(nextRender.requestCount).toBe(0);
+            expect(nextRender.first).toEqual(result.first);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches a fresh cache from before a 5-hour reset the statusline payload shows', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('session-reset-refetch');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, {
+                sessionUsage: 100,
+                sessionResetAt: '2030-01-03T10:00:00.000Z',
+                weeklyUsage: 60,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                tokenHash: matchingHash
+            });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 10000,
+                pathDir: home.bin,
+                payloadResetAt: {
+                    sessionResetAt: '2030-01-03T15:00:00.000Z',
+                    weeklyResetAt: '2030-01-07T00:00:00.000Z'
+                },
+                requiredFields: ['sessionUsage'],
+                responseBody: JSON.stringify({
+                    five_hour: { utilization: 4, resets_at: '2030-01-03T15:00:00.000Z' },
+                    seven_day: { utilization: 61, resets_at: '2030-01-07T00:00:00.000Z' }
+                })
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toEqual({
+                sessionUsage: 4,
+                sessionResetAt: '2030-01-03T15:00:00.000Z',
+                weeklyUsage: 61,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['shows the same reset ends', beforeWeeklyResetUsage, {
+            sessionResetAt: '2030-01-07T03:00:00.000Z',
+            weeklyResetAt: '2030-01-07T00:00:00.000Z'
+        }],
+        ['ends the week at most a minute later', beforeWeeklyResetUsage, {
+            sessionResetAt: '2030-01-07T03:00:00.000Z',
+            weeklyResetAt: '2030-01-07T00:01:00.000Z'
+        }],
+        // A session idle since the week before still shows that week's end
+        ['ends the week earlier', beforeWeeklyResetUsage, {
+            sessionResetAt: '2030-01-07T03:00:00.000Z',
+            weeklyResetAt: '2029-12-31T00:00:00.000Z'
+        }],
+        // As the API answers for a window nothing has been used in yet
+        ['ends a week the cached answer has no end for', { sessionUsage: 0, weeklyUsage: 0, fableUsage: 0 }, afterWeeklyResetPayload]
+    ])('serves a fresh cache when the statusline payload %s', (_label, cachedUsage, payloadResetAt) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('payload-reset-no-refetch');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { ...cachedUsage, tokenHash: matchingHash });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: mtimeMs + 10000,
+                pathDir: home.bin,
+                payloadResetAt,
+                requiredFields: ['fableUsage']
+            });
+
+            expect(result.requestCount).toBe(0);
+            expect(result.first).toEqual(cachedUsage);
+            expect(result.second).toEqual(result.first);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['during a rate-limit backoff', (home: TokenHome, probeNowMs: number) => {
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 300,
+                error: 'rate-limited'
+            }));
+        }],
+        ['while another render\'s fetch is in flight', (home: TokenHome, probeNowMs: number) => {
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 30,
+                error: 'timeout'
+            }));
+        }],
+        ['without a login', (home: TokenHome) => {
+            fs.rmSync(path.join(home.claudeConfig, '.credentials.json'));
+        }]
+    ])('does not refetch for a reset the statusline payload shows %s', (_label, block) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('payload-reset-blocked');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { ...beforeWeeklyResetUsage, tokenHash: matchingHash });
+            const probeNowMs = mtimeMs + 10000;
+            block(home, probeNowMs);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                payloadResetAt: afterWeeklyResetPayload,
+                requiredFields: ['fableUsage']
+            });
+
+            // The answer from before the reset is still the best there is
+            expect(result.requestCount).toBe(0);
+            expect(result.first).toEqual(beforeWeeklyResetUsage);
+            expect(result.second).toEqual(result.first);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps the in-flight lock while a refetch still answers with the week before the payload reset', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('payload-reset-api-behind');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { ...beforeWeeklyResetUsage, tokenHash: matchingHash });
+            const probeNowMs = mtimeMs + 10000;
+            const renderAt = (renderNowMs: number, mode: ProbeOptions['mode'], responseBody?: string) => harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode,
+                nowMs: renderNowMs,
+                pathDir: home.bin,
+                payloadResetAt: afterWeeklyResetPayload,
+                requiredFields: ['fableUsage'],
+                responseBody
+            });
+
+            const result = renderAt(probeNowMs, 'success', beforeWeeklyResetResponseBody);
+
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toEqual(beforeWeeklyResetUsage);
+            expect(result.second).toEqual(result.first);
+            expect(parseLockContents(result.lockContents)).toEqual({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 30,
+                error: 'timeout'
+            });
+
+            // Renders inside the lock serve that answer without asking again
+            const lockedRender = renderAt(probeNowMs + 10000, 'unexpected');
+            expect(lockedRender.requestCount).toBe(0);
+            expect(lockedRender.first).toEqual(beforeWeeklyResetUsage);
+
+            const retried = renderAt(probeNowMs + 31000, 'success', afterWeeklyResetResponseBody);
+            expect(retried.requestCount).toBe(1);
+            expect(retried.first.fableUsage).toBe(3);
+            expect(retried.lockExists).toBe(false);
         } finally {
             harness.cleanup();
         }
