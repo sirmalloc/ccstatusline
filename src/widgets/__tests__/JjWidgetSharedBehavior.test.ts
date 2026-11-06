@@ -157,7 +157,7 @@ describe('JJ widget shared behavior', () => {
 
         expect(widget.render(makeItem(itemType), {}, DEFAULT_SETTINGS)).toBe(noJj);
         expect(mockExecFileSync.mock.calls).toHaveLength(1);
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
     });
 
     it.each(cases)('$name should hide its placeholder outside a jj repo with no-jj', ({ widget, itemType }) => {

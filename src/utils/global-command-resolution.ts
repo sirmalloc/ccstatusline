@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { findAllOnPosixPath } from './executable-path';
 import {
     getPackageManagerExecutable,
     getPackageManagerShellOptions
@@ -36,14 +38,23 @@ function splitCommandOutput(output: string): string[] {
     return paths;
 }
 
-function isTransientBunxStatusLinePath(filePath: string): boolean {
+// While bunx or npx runs the TUI, the bin dir of its temporary copy comes first
+// on PATH, ahead of any persistent install:
+// - bunx: <temp dir>/bunx-<uid>-ccstatusline@<tag>/node_modules/.bin
+// - npx: <npm cache>/_npx/<hash>/node_modules/.bin, wherever the npm cache lives
+const TRANSIENT_STATUS_LINE_PATH_PATTERNS = [
+    /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i,
+    /(?:^|\/)_npx\/[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i
+];
+
+function isTransientStatusLinePath(filePath: string): boolean {
     const normalized = filePath.replace(/\\/g, '/');
 
-    return /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i.test(normalized);
+    return TRANSIENT_STATUS_LINE_PATH_PATTERNS.some(pattern => pattern.test(normalized));
 }
 
 export function getPersistentCommandResolutionPaths(paths: string[]): string[] {
-    return paths.filter(path => !isTransientBunxStatusLinePath(path));
+    return paths.filter(path => !isTransientStatusLinePath(path));
 }
 
 export function getCommandResolutionPaths(
@@ -66,8 +77,11 @@ export function getCommandResolutionPaths(
             });
 
         return splitCommandOutput(output);
-    } catch {
-        return [];
+    } catch (error) {
+        // No `which` to ask: list what it would from PATH
+        return platform !== 'win32' && (error as NodeJS.ErrnoException).code === 'ENOENT'
+            ? findAllOnPosixPath(command)
+            : [];
     }
 }
 
@@ -163,22 +177,37 @@ function getDirectoryName(filePath: string): string {
         : normalized.slice(0, lastSlashIndex);
 }
 
-function getUniqueResolvedDirs(resolvedPaths: string[]): string[] {
+// A directory with symlinks resolved, so two spellings of one, such as /bin and
+// /usr/bin where /bin links to usr/bin (merged /usr), count as one install
+// location. The path as given when it can't be resolved. The native call also
+// returns the letter case on disk where case is ignored (macOS), as Bun's
+// realpathSync does but Node's doesn't, so both runtimes count .../Bin and
+// .../bin as one.
+export function getRealDirectory(dir: string): string {
+    try {
+        return fs.realpathSync.native(dir);
+    } catch {
+        return dir;
+    }
+}
+
+// The first listed path in each directory, comparing directories with symlinks
+// resolved: one path per install, starting with the first match
+function getOnePathPerDirectory(resolvedPaths: string[]): string[] {
     const seen = new Set<string>();
-    const dirs: string[] = [];
+    const paths: string[] = [];
 
     for (const resolvedPath of resolvedPaths) {
-        const dir = getDirectoryName(resolvedPath);
-        const comparableDir = normalizePathForComparison(dir);
+        const comparableDir = normalizePathForComparison(getRealDirectory(getDirectoryName(resolvedPath)));
         if (seen.has(comparableDir)) {
             continue;
         }
 
         seen.add(comparableDir);
-        dirs.push(dir);
+        paths.push(resolvedPath);
     }
 
-    return dirs;
+    return paths;
 }
 
 export function isPathInsideDir(filePath: string, dir: string): boolean {
@@ -206,9 +235,9 @@ function getResolutionWarning(
         return '⚠ ccstatusline is not currently resolvable on PATH. Claude Code runs ccstatusline, so restart your shell or update PATH if it cannot launch.';
     }
 
-    const resolvedDirs = getUniqueResolvedDirs(resolvedPaths);
-    if (resolvedDirs.length > 1) {
-        return `⚠ Multiple ccstatusline binaries are on PATH. Claude Code will run the first match: ${firstResolvedPath}.\nOther matches: ${formatPathList(resolvedPaths.slice(1))}`;
+    const installPaths = getOnePathPerDirectory(resolvedPaths);
+    if (installPaths.length > 1) {
+        return `⚠ Multiple ccstatusline binaries are on PATH. Claude Code will run the first match: ${firstResolvedPath}.\nOther matches: ${formatPathList(installPaths.slice(1))}`;
     }
 
     if (expectedBinDir && !isPathInsideDir(firstResolvedPath, expectedBinDir)) {

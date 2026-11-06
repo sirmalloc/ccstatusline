@@ -62,8 +62,9 @@ export interface Widget {
     supportsNumberFormat?(): boolean;
     // The label prepended when raw value is off, for the item's current mode.
     // Declaring it opts the widget into the items editor's label override,
-    // which stores the replacement in metadata.label.
-    getLabelPrefix?(item: WidgetItem): string;
+    // which stores the replacement in metadata.label. Return undefined when
+    // the current mode has no editable label.
+    getLabelPrefix?(item: WidgetItem): string | undefined;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
     /**
@@ -73,6 +74,17 @@ export interface Widget {
      * still take precedence (see custom-command's preserve-colors mode).
      */
     preservesRenderedColors?(item: WidgetItem): boolean;
+    /**
+     * When true for the given item, the widget's rendered output colors some
+     * runs of its text itself, each starting with a foreground code and ending
+     * with `\x1b[39m`, and leaves the rest of its foreground to the renderer.
+     * The renderer colors the text as it would any widget's (Powerline theme,
+     * item color or gradient, default color) and returns to that color after
+     * each run, so the runs keep theirs. A global foreground override still
+     * wins and strips the runs' colors. Unlike preservesRenderedColors, which
+     * leaves the widget's whole foreground alone.
+     */
+    colorsOnlyItsRuns?(item: WidgetItem): boolean;
 }
 
 export interface WidgetEditorProps {
@@ -80,6 +92,8 @@ export interface WidgetEditorProps {
     onComplete: (updatedWidget: WidgetItem) => void;
     onCancel: () => void;
     action?: string;
+    /** The settings being edited, for editors that depend on them (e.g. the color level). */
+    settings?: Settings;
 }
 
 export interface CustomKeybind {
