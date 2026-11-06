@@ -725,6 +725,57 @@ describe('ItemsEditor', () => {
         }
     });
 
+    it('turns fish style off when a cwd segment count is saved', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Debug mode writes whole frames; the last one starts at the last title
+        const lastFrame = () => {
+            const output = stripAnsi(stdout.getOutput());
+            return output.slice(output.lastIndexOf('Edit Line 1'));
+        };
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'current-working-dir', metadata: { fishStyle: 'true' } }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  1. Current Working Dir (fish-style)');
+            });
+
+            stdin.write('s');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('Enter number of segments to display');
+            });
+
+            stdin.write('2');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('(blank for full path): 2');
+            });
+
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  1. Current Working Dir (segments: 2)');
+            });
+            expect(lastFrame()).not.toContain('fish-style');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
     describe('widget picker', () => {
         const ESC = '\x1b';
         const ENTER = '\r';
