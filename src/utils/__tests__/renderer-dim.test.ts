@@ -1,4 +1,6 @@
 import {
+    afterAll,
+    beforeAll,
     describe,
     expect,
     it
@@ -19,10 +21,24 @@ import {
     applyParensDim
 } from '../colors';
 import {
+    resetPowerlineFontCache,
+    setCachedPowerlineFontStatus
+} from '../powerline';
+import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
     renderStatusLine
 } from '../renderer';
+
+// The powerline tests below expect real separator glyphs in the output; pin
+// the font detection so the render does not depend on this machine's fonts.
+beforeAll(() => {
+    setCachedPowerlineFontStatus({ installed: true, checkedSymbol: '' });
+});
+
+afterAll(() => {
+    resetPowerlineFontCache();
+});
 
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
