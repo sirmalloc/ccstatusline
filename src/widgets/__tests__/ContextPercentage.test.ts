@@ -139,10 +139,12 @@ describe('ContextPercentageWidget', () => {
 
         const slider = widget.handleEditorAction('toggle-slider', base);
         const sliderOnly = widget.handleEditorAction('toggle-slider', slider ?? base);
-        const none = widget.handleEditorAction('toggle-slider', sliderOnly ?? base);
+        const line = widget.handleEditorAction('toggle-slider', sliderOnly ?? base);
+        const none = widget.handleEditorAction('toggle-slider', line ?? base);
 
         expect(slider?.metadata?.display).toBe('slider');
         expect(sliderOnly?.metadata?.display).toBe('slider-only');
+        expect(line?.metadata?.display).toBe('line');
         expect(none?.metadata?.display).toBeUndefined();
     });
 

@@ -40,6 +40,20 @@ describe('powerline settings helpers', () => {
         expect(updated.powerline.theme).toBe('catppuccin');
     });
 
+    it('keeps a custom theme when enabling powerline again', () => {
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: false,
+                theme: 'custom'
+            }
+        };
+
+        const updated = buildEnabledPowerlineSettings(settings);
+        expect(updated.powerline.theme).toBe('custom');
+    });
+
     it('keeps manual separators alongside flex separators when enabling', () => {
         const line: WidgetItem[] = [
             { id: '1', type: 'model' },

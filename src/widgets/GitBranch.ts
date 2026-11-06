@@ -44,6 +44,7 @@ import {
     getSymbolKeybind,
     renderSymbolOverrideEditor
 } from './shared/symbol-override';
+import { getGraphemes } from './shared/text-cursor';
 
 const DEFAULT_SYMBOL = '⎇';
 const LINK_KEY = 'linkToRepo';
@@ -180,9 +181,9 @@ export class GitBranchWidget implements Widget {
         }
         const parts = branch.split('/');
         if (parts.length === 1) {
-            return Array.from(branch)[0] ?? '';
+            return getGraphemes(branch)[0] ?? '';
         }
-        return parts.map((part, index) => (index === parts.length - 1 ? part : Array.from(part)[0] ?? '')).join('/');
+        return parts.map((part, index) => (index === parts.length - 1 ? part : getGraphemes(part)[0] ?? '')).join('/');
     }
 
     // jj finds its workspace from the nearest .jj above, past a git repo's own
