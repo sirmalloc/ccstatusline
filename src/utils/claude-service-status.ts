@@ -1,12 +1,12 @@
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 
 import type { ColorLevelString } from '../types/ColorLevel';
 import type { WidgetItem } from '../types/Widget';
 
+import { getWritableCacheDir } from './cache-dir';
 import { getColorAnsiCode } from './colors';
 import { isExcludedFromProxy } from './no-proxy';
 import {
@@ -19,10 +19,6 @@ import {
 // While a fetch is in flight, concurrent sessions
 // serve the expired cache instead of all fetching at once, and an unreachable
 // status page cannot trigger a network attempt on every render.
-const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
-const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
-const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
-const FETCH_LOCK_DIR = path.join(CACHE_DIR, 'claude-status.inflight');
 const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
 const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed or in-flight fetch
 // Longest the last fetched status stands in while the status page can't be
@@ -222,15 +218,28 @@ type CachedClaudeStatus = z.infer<typeof CachedClaudeStatusSchema>;
 // Memory cache so multiple lines in one invocation share a single lookup
 let memoryCache: CachedClaudeStatus | null = null;
 
+function getCacheFile(): string {
+    return path.join(getWritableCacheDir(), 'claude-status.json');
+}
+
+function getLockFile(): string {
+    return path.join(getWritableCacheDir(), 'claude-status.lock');
+}
+
+function getFetchLockDir(): string {
+    return path.join(getWritableCacheDir(), 'claude-status.inflight');
+}
+
 function ensureCacheDirExists(): void {
-    if (!fs.existsSync(CACHE_DIR)) {
-        fs.mkdirSync(CACHE_DIR, { recursive: true });
+    const cacheDir = getWritableCacheDir();
+    if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
     }
 }
 
 function readCachedClaudeStatus(): CachedClaudeStatus | null {
     try {
-        return parseJsonWithSchema(fs.readFileSync(CACHE_FILE, 'utf8'), CachedClaudeStatusSchema);
+        return parseJsonWithSchema(fs.readFileSync(getCacheFile(), 'utf8'), CachedClaudeStatusSchema);
     } catch {
         return null;
     }
@@ -239,7 +248,7 @@ function readCachedClaudeStatus(): CachedClaudeStatus | null {
 function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+        fs.writeFileSync(getCacheFile(), JSON.stringify(cache));
     } catch {
         // Best-effort caching
     }
@@ -257,7 +266,7 @@ function isWithinAge(stampSeconds: number, nowSeconds: number, maxAgeSeconds: nu
 // version still blocks for FAILURE_BACKOFF.
 function isFailureLockActive(nowSeconds: number): boolean {
     try {
-        const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
+        const lockMtime = Math.floor(fs.statSync(getLockFile()).mtimeMs / 1000);
         return isWithinAge(lockMtime, nowSeconds, FAILURE_BACKOFF);
     } catch {
         return false;
@@ -267,7 +276,7 @@ function isFailureLockActive(nowSeconds: number): boolean {
 function writeFailureLock(): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, '');
+        fs.writeFileSync(getLockFile(), '');
     } catch {
         // Ignore lock file errors
     }
@@ -281,13 +290,13 @@ function acquireFetchLock(nowMs: number): string | null {
     let stagingDir: string | undefined;
     try {
         ensureCacheDirExists();
-        stagingDir = fs.mkdtempSync(`${FETCH_LOCK_DIR}-`);
+        stagingDir = fs.mkdtempSync(`${getFetchLockDir()}-`);
         const owner = path.basename(stagingDir);
         fs.writeFileSync(path.join(stagingDir, owner), '');
 
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
-                fs.renameSync(stagingDir, FETCH_LOCK_DIR);
+                fs.renameSync(stagingDir, getFetchLockDir());
                 return owner;
             } catch (error) {
                 const code = (error as NodeJS.ErrnoException).code;
@@ -296,9 +305,9 @@ function acquireFetchLock(nowMs: number): string | null {
                 }
             }
 
-            const [existingOwner] = fs.readdirSync(FETCH_LOCK_DIR);
+            const [existingOwner] = fs.readdirSync(getFetchLockDir());
             if (!existingOwner
-                || isWithinAge(Math.floor(fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs / 1000), Math.floor(nowMs / 1000), FAILURE_BACKOFF)) {
+                || isWithinAge(Math.floor(fs.statSync(path.join(getFetchLockDir(), existingOwner)).mtimeMs / 1000), Math.floor(nowMs / 1000), FAILURE_BACKOFF)) {
                 return null;
             }
             clearOwnFetchLock(existingOwner);
@@ -319,8 +328,8 @@ function acquireFetchLock(nowMs: number): string | null {
 
 function clearOwnFetchLock(owner: string): void {
     try {
-        fs.unlinkSync(path.join(FETCH_LOCK_DIR, owner));
-        fs.rmdirSync(FETCH_LOCK_DIR);
+        fs.unlinkSync(path.join(getFetchLockDir(), owner));
+        fs.rmdirSync(getFetchLockDir());
     } catch {
         // The old claim may be gone, or another owner may have replaced it.
     }

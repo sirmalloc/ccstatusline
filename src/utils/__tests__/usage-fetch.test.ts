@@ -20,9 +20,21 @@ import {
 import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
 
 import {
+    startAnsweringProxy,
+    startRefusingProxy,
     startStalledProxy,
-    type StalledProxy
+    startTunnelingProxy,
+    type AnsweringProxy,
+    type RefusingProxy,
+    type StalledProxy,
+    type TunnelingProxy
 } from './proxy-test-helpers';
+import {
+    createTestCertificate,
+    startTlsServer,
+    type TestCertificateOptions,
+    type TestTlsServer
+} from './tls-test-helpers';
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
@@ -30,6 +42,7 @@ const { execFileSync: realExecFileSync } = require('node:child_process') as { ex
 interface UsageProbeResult {
     renderedEmail: string | null;
     first: Record<string, unknown>;
+    firstElapsedMs: number;
     second: Record<string, unknown>;
     staleFallback: [boolean, boolean];
     lockExists: boolean;
@@ -41,6 +54,8 @@ interface UsageProbeResult {
     requestAuthorization: string | null;
     homedir: string;
     lockContents: string | null;
+    // What prefetch hands a line of reset timers, when requested
+    resetOnly?: Record<string, unknown> | null;
     securityCalls: string[];
     fetchedAtMs: number | null;
     accountKey: string | null;
@@ -66,15 +81,19 @@ interface TokenHome {
 
 interface ProbeOptions {
     claudeConfigDir?: string;
+    // The code the request error carries in the `error` mode
+    errorCode?: string;
     claudeSecureStorageConfigDir?: string;
     home: string;
     httpsProxy?: string;
     lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
     noProxy?: string;
-    mode?: 'error' | 'status' | 'success' | 'unexpected';
+    mode?: 'error' | 'request-timeout' | 'response-aborted' | 'response-error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
+    // Also prefetch for a Weekly Reset Timer line and a Block Reset Timer line
+    prefetchResetOnly?: boolean;
     requiredFields?: string[];
     responseBody?: string;
     responseHeaders?: Record<string, string>;
@@ -91,7 +110,10 @@ interface ProbeOptions {
 function createProbeHarness() {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-usage-test-'));
     const probeScriptPath = path.join(tempRoot, 'probe-usage.mjs');
+    const probeTmpDir = path.join(tempRoot, 'tmp');
+    fs.mkdirSync(probeTmpDir);
     const usageModulePath = fileURLToPath(new URL('../usage.ts', import.meta.url));
+    const usagePrefetchModulePath = fileURLToPath(new URL('../usage-prefetch.ts', import.meta.url));
 
     const probeScript = `
 import * as fs from 'node:fs';
@@ -172,9 +194,13 @@ https.request = (...args) => {
             }
 
             if (mode === 'error') {
+                const error = new Error('mock request failure');
+                if (process.env.TEST_ERROR_CODE) {
+                    error.code = process.env.TEST_ERROR_CODE;
+                }
                 const handlers = requestHandlers.get('error') || [];
                 for (const handler of handlers) {
-                    handler(new Error('mock request failure'));
+                    handler(error);
                 }
                 return;
             }
@@ -183,6 +209,15 @@ https.request = (...args) => {
                 const handlers = requestHandlers.get('error') || [];
                 for (const handler of handlers) {
                     handler(new Error('unexpected request'));
+                }
+                return;
+            }
+
+            // The socket sits idle past the request's timeout
+            if (mode === 'request-timeout') {
+                const handlers = requestHandlers.get('timeout') || [];
+                for (const handler of handlers) {
+                    handler();
                 }
                 return;
             }
@@ -196,6 +231,16 @@ https.request = (...args) => {
                 for (const handler of dataHandlers) {
                     handler(responseBody);
                 }
+            }
+
+            // The connection drops mid-body: the response never ends
+            if (mode === 'response-aborted' || mode === 'response-error') {
+                const event = mode === 'response-aborted' ? 'aborted' : 'error';
+                const handlers = responseHandlers.get(event) || [];
+                for (const handler of handlers) {
+                    handler(new Error('aborted'));
+                }
+                return;
             }
 
             const endHandlers = responseHandlers.get('end') || [];
@@ -231,8 +276,15 @@ const fetchOnce = async () => {
     }
     return process.env.TEST_PROBE_TARGET === 'usage-account' ? { account: await lookUpUsageAccount() } : usageData;
 };
+const startedAt = performance.now();
 const first = await fetchOnce();
+const firstElapsedMs = performance.now() - startedAt;
 const second = await fetchOnce();
+let resetOnly;
+if (process.env.TEST_PREFETCH_RESET_ONLY) {
+    const { prefetchUsageDataIfNeeded } = await import(${JSON.stringify(usagePrefetchModulePath)});
+    resetOnly = await prefetchUsageDataIfNeeded([[{ id: 'weekly-reset', type: 'weekly-reset-timer' }], [{ id: 'reset', type: 'reset-timer' }]], {});
+}
 let renderedEmail = null;
 if (process.env.TEST_PROBE_TARGET === 'account-email') {
     const { ClaudeAccountEmailWidget } = await import(${JSON.stringify(fileURLToPath(new URL('../../widgets/ClaudeAccountEmail.ts', import.meta.url)))});
@@ -246,7 +298,9 @@ if (process.env.TEST_PROBE_TARGET === 'account-email') {
 process.stdout.write(JSON.stringify({
     renderedEmail,
     first,
+    firstElapsedMs,
     second,
+    resetOnly,
     staleFallback: [isStaleUsageFallback(first), isStaleUsageFallback(second)],
     lockExists: fs.existsSync(lockFile),
     cacheExists: fs.existsSync(cacheFile),
@@ -341,6 +395,11 @@ process.stdout.write(JSON.stringify({
             // real one lets the probe escape into the user's actual home
             // and read/write the live ~/.cache/ccstatusline
             USERPROFILE: options.home,
+            // The usage cache falls back to the system temp folder when the
+            // home's cache folder can't be written
+            TMPDIR: probeTmpDir,
+            TMP: probeTmpDir,
+            TEMP: probeTmpDir,
             PATH: options.pathDir ?? '/nonexistent',
             TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
             TEST_NOW_MS: String(options.nowMs),
@@ -356,6 +415,9 @@ process.stdout.write(JSON.stringify({
             env.CLAUDE_CONFIG_DIR = options.claudeConfigDir;
         }
 
+        if (options.errorCode !== undefined) {
+            env.TEST_ERROR_CODE = options.errorCode;
+        }
         if (options.claudeSecureStorageConfigDir !== undefined) {
             env.CLAUDE_SECURESTORAGE_CONFIG_DIR = options.claudeSecureStorageConfigDir;
         }
@@ -374,6 +436,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.noProxy !== undefined) {
             env.NO_PROXY = options.noProxy;
+        }
+
+        if (options.prefetchResetOnly) {
+            env.TEST_PREFETCH_RESET_ONLY = '1';
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -399,12 +465,13 @@ process.stdout.write(JSON.stringify({
         createEmptyHome,
         createTimedOutSecurityHome,
         createTokenHome,
+        probeTmpDir,
         runProbe
     };
 }
 
-function parseLockContents(lockContents: string | null): { blockedUntil: number; error?: string } | null {
-    return lockContents ? JSON.parse(lockContents) as { blockedUntil: number; error?: string } : null;
+function parseLockContents(lockContents: string | null): { blockedUntil: number; error?: string; transient?: boolean } | null {
+    return lockContents ? JSON.parse(lockContents) as { blockedUntil: number; error?: string; transient?: boolean } : null;
 }
 
 // createTokenHome writes an access-token-only credentials file; these tests
@@ -628,7 +695,7 @@ describe('fetchUsageData error handling', () => {
             expect(failed.requestCount).toBe(1);
             expect(failed.staleFallback).toEqual([true, true]);
             const firstLock = fs.readFileSync(usageFilePath(first, 'lock'), 'utf8');
-            expect(parseLockContents(firstLock)?.error).toBe(mode === 'status' ? 'rate-limited' : 'timeout');
+            expect(parseLockContents(firstLock)?.error).toBe(mode === 'status' ? 'rate-limited' : 'api-error');
 
             const other = render(second, 'success');
             expect(other.first.sessionUsage).toBe(55);
@@ -780,15 +847,16 @@ describe('fetchUsageData error handling', () => {
                 pathDir: apiErrorHome.bin
             });
 
-            expect(apiErrorResult.first).toEqual({ error: 'api-error' });
-            expect(apiErrorResult.second).toEqual({ error: 'api-error' });
+            expect(apiErrorResult.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(apiErrorResult.second).toEqual({ error: 'api-error', errorTransient: true });
             expect(apiErrorResult.cacheExists).toBe(false);
             expect(apiErrorResult.requestCount).toBe(1);
             expect(apiErrorResult.proxyAgentConfigured).toBe(false);
             expect(apiErrorResult.requestHost).toBe('api.anthropic.com');
             expect(parseLockContents(apiErrorResult.lockContents)).toEqual({
                 blockedUntil: Math.floor(nowMs / 1000) + 30,
-                error: 'timeout'
+                error: 'api-error',
+                transient: true
             });
 
             const genericLockResult = harness.runProbe({
@@ -799,8 +867,8 @@ describe('fetchUsageData error handling', () => {
                 pathDir: apiErrorHome.bin
             });
 
-            expect(genericLockResult.first).toEqual({ error: 'timeout' });
-            expect(genericLockResult.second).toEqual({ error: 'timeout' });
+            expect(genericLockResult.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(genericLockResult.second).toEqual({ error: 'api-error', errorTransient: true });
             expect(genericLockResult.requestCount).toBe(0);
 
             const successResult = harness.runProbe({
@@ -902,11 +970,12 @@ describe('fetchUsageData error handling', () => {
             expect(staleProxyResult.requestCount).toBe(0);
             expect(staleProxyResult.proxyAgentConfigured).toBe(false);
 
+            // Inside the backoff the stale-proxy render's failure started
             const cachedSuccessResult = harness.runProbe({
                 claudeConfigDir: successHome.claudeConfig,
                 home: successHome.home,
                 mode: 'unexpected',
-                nowMs,
+                nowMs: nowMs + 191000,
                 pathDir: successHome.bin
             });
 
@@ -1291,6 +1360,75 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('keeps a rate-limit lock that a concurrent render wrote during a failed fetch', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('error-keeps-foreign-lock');
+            const rateLimitedLock = JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + 300,
+                error: 'rate-limited'
+            });
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                lockWrittenDuringRequest: rateLimitedLock,
+                mode: 'error',
+                nowMs,
+                pathDir: home.bin
+            });
+
+            // The failure's own 30-second backoff must not cut the server's
+            // Retry-After window short.
+            expect(result.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(result.requestCount).toBe(1);
+            expect(result.lockContents).toBe(rateLimitedLock);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // Every render is a new process, so the lock file is all that keeps the
+    // next render from calling the API again. Root can write anywhere, and
+    // Windows ignores the read-only mode on folders.
+    it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each([
+        { error: 'rate-limited', expected: { error: 'rate-limited' }, failure: { mode: 'status', responseBody: rateLimitedResponseBody, responseHeaders: { 'retry-after': '600' }, statusCode: 429 } },
+        { error: 'api-error', expected: { error: 'api-error', errorTransient: true }, failure: { mode: 'error' } }
+    ] as const)('keeps the $error backoff across renders when ~/.cache cannot be written', ({ error, expected, failure }) => {
+        const harness = createProbeHarness();
+        const home = harness.createTokenHome(`read-only-cache-${error}`);
+        const userCacheDir = path.join(home.home, '.cache');
+        fs.mkdirSync(userCacheDir);
+        fs.chmodSync(userCacheDir, 0o555);
+
+        try {
+            const failed = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                nowMs,
+                pathDir: home.bin,
+                ...failure
+            });
+            expect(failed.first).toEqual(expected);
+            expect(failed.requestCount).toBe(1);
+
+            const backedOff = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin
+            });
+            expect(backedOff.first).toEqual(expected);
+            expect(backedOff.requestCount).toBe(0);
+            expect(fs.readdirSync(userCacheDir)).toEqual([]);
+            expect(fs.existsSync(path.join(harness.probeTmpDir, `ccstatusline-${process.getuid?.()}`, path.basename(usageFilePath(home, 'lock'))))).toBe(true);
+        } finally {
+            fs.chmodSync(userCacheDir, 0o755);
+            harness.cleanup();
+        }
+    });
+
     it('ignores a lock whose deadline is implausibly far in the future', () => {
         const harness = createProbeHarness();
 
@@ -1351,6 +1489,65 @@ describe('fetchUsageData error handling', () => {
             // The horizon must not undercut a genuine Retry-After backoff.
             expect(result.requestCount).toBe(0);
             expect(result.first).toEqual({ error: 'rate-limited' });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('honors an in-flight lock that a concurrent render dated a moment ahead', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('in-flight-lock-ahead');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            // That render read the clock a second after this one did.
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + 31,
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                pathDir: home.bin
+            });
+
+            expect(result.requestCount).toBe(0);
+            expect(result.first).toEqual({ error: 'timeout' });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['timeout', 'api-error', 'parse-error'])('ignores a lock of kind %s dated further ahead than its 30-second backoff', (error) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`short-lock-ahead-${error}`);
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            // Written 30 seconds ahead of a clock that ran 3 hours fast and has
+            // since been set back.
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + (3 * 60 * 60) + 30,
+                error
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
+            expect(result.lockExists).toBe(false);
         } finally {
             harness.cleanup();
         }
@@ -1860,7 +2057,7 @@ describe('fetchUsageData error handling', () => {
 
             expect(success.requestCount).toBe(1);
             expect(success.fetchedAtMs).toBe(nowMs);
-            expect(error.first).toEqual({ error: 'api-error' });
+            expect(error.first).toEqual({ error: 'api-error', errorTransient: true });
             expect(error.fetchedAtMs).toBeNull();
         } finally {
             harness.cleanup();
@@ -2075,6 +2272,246 @@ describe('fetchUsageData error handling', () => {
             expect(activeLockResult.first).toEqual({ error: 'parse-error' });
             expect(activeLockResult.second).toEqual({ error: 'parse-error' });
             expect(activeLockResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps API-error locks distinct from timeout locks', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('api-error-lock');
+            const apiErrorResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: '{"type":"error","error":{"type":"authentication_error"}}',
+                statusCode: 401
+            });
+
+            expect(apiErrorResult.first).toEqual({ error: 'api-error' });
+            expect(parseLockContents(apiErrorResult.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'api-error'
+            });
+
+            const activeLockResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin
+            });
+
+            expect(activeLockResult.first).toEqual({ error: 'api-error' });
+            expect(activeLockResult.second).toEqual({ error: 'api-error' });
+            expect(activeLockResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // A server failing, a server that gave up waiting for the request, a
+    // network that drops the request and a request that never answers all
+    // clear up on their own, so the reset timers keep their loading
+    // placeholder through them and through their backoff
+    it.each([
+        { failure: { mode: 'status', statusCode: 503 }, name: 'a 503' },
+        { failure: { mode: 'status', statusCode: 408 }, name: 'a 408' },
+        { failure: { mode: 'error' }, name: 'a network error' },
+        { failure: { errorCode: 'ECONNREFUSED', mode: 'error' }, name: 'a refused connection' },
+        { failure: { errorCode: 'ECONNRESET', mode: 'error' }, name: 'a reset connection' },
+        { failure: { errorCode: 'ENOTFOUND', mode: 'error' }, name: 'a failed DNS lookup' },
+        { failure: { mode: 'request-timeout' }, name: 'a request timeout' }
+    ] as const)('marks $name as an API error that clears up on its own, across its backoff', ({ failure }) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`transient-api-error-${failure.mode}`);
+            const failed = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                nowMs,
+                pathDir: home.bin,
+                prefetchResetOnly: true,
+                ...failure
+            });
+
+            expect(failed.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(failed.second).toEqual({ error: 'api-error', errorTransient: true });
+            expect(failed.resetOnly).toBeNull();
+            expect(failed.requestCount).toBe(1);
+            expect(parseLockContents(failed.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'api-error',
+                transient: true
+            });
+
+            const backedOff = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin,
+                prefetchResetOnly: true
+            });
+
+            expect(backedOff.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(backedOff.resetOnly).toBeNull();
+            expect(backedOff.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // The same request is refused again on the next render: a token the API
+    // rejects, an unknown path, a proxy that won't tunnel without its own
+    // login, or an answer with nothing in it. Their lock is written as before
+    // the transient marker existed, so it also stands for a lock left by an
+    // older version.
+    it.each([
+        { failure: { mode: 'status', statusCode: 403 }, name: 'a 403' },
+        { failure: { mode: 'status', statusCode: 404 }, name: 'a 404' },
+        { failure: { mode: 'status', statusCode: 407 }, name: 'a proxy\'s 407' },
+        { failure: { mode: 'status', statusCode: 200 }, name: 'an empty 200' }
+    ] as const)('keeps $name a lasting API error, across its backoff', ({ failure }) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`lasting-api-error-${failure.statusCode}`);
+            const failed = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                nowMs,
+                pathDir: home.bin,
+                ...failure
+            });
+
+            expect(failed.first).toEqual({ error: 'api-error' });
+            expect(failed.requestCount).toBe(1);
+            expect(parseLockContents(failed.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'api-error'
+            });
+
+            const backedOff = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin
+            });
+
+            expect(backedOff.first).toEqual({ error: 'api-error' });
+            expect(backedOff.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // A server certificate that doesn't verify, as behind a proxy or firewall
+    // that intercepts TLS with a certificate the runtime doesn't trust, fails
+    // the same way on every request, so the reset timers show the error. These
+    // are the codes Node and Bun report for a self-signed certificate, one
+    // from an unknown CA (alone, with its root, or with an intermediate but no
+    // root), one whose intermediate is trusted but not its root, one signed by
+    // a certificate that isn't a CA, an expired or not-yet-valid one, and one
+    // for another host, and Node's UNSPECIFIED for a failure it has no name
+    // for, such as a CA whose key usage leaves out signing certificates. The
+    // rest are the other verification error names both runtimes can report.
+    it.each([
+        'DEPTH_ZERO_SELF_SIGNED_CERT',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+        'UNABLE_TO_GET_ISSUER_CERT',
+        'INVALID_PURPOSE',
+        'CERT_HAS_EXPIRED',
+        'CERT_NOT_YET_VALID',
+        'ERR_TLS_CERT_ALTNAME_INVALID',
+        'UNSPECIFIED',
+        'UNABLE_TO_GET_CRL',
+        'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
+        'UNABLE_TO_DECRYPT_CRL_SIGNATURE',
+        'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
+        'CERT_SIGNATURE_FAILURE',
+        'CRL_SIGNATURE_FAILURE',
+        'CRL_NOT_YET_VALID',
+        'CRL_HAS_EXPIRED',
+        'ERROR_IN_CERT_NOT_BEFORE_FIELD',
+        'ERROR_IN_CERT_NOT_AFTER_FIELD',
+        'ERROR_IN_CRL_LAST_UPDATE_FIELD',
+        'ERROR_IN_CRL_NEXT_UPDATE_FIELD',
+        'CERT_CHAIN_TOO_LONG',
+        'CERT_REVOKED',
+        'INVALID_CA',
+        'PATH_LENGTH_EXCEEDED',
+        'CERT_UNTRUSTED',
+        'CERT_REJECTED',
+        'HOSTNAME_MISMATCH'
+    ])('keeps a request failing with %s a lasting API error, across its backoff', (errorCode) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`certificate-${errorCode}`);
+            const failed = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                errorCode,
+                home: home.home,
+                mode: 'error',
+                nowMs,
+                pathDir: home.bin,
+                prefetchResetOnly: true
+            });
+
+            expect(failed.first).toEqual({ error: 'api-error' });
+            expect(failed.resetOnly).toEqual({ error: 'api-error' });
+            expect(failed.requestCount).toBe(1);
+            expect(parseLockContents(failed.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'api-error'
+            });
+
+            const backedOff = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin,
+                prefetchResetOnly: true
+            });
+
+            expect(backedOff.first).toEqual({ error: 'api-error' });
+            expect(backedOff.resetOnly).toEqual({ error: 'api-error' });
+            expect(backedOff.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['response-aborted', 'response-error'] as const)('gives up as soon as the response stream fails (%s)', (mode) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(mode);
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode,
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody.slice(0, 20),
+                statusCode: 200
+            });
+
+            // Nothing more can arrive once the connection drops mid-body, and
+            // waiting out the five-second deadline would hold the status line.
+            expect(result.first).toEqual({ error: 'api-error', errorTransient: true });
+            expect(result.requestCount).toBe(1);
+            expect(result.firstElapsedMs).toBeLessThan(2500);
         } finally {
             harness.cleanup();
         }
@@ -2496,6 +2933,35 @@ describe('fetchUsageData error handling', () => {
             expect(result.first).toEqual({ error: 'timeout' });
             expect(result.second).toEqual({ error: 'timeout' });
             expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('ignores a legacy empty lock file modified further ahead than its 30-second backoff', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('legacy-lock-ahead');
+            const lockFile = usageFilePath(home, 'lock');
+            const lockDir = path.dirname(lockFile);
+
+            fs.mkdirSync(lockDir, { recursive: true });
+            fs.writeFileSync(lockFile, '');
+            const modifiedAt = new Date(nowMs + (3 * 60 * 60 * 1000));
+            fs.utimesSync(lockFile, modifiedAt, modifiedAt);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
         } finally {
             harness.cleanup();
         }
@@ -3257,8 +3723,116 @@ describe('usage API request behind a proxy that never answers CONNECT', () => {
         proxy = await startStalledProxy();
         process.env.HTTPS_PROXY = proxy.url;
 
-        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error' });
+        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error', transient: true });
         await proxy.connectionClosed;
+    });
+});
+
+describe('usage API request behind a proxy that refuses CONNECT', () => {
+    let originalProxy: string | undefined;
+    let proxy: AnsweringProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        proxy = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The proxy agent hands the proxy's answer to the request as its response,
+    // and under Bun the request's connection also fails before that response
+    // ends. A proxy that wants its own login (407) or won't tunnel to the API
+    // (403) refuses the next render's request too; one that couldn't reach the
+    // API (502) or gave up waiting for the CONNECT (408) may well get through
+    // by then.
+    it.each([
+        { outcome: 'lasting', statusCode: 407, transient: false },
+        { outcome: 'lasting', statusCode: 403, transient: false },
+        { outcome: 'transient', statusCode: 502, transient: true },
+        { outcome: 'transient', statusCode: 408, transient: true }
+    ])('reports a proxy\'s $statusCode for CONNECT as a $outcome API error', async ({ statusCode, transient }) => {
+        proxy = await startAnsweringProxy(statusCode);
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 2000)).toEqual({ kind: 'error', transient });
+    });
+});
+
+describe('usage API request through a proxy to a server whose certificate does not verify', () => {
+    const root = createTestCertificate({ commonName: 'Test Root CA', isCa: true });
+    const intermediate = createTestCertificate({ commonName: 'Test Intermediate CA', isCa: true, issuer: root });
+    const nonCaIssuer = createTestCertificate({ commonName: 'Test Issuer', hosts: ['issuer.test'], issuer: root });
+    const nonSigningCa = createTestCertificate({ commonName: 'Test Signing CA', isCa: true, issuer: root, keyUsageWithoutCertSign: true });
+    const createLeaf = (options: Partial<TestCertificateOptions> = {}) => createTestCertificate({
+        commonName: 'api.anthropic.com',
+        hosts: ['api.anthropic.com'],
+        issuer: root,
+        ...options
+    });
+    let originalProxy: string | undefined;
+    let proxy: TunnelingProxy | null = null;
+    let server: TestTlsServer | null = null;
+    let droppingServer: RefusingProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        await server?.stop();
+        await droppingServer?.stop();
+        proxy = null;
+        server = null;
+        droppingServer = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The proxy opens the tunnel to a local server whose certificate the
+    // runtime doesn't trust, as a proxy or firewall that intercepts TLS does.
+    // Every request fails the same way until the runtime trusts it or the
+    // certificates change. Node names the expired and the not-yet-valid
+    // certificate by their dates, Bun by their unknown CA. Node has no name
+    // for a CA whose key usage leaves out signing certificates and reports
+    // UNSPECIFIED, where Bun finds no issuer for the leaf.
+    it.each([
+        { chain: () => [createLeaf({ issuer: undefined })], name: 'a self-signed certificate' },
+        { chain: () => [createLeaf()], name: 'a certificate from an unknown CA' },
+        { chain: () => [createLeaf(), root], name: 'a chain up to an unknown root' },
+        { chain: () => [createLeaf({ issuer: intermediate }), intermediate], name: 'a chain to an unknown root\'s intermediate' },
+        { chain: () => [createLeaf({ issuer: nonCaIssuer }), nonCaIssuer], name: 'a chain through an issuer that is not a CA' },
+        { chain: () => [createLeaf({ issuer: nonSigningCa }), nonSigningCa], name: 'a chain through a CA that may not sign certificates' },
+        { chain: () => [createLeaf({ notAfter: new Date('2021-01-01'), notBefore: new Date('2020-01-01') })], name: 'an expired certificate' },
+        { chain: () => [createLeaf({ notAfter: new Date('2041-01-01'), notBefore: new Date('2040-01-01') })], name: 'a certificate not valid yet' }
+    ])('reports $name as a lasting API error', async ({ chain }) => {
+        server = await startTlsServer(chain());
+        proxy = await startTunnelingProxy(server.port);
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 2000)).toEqual({ kind: 'error', transient: false });
+        expect(proxy.tunnelCount()).toBe(1);
+    });
+
+    // Losing the connection is a network failure, which may clear up by the
+    // next render
+    it('reports a connection dropped before the TLS handshake ends as an API error that clears up on its own', async () => {
+        droppingServer = await startRefusingProxy();
+        proxy = await startTunnelingProxy(Number.parseInt(new URL(droppingServer.url).port, 10));
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 2000)).toEqual({ kind: 'error', transient: true });
+        expect(proxy.tunnelCount()).toBe(1);
     });
 });
 
