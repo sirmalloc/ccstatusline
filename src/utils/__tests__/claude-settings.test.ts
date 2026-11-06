@@ -22,6 +22,7 @@ import {
     getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    getPackageCommandAvailability,
     getRefreshInterval,
     getRemoteControlStatus,
     getSandboxConfig,
@@ -929,6 +930,34 @@ describe('isClaudeCodeVersionAtLeast', () => {
     it('should return false when claude is not installed', () => {
         vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
         expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+});
+
+describe('getPackageCommandAvailability', () => {
+    const originalPath = process.env.PATH;
+
+    afterEach(() => {
+        process.env.PATH = originalPath;
+    });
+
+    // Minimal Linux images (Fedora, UBI, Arch without the which package) have no `which`
+    it.skipIf(process.platform === 'win32')('finds package managers on PATH when there is no which command', () => {
+        const binDir = path.join(testClaudeConfigDir, 'bin');
+        fs.mkdirSync(path.join(binDir, 'bunx'), { recursive: true });
+        fs.writeFileSync(path.join(binDir, 'npm'), '#!/bin/sh\n', { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, 'npx'), '#!/bin/sh\n', { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, 'bun'), '#!/bin/sh\n', { mode: 0o644 });
+        process.env.PATH = binDir;
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation((command) => {
+            throw Object.assign(new Error(`spawnSync ${command} ENOENT`), { code: 'ENOENT' });
+        });
+
+        expect(getPackageCommandAvailability()).toEqual({
+            npm: true,
+            npx: true,
+            bun: false,
+            bunx: false
+        });
     });
 });
 
