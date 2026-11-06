@@ -32,25 +32,28 @@ vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 const mockExecFileSync = execFileSync as unknown as { mockImplementation: (impl: (command: string, args: string[], options?: { cwd?: string }) => string) => void };
 
 // Repositories keyed by working directory: what `git status --porcelain -z`,
-// `git diff --shortstat` and `git diff --cached --shortstat` print there.
-// '/repos/none' is not a git work tree.
-const REPOS: Record<string, { status: string; unstagedStat: string; stagedStat: string }> = {
-    // 3 staged, 2 unstaged and 2 untracked files; 11 lines added, 9 removed
+// `git ls-files --others --exclude-standard -z -- :/`, `git diff --shortstat`
+// and `git diff --cached --shortstat` print there. '/repos/none' is not a git
+// work tree.
+const REPOS: Record<string, { status: string; untracked: string; unstagedStat: string; stagedStat: string }> = {
+    // 3 staged, 2 unstaged and 2 untracked files, one in the new f/; 11 lines
+    // added, 9 removed
     '/repos/dirty': {
         status: 'M  a.ts\0A  b.ts\0 M c.ts\0MM d.ts\0?? e.ts\0?? f/\0',
+        untracked: 'e.ts\0f/g.ts\0',
         unstagedStat: ' 2 files changed, 4 insertions(+), 9 deletions(-)',
         stagedStat: ' 2 files changed, 7 insertions(+)'
     },
-    '/repos/clean': { status: '', unstagedStat: '', stagedStat: '' },
+    '/repos/clean': { status: '', untracked: '', unstagedStat: '', stagedStat: '' },
     // Only removed lines, unstaged
-    '/repos/removed': { status: ' M a.ts\0', unstagedStat: ' 1 file changed, 3 deletions(-)', stagedStat: '' },
+    '/repos/removed': { status: ' M a.ts\0', untracked: '', unstagedStat: ' 1 file changed, 3 deletions(-)', stagedStat: '' },
     // Only added lines, staged
-    '/repos/added': { status: 'M  a.ts\0', unstagedStat: '', stagedStat: ' 1 file changed, 2 insertions(+)' },
+    '/repos/added': { status: 'M  a.ts\0', untracked: '', unstagedStat: '', stagedStat: ' 1 file changed, 2 insertions(+)' },
     // One untracked file, so no line changes
-    '/repos/untracked': { status: '?? a.ts\0', unstagedStat: '', stagedStat: '' }
+    '/repos/untracked': { status: '?? a.ts\0', untracked: 'a.ts\0', unstagedStat: '', stagedStat: '' }
 };
 
-// Answers the four commands these widgets run like git would
+// Answers the five commands these widgets run like git would
 beforeEach(() => {
     clearGitCache();
     mockExecFileSync.mockImplementation((_command, args, options) => {
@@ -61,6 +64,7 @@ beforeEach(() => {
         const outputs: Record<string, string> = {
             'rev-parse --is-inside-work-tree': 'true\n',
             'status --porcelain -z': repo.status,
+            'ls-files --others --exclude-standard -z -- :/': repo.untracked,
             'diff --shortstat': repo.unstagedStat,
             'diff --cached --shortstat': repo.stagedStat
         };

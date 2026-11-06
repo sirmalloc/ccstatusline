@@ -49,12 +49,23 @@ export function expectGitExecOptions(options: unknown, cwd?: string): void {
         expect(options).not.toHaveProperty('cwd');
 }
 
-// What execGit adds to status and diff, after the subcommand
+// What execGit adds before diff and ls-files, and to status and diff after the
+// subcommand
+const WHOLE_REPOSITORY_ARGS = new Map<string, string[]>([
+    ['diff', ['-c', 'diff.relative=false']],
+    ['ls-files', ['--no-literal-pathspecs']]
+]);
 const WORK_TREE_SAFETY_OPTIONS = new Set(['--ignore-submodules=dirty', '--no-ext-diff', '--no-textconv']);
 
 /** The command a fake git answers, without the hardening every call carries */
 export function gitCommandOf(args: string[]): string {
-    const command = args.slice(GIT_HARDENING_ARGS.length);
+    let command = args.slice(GIT_HARDENING_ARGS.length);
     expect(args.slice(0, GIT_HARDENING_ARGS.length)).toEqual(GIT_HARDENING_ARGS);
+    for (const [subcommand, added] of WHOLE_REPOSITORY_ARGS) {
+        if (command[0] === subcommand || command[added.length] === subcommand) {
+            expect(command.slice(0, added.length)).toEqual(added);
+            command = command.slice(added.length);
+        }
+    }
     return command.filter(arg => !WORK_TREE_SAFETY_OPTIONS.has(arg)).join(' ');
 }

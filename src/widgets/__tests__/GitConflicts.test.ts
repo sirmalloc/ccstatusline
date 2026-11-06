@@ -139,6 +139,13 @@ describe('GitConflictsWidget', () => {
         expect(render()).toBe('⚠2');
     });
 
+    it('lists the unmerged files of the whole repository, not only the session\'s directory', () => {
+        mockConflictCount(2);
+
+        expect(render()).toBe('⚠2');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, '--no-literal-pathspecs', 'ls-files', '--unmerged', '-z', '--', ':/']);
+    });
+
     it('counts filenames with repeated spaces separately', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce(
@@ -146,7 +153,7 @@ describe('GitConflictsWidget', () => {
         );
 
         expect(render()).toBe('⚠2');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, '--no-literal-pathspecs', 'ls-files', '--unmerged', '-z', '--', ':/']);
     });
 
     it('renders raw conflicts as a numeric count', () => {

@@ -73,16 +73,19 @@ describe('GitUntrackedFilesWidget', () => {
 
     it('renders untracked file count', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('M  a.ts\0 M b.ts\0?? c.ts\0?? d.ts\0');
+        mockExecFileSync.mockReturnValueOnce('M  a.ts\0 M b.ts\0?? c.ts\0?? d/\0');
+        mockExecFileSync.mockReturnValueOnce('c.ts\0d/e.ts\0');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('?:2');
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'status', '--ignore-submodules=dirty', '--porcelain', '-z']);
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual([...GIT_HARDENING_ARGS, '--no-literal-pathspecs', 'ls-files', '--others', '--exclude-standard', '-z', '--', ':/']);
     });
 
     it('renders raw untracked file count', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce('?? a.ts\0?? b.ts\0');
+        mockExecFileSync.mockReturnValueOnce('a.ts\0b.ts\0');
 
         expect(render({ rawValue: true })).toBe('2');
     });
@@ -104,6 +107,7 @@ describe('GitUntrackedFilesWidget', () => {
     it('keeps non-zero counts visible with the zero state enabled', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce('?? a.ts\0?? b.ts\0');
+        mockExecFileSync.mockReturnValueOnce('a.ts\0b.ts\0');
 
         expect(render({ hide: 'zero' })).toBe('?:2');
     });

@@ -47,6 +47,8 @@ ccstatusline --version
 - **Git Upstream Owner** / **Git Upstream Repo** / **Git Upstream Owner/Repo** / **Git Is Fork** - Show upstream remote metadata and whether the current repo is a fork. Git Is Fork displays `⑂` for forks by default; press `g` to customize it, or use raw mode for `true`/`false`.
 - **Git Worktree** / **Git Worktree Mode** / **Git Worktree Name** / **Git Worktree Branch** / **Git Worktree Original Branch** - Show worktree status plus the active worktree's name and branch metadata. Git Worktree supports `f` for fish-style abbreviation, including `main` → `m`.
 
+The count widgets (Git Changes, Git Insertions, Git Deletions, Git Conflicts and Git Staged/Unstaged/Untracked Files) count the whole repository, as Git Status does, even when the session is in a subdirectory or your git config sets `diff.relative`. Git Untracked Files counts each file inside a new directory. Under `status.showUntrackedFiles = no` it shows 0, as `git status` lists no untracked files there.
+
 ### Jujutsu (JJ)
 
 - **JJ Revision** / **JJ Bookmarks** / **JJ Workspace** - Show the current change ID, bookmarks, or workspace name, with customizable prefix glyphs through `g`.

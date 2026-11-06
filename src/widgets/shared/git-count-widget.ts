@@ -11,6 +11,7 @@ import type {
 import {
     getGitChangeCounts,
     getGitFileStatusCounts,
+    getGitUntrackedFileCount,
     isInsideGitWorkTree,
     type GitChangeCounts,
     type GitFileStatusCounts
@@ -77,16 +78,25 @@ export abstract class GitCountWidgetBase<Counts> implements Widget {
     supportsColors(_item: WidgetItem): boolean { return true; }
 }
 
-// Git Staged, Unstaged and Untracked Files show one of git status's file
-// counts after a short label, or the bare count when raw
+type GitFileCountField = keyof GitFileStatusCounts | 'untracked';
+
+// Only Git Untracked Files runs the call that lists every untracked file
+function getGitFileCount(context: RenderContext, field: GitFileCountField): number {
+    return field === 'untracked'
+        ? getGitUntrackedFileCount(context)
+        : getGitFileStatusCounts(context)[field];
+}
+
+// Git Staged, Unstaged and Untracked Files show a file count after a short
+// label, or the bare count when raw
 export abstract class GitFileCountWidget extends GitCountWidgetBase<number> {
-    protected abstract readonly field: keyof GitFileStatusCounts;
+    protected abstract readonly field: GitFileCountField;
     protected abstract readonly label: string;
 
     getLabelPrefix(): string { return this.label; }
 
     protected getCounts(context: RenderContext): number {
-        return getGitFileStatusCounts(context)[this.field];
+        return getGitFileCount(context, this.field);
     }
 
     protected isZero(count: number): boolean {
@@ -100,7 +110,7 @@ export abstract class GitFileCountWidget extends GitCountWidgetBase<number> {
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
         if (!isInsideGitWorkTree(context))
             return null;
-        return getGitFileStatusCounts(context)[this.field];
+        return getGitFileCount(context, this.field);
     }
 
     supportsRawValue(): boolean { return true; }

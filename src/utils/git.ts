@@ -22,7 +22,6 @@ export interface GitChangeCounts {
 export interface GitFileStatusCounts {
     staged: number;
     unstaged: number;
-    untracked: number;
 }
 
 interface GitRepoMetadata {
@@ -55,9 +54,10 @@ const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
 // In-process cache keeps cwd in the key; the persistent cache uses one file
 // per (repo, cwd) pair, stores cwd once at the file level and keys entries by
-// command. Per-cwd files matter because some outputs are cwd-scoped (e.g.
-// `ls-files --unmerged`) and because sessions in the same repo at different
-// cwds (root vs a subdirectory) would otherwise evict each other every render.
+// command. Per-cwd files matter because some outputs depend on cwd (ls-files
+// prints paths relative to it) and because sessions in the same repo at
+// different cwds (root vs a subdirectory) would otherwise evict each other
+// every render.
 const gitCommandCache = new Map<string, GitCacheEntry>();
 const filterOverrideCache = new Map<string, string[] | null>();
 
@@ -69,8 +69,29 @@ const WORK_TREE_COMMAND_ARGS = new Map<string, string[]>([
     ['diff', ['--no-ext-diff', '--no-textconv', '--ignore-submodules=dirty']]
 ]);
 
+// Options set ahead of a command so it reports on the whole repository.
+// diff.relative (git 2.28 and later) limits diff to the current directory; git
+// before 2.28 ignores the setting, where it would reject --no-relative.
+// GIT_LITERAL_PATHSPECS=1 in the environment makes ls-files read the `:/`
+// pathspec as a file name; git has accepted --no-literal-pathspecs since it
+// added that variable.
+const WHOLE_REPOSITORY_ARGS = new Map<string, string[]>([
+    ['diff', ['-c', 'diff.relative=false']],
+    ['ls-files', ['--no-literal-pathspecs']]
+]);
+
 // `git config --get-regexp` exits with 1 when nothing matches
 const GIT_CONFIG_NO_MATCH_STATUS = 1;
+
+// Every untracked file in the repository, one by one, skipping what
+// .gitignore excludes as git status does
+const UNTRACKED_FILES_ARGS = ['ls-files', '--others', '--exclude-standard', '-z', '--', ':/'];
+// The listing runs to megabytes in a large tree that isn't ignored, such as a
+// node_modules made before its .gitignore entry, so the cache keeps the count
+const UNTRACKED_FILE_COUNT_CACHE_KEY = `count of ${UNTRACKED_FILES_ARGS.join(' ')}`;
+// Room for about a million paths of 60-odd bytes, as in a node_modules;
+// execFileSync's default of 1 MiB holds about 16,000
+const UNTRACKED_FILES_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -187,7 +208,7 @@ function mayDefineFilters(gitDir: string): boolean {
     return /filter|include/i.test(configText);
 }
 
-function gitExecOptions(cwd: string | undefined) {
+function gitExecOptions(cwd: string | undefined, maxBuffer?: number) {
     // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
     // (diff, status, rev-list, ...) from racing on .git/index.lock when another
     // git process is writing it.
@@ -200,7 +221,8 @@ function gitExecOptions(cwd: string | undefined) {
         env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
         timeout: GIT_COMMAND_TIMEOUT_MS,
         windowsHide: true,
-        ...(cwd ? { cwd } : {})
+        ...(cwd ? { cwd } : {}),
+        ...(maxBuffer === undefined ? {} : { maxBuffer })
     };
 }
 
@@ -257,21 +279,25 @@ function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | nu
 /**
  * Runs git as every status line call should: with fsmonitor off, no bare
  * repository found by searching upward, and, for commands that re-read work tree
- * files, none of the repository's own filter drivers or external diff tools.
- * Throws when git fails, or when the repository's filters can't be turned off.
+ * files, none of the repository's own filter drivers or external diff tools,
+ * and with diff and ls-files covering the whole repository whatever
+ * diff.relative or GIT_LITERAL_PATHSPECS says.
+ * Throws when git fails, prints more than maxBuffer bytes (1 MiB by default),
+ * or when the repository's filters can't be turned off.
  */
-export function execGit(args: string[], cwd: string | undefined, encoding: 'utf8' | 'latin1' = 'utf8'): string {
+export function execGit(args: string[], cwd: string | undefined, encoding: 'utf8' | 'latin1' = 'utf8', maxBuffer?: number): string {
     const [subcommand = '', ...rest] = args;
     const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
     const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd) : [];
     if (filterArgs === null) {
         throw new Error('The repository\'s filter drivers could not be turned off');
     }
+    const wholeRepositoryArgs = WHOLE_REPOSITORY_ARGS.get(subcommand) ?? [];
 
     return execFileSync(
         resolveExecutable('git'),
-        [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
-        { ...gitExecOptions(cwd), encoding }
+        [...GIT_HARDENING_ARGS, ...filterArgs, ...wholeRepositoryArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
+        { ...gitExecOptions(cwd, maxBuffer), encoding }
     );
 }
 
@@ -519,10 +545,24 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
 }
 
 function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand: string | undefined, encoding: 'utf8' | 'latin1'): string | null {
-    const cwd = resolveGitCwd(context);
     const commandToken = cacheCommand ?? args.join('\0');
     // Byte-preserving output must never reuse an older, lossy UTF-8 entry.
     const cacheToken = encoding === 'utf8' ? commandToken : `${encoding}\0${commandToken}`;
+    return runCachedGit(context, cacheToken, (cwd) => {
+        const rawOutput = execGit(args, cwd, encoding);
+        const output = encoding === 'utf8' ? rawOutput.trimEnd() : rawOutput;
+        return output.length > 0 ? output : null;
+    });
+}
+
+// What run makes of git's output in the session's directory, kept under
+// cacheToken; null when git fails
+function runCachedGit(
+    context: RenderContext,
+    cacheToken: string,
+    run: (cwd: string | undefined) => string | null
+): string | null {
+    const cwd = resolveGitCwd(context);
     const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
     const metadata = getGitRepoMetadata(cwd);
@@ -549,9 +589,7 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
 
     let result: string | null;
     try {
-        const rawOutput = execGit(args, cwd, encoding);
-        const output = encoding === 'utf8' ? rawOutput.trimEnd() : rawOutput;
-        result = output.length > 0 ? output : null;
+        result = run(cwd);
     } catch {
         result = null;
     }
@@ -652,12 +690,11 @@ export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCou
     const output = runGit('status --porcelain -z', context);
 
     if (!output) {
-        return { staged: 0, unstaged: 0, untracked: 0 };
+        return { staged: 0, unstaged: 0 };
     }
 
     let staged = 0;
     let unstaged = 0;
-    let untracked = 0;
 
     const entries = output.split('\0');
 
@@ -666,21 +703,44 @@ export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCou
         if (typeof line !== 'string' || line.length < 2)
             continue;
 
-        if (line.startsWith('??')) {
-            untracked += 1;
-        } else {
-            if (/^[MADRCTU]/.test(line))
-                staged += 1;
-            if (/^.[MADRCTU]/.test(line))
-                unstaged += 1;
-        }
+        if (/^[MADRCTU]/.test(line))
+            staged += 1;
+        if (/^.[MADRCTU]/.test(line))
+            unstaged += 1;
 
         if (hasRenameOrCopyStatus(line)) {
             index += 1;
         }
     }
 
-    return { staged, unstaged, untracked };
+    return { staged, unstaged };
+}
+
+function countNulTerminatedEntries(output: string): number {
+    let count = 0;
+    for (let end = output.indexOf('\0'); end !== -1; end = output.indexOf('\0', end + 1)) {
+        count += 1;
+    }
+    return count;
+}
+
+// Untracked files are listed one by one, as git status lists a new directory
+// as one entry by default. The listing walks every new directory, so it runs
+// only when the git status Git Status and the other file counts share lists
+// something untracked. Otherwise the count is 0, as git status says, which
+// under status.showUntrackedFiles=no lists no untracked files at all.
+export function getGitUntrackedFileCount(context: RenderContext): number {
+    const status = getGitStatus(context);
+    if (!status.untracked) {
+        return 0;
+    }
+
+    const count = runCachedGit(context, UNTRACKED_FILE_COUNT_CACHE_KEY, (cwd) => {
+        const output = execGit(UNTRACKED_FILES_ARGS, cwd, 'utf8', UNTRACKED_FILES_MAX_BUFFER_BYTES);
+        return `${countNulTerminatedEntries(output)}`;
+    });
+    const parsed = Number.parseInt(count ?? '', 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export interface GitAheadBehind {
@@ -709,7 +769,9 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
 export function getGitConflictCount(context: RenderContext): number {
     // Latin-1 maps each byte to a distinct code point, preserving arbitrary Git
     // pathnames through string comparisons and the JSON cache. It is not display text.
-    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z'], context, undefined, 'latin1');
+    // `:/` covers the whole repository, as git status does; without a path
+    // ls-files only lists the session's directory
+    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z', '--', ':/'], context, undefined, 'latin1');
     if (!output)
         return 0;
 
