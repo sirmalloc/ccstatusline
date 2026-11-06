@@ -64,7 +64,7 @@ function resolveWritableCacheDir(homeDir: string, tmpDir: string): string {
  * every render would call the APIs again. Resolved once per process.
  */
 export function getWritableCacheDir(): string {
-    writableCacheDir ??= resolveWritableCacheDir(os.homedir(), os.tmpdir());
+    writableCacheDir = writableCacheDir ?? resolveWritableCacheDir(os.homedir(), os.tmpdir());
     return writableCacheDir;
 }
 
