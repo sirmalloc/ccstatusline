@@ -89,7 +89,7 @@ describe('ContextPercentageUsableWidget', () => {
         const context: RenderContext = { isPreview: true };
         process.env.DISABLE_AUTO_COMPACT = '1';
         expect(new ContextPercentageUsableWidget().render({ id: 'usable', type: 'context-percentage-usable' }, context, DEFAULT_SETTINGS))
-            .toBe('Ctx(u) Used: 11.6%');
+            .toBe('Ctx(u) Used: 90.0%');
         expect(claudeSettings.getAutoCompactConfig).not.toHaveBeenCalled();
     });
 

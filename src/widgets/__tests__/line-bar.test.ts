@@ -53,16 +53,16 @@ const context: RenderContext = {
 };
 
 const cases = [
-    { widget: new SessionUsageWidget(), type: 'session-usage', label: '5h: ', preview: '━━━───────────── 20.0%', cursor: true },
-    { widget: new WeeklyUsageWidget(), type: 'weekly-usage', label: 'Weekly: ', preview: '━━────────────── 12.0%', cursor: true },
-    { widget: new WeeklySonnetUsageWidget(), type: 'weekly-sonnet-usage', label: 'Weekly Sonnet: ', preview: '━─────────────── 8.0%', cursor: true },
-    { widget: new WeeklyOpusUsageWidget(), type: 'weekly-opus-usage', label: 'Weekly Opus: ', preview: '━─────────────── 4.0%', cursor: true },
-    { widget: new FableWeeklyUsageWidget(), type: 'fable-weekly-usage', label: 'Weekly Fable: ', preview: '━─────────────── 4.0%', cursor: true },
+    { widget: new SessionUsageWidget(), type: 'session-usage', label: '5h: ', preview: '━━━━━━━━━━━━━━── 90.0%', cursor: true },
+    { widget: new WeeklyUsageWidget(), type: 'weekly-usage', label: 'Weekly: ', preview: '━━━━━━━━━━━━━─── 80.0%', cursor: true },
+    { widget: new WeeklySonnetUsageWidget(), type: 'weekly-sonnet-usage', label: 'Weekly Sonnet: ', preview: '━━━━━━━━━━━───── 70.0%', cursor: true },
+    { widget: new WeeklyOpusUsageWidget(), type: 'weekly-opus-usage', label: 'Weekly Opus: ', preview: '━━━━━━━━━━────── 60.0%', cursor: true },
+    { widget: new FableWeeklyUsageWidget(), type: 'fable-weekly-usage', label: 'Weekly Fable: ', preview: '━━━━━━━━━━────── 60.0%', cursor: true },
     { widget: new SpendLimitUsageWidget(), type: 'spend-limit-usage', label: 'Spend Limit: ', preview: '━━━━━━────────── 40.0%', cursor: false },
-    { widget: new ExtraUsageUtilizationWidget(), type: 'extra-usage-utilization', label: 'Overage: ', preview: '──────────────── 2.6%', cursor: false },
+    { widget: new ExtraUsageUtilizationWidget(), type: 'extra-usage-utilization', label: 'Overage: ', preview: '━━━━━━━━━━━━━━── 85.0%', cursor: false },
     { widget: new BlockTimerWidget(), type: 'block-timer', label: 'Block ', preview: '━━━━━━━━━━━━──── 73.9%', cursor: false },
-    { widget: new BlockResetTimerWidget(), type: 'reset-timer', label: 'Reset ', preview: '━━────────────── 10.0%', cursor: false },
-    { widget: new WeeklyResetTimerWidget(), type: 'weekly-reset-timer', label: 'Weekly Reset ', preview: '━━────────────── 10.0%', cursor: false }
+    { widget: new BlockResetTimerWidget(), type: 'reset-timer', label: 'Reset ', preview: '━━━━━━━━━━━━━━── 85.0%', cursor: false },
+    { widget: new WeeklyResetTimerWidget(), type: 'weekly-reset-timer', label: 'Weekly Reset ', preview: '━━━━━━━━━━━━━─── 78.3%', cursor: false }
 ];
 
 describe('line bars across usage and timer widgets', () => {
@@ -130,8 +130,8 @@ describe('context line bars', () => {
     afterEach(() => vi.restoreAllMocks());
 
     it.each([
-        { widget: new ContextPercentageWidget(), type: 'context-percentage', live: 'Ctx Used: ━━━───────────── 20.0%', remaining: '━━━━━━━━━━━━━─── 80.0%', preview: 'Ctx Used: ━─────────────── 9.3%' },
-        { widget: new ContextPercentageUsableWidget(), type: 'context-percentage-usable', live: 'Ctx(u) Used: ━━━━──────────── 25.0%', remaining: '━━━━━━━━━━━━──── 75.0%', preview: 'Ctx(u) Used: ━━────────────── 11.6%' }
+        { widget: new ContextPercentageWidget(), type: 'context-percentage', live: 'Ctx Used: ━━━───────────── 20.0%', remaining: '━━━━━━━━━━━━━─── 80.0%', preview: 'Ctx Used: ━━━━━━━━━━━━━━── 90.0%' },
+        { widget: new ContextPercentageUsableWidget(), type: 'context-percentage-usable', live: 'Ctx(u) Used: ━━━━──────────── 25.0%', remaining: '━━━━━━━━━━━━──── 75.0%', preview: 'Ctx(u) Used: ━━━━━━━━━━━━━━── 90.0%' }
     ])('renders $type live and preview values, with remaining mode and cycle support', ({ widget, type, live, remaining, preview }) => {
         const item: WidgetItem = { id: type, type, metadata: { display: 'line' } };
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe(live);
@@ -148,6 +148,6 @@ describe('context line bars', () => {
         const widget = new ContextBarWidget();
         const item: WidgetItem = { id: 'context-bar', type: 'context-bar', metadata: { display: 'line' } };
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Context: ━━━───────────── 40k/200k (20%)');
-        expect(widget.render(item, { isPreview: true }, DEFAULT_SETTINGS)).toBe('Context: ━━━━──────────── 50k/200k (25%)');
+        expect(widget.render(item, { isPreview: true }, DEFAULT_SETTINGS)).toBe('Context: ━━━━━━━━━━━━━━── 180k/200k (90%)');
     });
 });

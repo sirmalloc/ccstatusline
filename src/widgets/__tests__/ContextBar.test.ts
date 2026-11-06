@@ -208,6 +208,6 @@ describe('ContextBarWidget', () => {
             id: 'bar',
             type: 'context-bar',
             numberFormat: { decimals: 2 }
-        }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:25.0:16] 50.00k/200.00k (25.00%)');
+        }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:90.0:16] 180.00k/200.00k (90.00%)');
     });
 });

@@ -41,7 +41,7 @@ describe('BlockResetTimerWidget', () => {
     it('renders preview using block-style reset format', () => {
         const widget = new BlockResetTimerWidget();
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { isPreview: true })).toBe('Reset: 4hr 30m');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { isPreview: true })).toBe('Reset: 45m');
     });
 
     it('renders remaining time in time mode', () => {
@@ -384,7 +384,8 @@ describe('BlockResetTimerWidget', () => {
             metadata: { display: 'slider' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 'g', label: '(g)radient', action: 'cycle-gradient' }
         ]);
     });
 
@@ -432,7 +433,8 @@ describe('BlockResetTimerWidget', () => {
         expectedModifierText: '(medium bar, inverted)',
         expectedProgressKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 'g', label: '(g)radient', action: 'cycle-gradient' }
         ],
         modifierItem: {
             id: 'reset',

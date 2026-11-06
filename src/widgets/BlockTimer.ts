@@ -13,6 +13,11 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import {
+    CYCLE_GRADIENT_ACTION,
+    cycleGradientPreset,
+    paintsBarGradient
+} from './shared/gradient-bar';
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -25,6 +30,7 @@ import {
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
+    showsUsageBar,
     toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
@@ -52,6 +58,10 @@ export class BlockTimerWidget implements Widget {
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === CYCLE_GRADIENT_ACTION) {
+            return cycleGradientPreset(item);
+        }
+
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, ['compact'], true);
         }
@@ -75,7 +85,7 @@ export class BlockTimerWidget implements Widget {
         if (context.isPreview) {
             const previewPercent = inverted ? 26.1 : 73.9;
 
-            const bar = formatUsageBar(item, previewPercent, format);
+            const bar = formatUsageBar(item, previewPercent, format, settings);
             if (bar !== null) {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
             }
@@ -90,7 +100,7 @@ export class BlockTimerWidget implements Widget {
             if (isHidden(item, NO_DATA_HIDEABLE_STATE.key)) {
                 return null;
             }
-            const bar = formatUsageBar(item, 0, format);
+            const bar = formatUsageBar(item, 0, format, settings);
             if (bar !== null) {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
             }
@@ -98,7 +108,7 @@ export class BlockTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(item), compact ? '0h' : '0hr 0m');
         }
 
-        const bar = formatUsageBar(item, inverted ? window.remainingPercent : window.elapsedPercent, format);
+        const bar = formatUsageBar(item, inverted ? window.remainingPercent : window.elapsedPercent, format, settings);
         if (bar !== null) {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
         }
@@ -113,6 +123,11 @@ export class BlockTimerWidget implements Widget {
 
     getHideableStates(): HideableState[] {
         return [NO_DATA_HIDEABLE_STATE];
+    }
+
+    // A gradient preset paints only the bar, so the renderer colors the rest
+    colorsOnlyItsRuns(item: WidgetItem): boolean {
+        return paintsBarGradient(item, showsUsageBar(item));
     }
 
     supportsRawValue(): boolean { return true; }

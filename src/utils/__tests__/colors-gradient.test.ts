@@ -65,12 +65,15 @@ describe('applyColors around runs the text colors itself', () => {
         expect(countMatches(out, TRUECOLOR_CODE)).toBe(4);
     });
 
-    it('leaves embedded runs as they are unless asked', () => {
+    // Any widget's runs get the solid foreground back after them; only a
+    // gradient needs asking, since it would otherwise paint over the runs
+    it('returns to a solid foreground after runs for any text, and sweeps a gradient over runs unless asked', () => {
         const out = applyColors(runs, 'gradient:FF0000-0000FF', undefined, false, 'truecolor');
+        const base = '\x1b[38;2;17;34;51m';
 
         expect(countMatches(out, TRUECOLOR_CODE)).toBe(6);
         expect(applyColors(runs, 'hex:112233', undefined, false, 'truecolor'))
-            .toBe(`\x1b[38;2;17;34;51m${runs}\x1b[39m`);
+            .toBe(`${base}ab \x1b[31mxy${base} cd\x1b[39m`);
     });
 });
 
