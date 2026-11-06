@@ -8,6 +8,7 @@ export type UsageError = z.infer<typeof UsageErrorSchema>;
 
 export interface UsageData {
     sessionUsage?: number;  // five_hour.utilization (percentage)
+    sessionUsageObservedAtMs?: number; // accepted idle refresh's fetch time; per render, never cached
     sessionResetAt?: string; // five_hour.resets_at
     weeklyUsage?: number;   // seven_day.utilization (percentage)
     weeklyResetAt?: string; // seven_day.resets_at
@@ -40,7 +41,7 @@ export interface UsageWindowMetrics {
 
 // Fields a usage fetch can supply and the cache stores. extraUsageUsedToday is
 // worked out from them per render, so it can't be required from a fetch.
-export type UsageDataField = Exclude<keyof UsageData, 'error' | 'extraUsageUsedToday' | 'apiSessionUsage'>;
+export type UsageDataField = Exclude<keyof UsageData, 'error' | 'extraUsageUsedToday' | 'apiSessionUsage' | 'sessionUsageObservedAtMs'>;
 
 // Fields that exist only in the statusline payload, never in the usage API
 // response or its on-disk cache.
