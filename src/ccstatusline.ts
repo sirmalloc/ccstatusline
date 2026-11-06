@@ -158,7 +158,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
         prefetchClaudeStatusIfNeeded(lines),
         hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
     ]);
-    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data, usageData));
 
     const dailyCost = prefetchDailyCostIfNeeded(lines, data);
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;

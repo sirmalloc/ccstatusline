@@ -15,8 +15,10 @@ import {
 import {
     getConfigPath,
     isCustomConfigPath,
+    resolveConfigPath,
     saveInstallationMetadata
 } from './config';
+import { getCommandResolutionPaths } from './global-command-resolution';
 
 // Re-export for backward compatibility
 export type { ClaudeSettings };
@@ -249,9 +251,12 @@ export async function isInstalled(): Promise<boolean> {
 }
 
 function isExecutableAvailable(executable: string): boolean {
+    if (process.platform !== 'win32') {
+        return getCommandResolutionPaths(executable).length > 0;
+    }
+
     try {
-        const command = process.platform === 'win32' ? `where ${executable}` : `which ${executable}`;
-        execSync(command, { stdio: 'ignore', windowsHide: true });
+        execSync(`where ${executable}`, { stdio: 'ignore', windowsHide: true });
         return true;
     } catch {
         return false;
@@ -344,8 +349,91 @@ export function buildStatusLineCommand(commandMode: StatusLineCommandMode): stri
     return buildCommand(getBaseCommandForMode(commandMode));
 }
 
+// Whether the backslash at index escapes the next character: outside quotes it
+// escapes any, inside double quotes only those the shell would otherwise read
+function escapesNextCharacter(command: string, index: number, quote: string | null): boolean {
+    const next = command.charAt(index + 1);
+    return command.charAt(index) === '\\'
+        && next !== ''
+        && quote !== '\''
+        && (quote === null || '"\\$`'.includes(next));
+}
+
+// Splits a command into the words a POSIX shell passes on, undoing
+// quotePathIfNeeded: whitespace separates words, quotes group them, and a
+// backslash escapes the next character. Expand home references while their
+// quote/escape context is available. On Windows only double quotes group,
+// a backslash is a path separator, and POSIX home references stay literal.
+function splitCommandWords(command: string): string[] {
+    const posix = process.platform !== 'win32';
+    const words: string[] = [];
+    let word: string | null = null;
+    let quote: string | null = null;
+
+    for (let index = 0; index < command.length; index++) {
+        const char = command.charAt(index);
+        if (quote === null && /\s/.test(char)) {
+            if (word !== null) {
+                words.push(word);
+            }
+            word = null;
+        } else if (char === quote) {
+            quote = null;
+        } else if (quote === null && (char === '"' || (posix && char === '\''))) {
+            quote = char;
+            word = word ?? '';
+        } else if (posix && escapesNextCharacter(command, index, quote)) {
+            index++;
+            word = (word ?? '') + command.charAt(index);
+        } else if (posix && char === '~' && quote === null && word === null
+            && (index + 1 === command.length || /[\s/]/.test(command.charAt(index + 1)))) {
+            word = os.homedir();
+        } else if (posix && char === '$' && quote !== '\'') {
+            const homeReference = /^\$(?:HOME(?![a-zA-Z0-9_])|\{HOME\})/.exec(command.slice(index));
+            if (homeReference) {
+                word = (word ?? '') + os.homedir();
+                index += homeReference[0].length - 1;
+            } else {
+                word = (word ?? '') + char;
+            }
+        } else {
+            word = (word ?? '') + char;
+        }
+    }
+
+    if (word !== null) {
+        words.push(word);
+    }
+    return words;
+}
+
+/**
+ * The ccstatusline settings file a status line command loads: the path after
+ * its --config, read as the shell passes it on and resolved as ccstatusline
+ * resolves it, or the default file without one. A command that runs a script
+ * is taken to load the default file. Null when --config has no path, which
+ * stops ccstatusline before it loads any.
+ */
+export function getStatusLineConfigPath(command: string): string | null {
+    const words = splitCommandWords(command);
+    const index = words.indexOf('--config');
+    if (index === -1) {
+        return resolveConfigPath();
+    }
+
+    const configPath = words[index + 1];
+    return configPath && !configPath.startsWith('--')
+        ? resolveConfigPath(configPath)
+        : null;
+}
+
 function matchesCommandBase(command: string, baseCommand: string): boolean {
     return command === baseCommand || command.startsWith(`${baseCommand} --config `);
+}
+
+// Whether the status line runs the global `ccstatusline` from PATH (not npx, bunx or a checkout)
+export function isGlobalStatusLineCommand(command: string | null | undefined): boolean {
+    return matchesCommandBase(command ?? '', CCSTATUSLINE_COMMANDS.GLOBAL);
 }
 
 function isLocalDevelopmentCommand(command: string): boolean {
@@ -372,7 +460,7 @@ export function classifyInstallation(
         };
     }
 
-    if (matchesCommandBase(statusLineCommand, CCSTATUSLINE_COMMANDS.GLOBAL)) {
+    if (isGlobalStatusLineCommand(statusLineCommand)) {
         if (metadata?.method === 'pinned') {
             return metadata;
         }
@@ -415,22 +503,25 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
+// A missing settings file loads as {}; any error here means the file exists
+// but could not be read or parsed. Writers abort with this error rather than
+// save over the file, which would discard the user's other Claude Code
+// settings, or return as if their change had been made.
+async function loadClaudeSettingsForUpdate(retry: string): Promise<ClaudeSettings> {
+    try {
+        return await loadClaudeSettings({ logErrors: false });
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then ${retry}.`, { cause: error });
+    }
+}
+
 export async function installStatusLine({
     commandMode,
     supportsRefreshInterval = false,
     installationMetadata
 }: InstallStatusLineOptions): Promise<void> {
-    let settings: ClaudeSettings;
-
-    // A missing settings file loads as {}; any error here means the file exists
-    // but could not be read or parsed. Abort rather than overwrite it with only
-    // our statusLine, which would discard the user's other Claude Code settings.
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
-    }
+    const settings = await loadClaudeSettingsForUpdate('install again');
 
     await backupClaudeSettings('.orig');
 
@@ -464,28 +555,23 @@ export async function installStatusLine({
 }
 
 export async function uninstallStatusLine(): Promise<void> {
-    let settings: ClaudeSettings;
+    // Throwing here, before anything is removed, keeps the installation
+    // metadata and hooks in place and stops the caller from going on to
+    // remove the global package that statusLine still runs.
+    const settings = await loadClaudeSettingsForUpdate('uninstall again');
 
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        console.error('Warning: Could not read existing Claude settings.');
-        return; // if we can't read, return... what are we uninstalling?
-    }
-
-    if (settings.statusLine) {
-        delete settings.statusLine;
+    // statusLine and the managed hooks go in one write. If it fails, both
+    // stay and the metadata isn't cleared, so the caller doesn't go on to
+    // remove the binary they run. With neither there, the file isn't written.
+    const { stripManagedHooksFromSettings } = await import('./hooks');
+    const hadStatusLine = Boolean(settings.statusLine);
+    delete settings.statusLine;
+    const hadManagedHooks = stripManagedHooksFromSettings(settings);
+    if (hadStatusLine || hadManagedHooks) {
         await saveClaudeSettings(settings);
     }
 
     await saveInstallationMetadata(undefined);
-
-    try {
-        const { removeManagedHooks } = await import('./hooks');
-        await removeManagedHooks();
-    } catch {
-        // Ignore hook cleanup failures during uninstall
-    }
 }
 
 export async function getExistingStatusLine(): Promise<string | null> {
@@ -507,16 +593,10 @@ export async function getRefreshInterval(): Promise<number | null> {
 }
 
 export async function setRefreshInterval(interval: number | null): Promise<void> {
-    let settings: ClaudeSettings;
-
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        return;
-    }
+    const settings = await loadClaudeSettingsForUpdate('try again');
 
     if (!settings.statusLine) {
-        return;
+        throw new Error(`No status line is configured in ${getClaudeSettingsPath()}, so there is no refresh interval to set. Install ccstatusline to Claude Code again.`);
     }
 
     if (interval === null) {

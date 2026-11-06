@@ -105,11 +105,11 @@ export class GitRootDirWidget implements Widget {
     }
 
     private getRootDirName(rootDir: string): string {
-        const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
-        const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
-        const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
+        // Splitting drops the empty parts that trailing separators leave. Only a
+        // path of separators alone, such as "/", has no part left and shows as is
+        const parts = rootDir.split(/[\\/]/).filter(Boolean);
         const lastPart = parts[parts.length - 1];
-        return lastPart && lastPart.length > 0 ? lastPart : normalizedRootDir;
+        return lastPart && lastPart.length > 0 ? lastPart : rootDir;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

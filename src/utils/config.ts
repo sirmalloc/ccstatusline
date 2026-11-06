@@ -48,13 +48,18 @@ export function getConfigLoadError(): string | null {
     return lastLoadError;
 }
 
+// The settings file that `--config <filePath>` loads, or the default one without it
+export function resolveConfigPath(filePath?: string): string {
+    return filePath ? path.resolve(filePath) : getDefaultSettingsPath();
+}
+
 // Why the settings in use, though the user's own, differ from what the file holds
 export function getConfigLoadNotice(): string | null {
     return unsavedMigration ? 'settings.json could not be backed up before migrating' : null;
 }
 
 export function initConfigPath(filePath?: string): void {
-    settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
+    settingsPath = resolveConfigPath(filePath);
     // A migration held for the previous file doesn't apply to this one
     unsavedMigration = false;
 }

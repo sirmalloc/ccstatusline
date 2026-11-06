@@ -140,6 +140,17 @@ describe('GitBranchWidget', () => {
         ));
     });
 
+    it('should keep http in links for plain-HTTP remotes', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/main\n');
+        mockExecFileSync.mockReturnValueOnce('http://git.example.lan:3000/team/app.git');
+
+        expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
+            'http://git.example.lan:3000/team/app/tree/main',
+            '⎇ main'
+        ));
+    });
+
     it('should render the branch name when a tag has the same name', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce('refs/heads/release\n');

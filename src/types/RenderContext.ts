@@ -12,6 +12,8 @@ import type { TokenMetrics } from './TokenMetrics';
 
 export interface RenderUsageData {
     sessionUsage?: number;
+    // API observation accepted in place of an idle session's payload.
+    sessionUsageObservedAtMs?: number;
     sessionResetAt?: string;
     weeklyUsage?: number;
     weeklyResetAt?: string;

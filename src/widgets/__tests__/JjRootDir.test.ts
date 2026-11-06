@@ -95,4 +95,18 @@ describe('JjRootDirWidget', () => {
 
         expect(render()).toBe('my-project');
     });
+
+    it('should handle trailing windows separators', () => {
+        mockExecFileSync.mockReturnValueOnce('C:\\Users\\me\\my-project\\/\n');
+        mockExecFileSync.mockReturnValueOnce('C:\\Users\\me\\my-project\\/\n');
+
+        expect(render()).toBe('my-project');
+    });
+
+    it('should render unix root path without returning empty output', () => {
+        mockExecFileSync.mockReturnValueOnce('/\n');
+        mockExecFileSync.mockReturnValueOnce('/\n');
+
+        expect(render()).toBe('/');
+    });
 });

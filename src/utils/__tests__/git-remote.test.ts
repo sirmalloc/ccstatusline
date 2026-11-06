@@ -465,5 +465,17 @@ describe('git-remote utils', () => {
 
             expect(buildRepoWebUrl(remote)).toBe('https://gitlab.com/group/subgroup/project');
         });
+
+        it('keeps http for a remote served over plain HTTP', () => {
+            const remote = {
+                name: 'origin',
+                url: 'http://git.example.lan:3000/team/app.git',
+                host: 'git.example.lan:3000',
+                owner: 'team',
+                repo: 'app'
+            };
+
+            expect(buildRepoWebUrl(remote)).toBe('http://git.example.lan:3000/team/app');
+        });
     });
 });

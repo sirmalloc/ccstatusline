@@ -169,6 +169,16 @@ describe('buildConfigureStatusLineItems', () => {
         expect(items[0]?.disabled).toBeFalsy();
     });
 
+    it('should ask for an install before the refresh interval, keeping the cache TTLs editable', () => {
+        const items = buildConfigureStatusLineItems(10, true, 5, 5, 5, false);
+        expect(items[0]?.sublabel).toBe('(install first)');
+        expect(items[0]?.disabled).toBe(true);
+        expect(items.slice(1).map(item => item.disabled)).toEqual([undefined, undefined, undefined]);
+
+        // An install wouldn't help an older Claude Code
+        expect(buildConfigureStatusLineItems(null, false, 5, 5, 5, false)[0]?.sublabel).toContain('requires Claude Code');
+    });
+
     it('should show the configured Git cache TTL', () => {
         const items = buildConfigureStatusLineItems(10, true, 5, 5, 5);
         expect(items[1]?.label).toContain('Git Cache TTL');

@@ -22,6 +22,7 @@ export class ExtraUsageTodayWidget implements Widget {
     getDescription(): string { return 'Shows the extra usage spent today (since 00:00 UTC), including claude.ai and other machines'; }
     getDisplayName(): string { return 'Extra Usage Today'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
