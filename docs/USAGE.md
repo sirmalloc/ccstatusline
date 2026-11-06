@@ -192,6 +192,8 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 | Custom Command Cache TTL | `customCommandCacheTtlSeconds` | 0 seconds | 0–60 seconds | Run commands on every render |
 | Terminal Width Cache TTL | `terminalWidthCacheTtlSeconds` | 5 seconds | 0–300 seconds | Re-probe on every render, even after no width was found |
 
+Git Cache TTL covers edits to working-tree files, which `.git/HEAD` and `.git/index` modification times cannot show. When the TTL is above `0`, commands that do not read the working tree do not expire with it. The branch name, short SHA, staged line counts, and conflict count run again when `.git/HEAD`, the ref it points to, or `.git/index` changes, or when their output is five minutes old. Repository location checks run again when their output is five minutes old. Failed commands, repositories in the reftable format, and sessions where `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, or `GIT_INDEX_FILE` is set still follow the TTL.
+
 Git commands run on cache misses with a five-second timeout. Persistent caches are separate for each repository and working directory, so sessions in different subdirectories do not evict each other's results. The cache lifetime starts when each command finishes, including failed or timed-out commands. Calls are skipped when ccstatusline can determine that the directory is outside any repository. JJ commands also have a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
 
 ### Status line empty in one folder but fine elsewhere
