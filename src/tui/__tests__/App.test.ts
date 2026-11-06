@@ -1173,3 +1173,141 @@ describe('App while an install or update runs', () => {
         }
     });
 });
+
+describe('App Check for Updates', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    // The real check, against a registry whose latest release is `latestVersion`
+    function stubLatestRelease(latestVersion: string) {
+        const realCheckForUpdates = updateChecker.checkForUpdates;
+        return vi.spyOn(updateChecker, 'checkForUpdates').mockImplementation(options => realCheckForUpdates({
+            ...options,
+            latestVersionFetcher: () => Promise.resolve(latestVersion)
+        }));
+    }
+
+    function stubNpmGlobalInstall(getVersion: () => string) {
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockImplementation(() => ({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: getVersion(),
+            warning: null
+        }));
+    }
+
+    async function openCheckForUpdates(rendered: ReturnType<typeof renderApp>, expectedText: string): Promise<void> {
+        await waitFor(() => {
+            expect(rendered.getFrame()).toContain('Main Menu');
+        });
+        await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+        await pressKey(rendered, KEYS.up, '▶  🚪 Exit');
+        await pressKey(rendered, KEYS.up, '▶  🧰 Manage Installation');
+        await pressKey(rendered, KEYS.enter, '▶  🔄 Check for Updates');
+        await pressKey(rendered, KEYS.enter, expectedText);
+    }
+
+    // Started through npx or bunx, the TUI can be a different version from the
+    // global package that Claude Code's `ccstatusline` command runs
+    it.each([
+        ['offers the update to a global install older than the latest release', '2.0.0', getPackageVersion(), 'An update is available.'],
+        ['reports a global install already at the latest release as up to date', '99.0.0', '99.0.0', 'ccstatusline is up to date.']
+    ])('on a self-managed global install, %s', async (_label, globalVersion, latestVersion, expectedResult) => {
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: 'ccstatusline', refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        stubNpmGlobalInstall(() => globalVersion);
+        stubLatestRelease(latestVersion);
+        const rendered = renderApp();
+
+        try {
+            await openCheckForUpdates(rendered, expectedResult);
+            expect(rendered.getFrame()).toContain(`Current: ${globalVersion}`);
+            expect(rendered.getFrame()).toContain(`Latest: ${latestVersion}`);
+            expect(rendered.getFrame()).toContain('Install: Self-managed/global install');
+            if (globalVersion === latestVersion) {
+                expect(rendered.getFrame()).not.toContain('Run npm install -g');
+            } else {
+                expect(rendered.getFrame()).toContain(`Run npm install -g ccstatusline@${latestVersion}`);
+            }
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    // Claude Code runs the checkout, so a global elsewhere on PATH says nothing
+    // about whether the status line is current
+    it.each([
+        ['reports a checkout at the latest release as up to date, with an older global on PATH', '2.0.0', getPackageVersion(), 'ccstatusline is up to date.'],
+        ['offers the update to a checkout older than the latest release, with that release on PATH', '99.0.0', '99.0.0', 'An update is available.']
+    ])('on a status line that runs a local checkout, %s', async (_label, globalVersion, latestVersion, expectedResult) => {
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: 'bun /Users/dev/ccstatusline/src/ccstatusline.ts', refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        stubNpmGlobalInstall(() => globalVersion);
+        stubLatestRelease(latestVersion);
+        const rendered = renderApp();
+
+        try {
+            await openCheckForUpdates(rendered, expectedResult);
+            expect(rendered.getFrame()).toContain(`Current: ${getPackageVersion()}`);
+            expect(rendered.getFrame()).toContain(`Latest: ${latestVersion}`);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it.each([
+        ['', null],
+        [' and its PATH warning', '⚠ Multiple ccstatusline binaries are on PATH.']
+    ])('checks again after a global update%s, instead of offering the same update', async (_label, resolutionWarning) => {
+        const runningVersion = getPackageVersion();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: runningVersion }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: 'ccstatusline', refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        vi.spyOn(globalCommandResolution, 'inspectGlobalCommandResolution').mockReturnValue({
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            firstResolvedPath: '/usr/local/bin/ccstatusline',
+            expectedBinDir: '/usr/local/bin',
+            warning: resolutionWarning
+        });
+        let globalVersion = runningVersion;
+        stubNpmGlobalInstall(() => globalVersion);
+        const checkForUpdates = stubLatestRelease('99.0.0');
+        const runUpdate = vi.spyOn(updateChecker, 'runGlobalUpdateAction').mockImplementation((action) => {
+            globalVersion = action.version;
+            return Promise.resolve();
+        });
+        const rendered = renderApp();
+
+        try {
+            await openCheckForUpdates(rendered, 'An update is available.');
+            await pressKey(rendered, KEYS.enter, 'Run global update command?');
+            // Yes, then Continue past the Update Complete notice when there is one
+            if (resolutionWarning) {
+                await pressKey(rendered, KEYS.enter, resolutionWarning);
+            }
+            rendered.stdin.write(KEYS.enter);
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('ccstatusline is up to date.');
+            });
+            expect(rendered.getFrame()).toContain('Current: 99.0.0');
+            expect(rendered.getFrame()).toContain('Install: Pinned global install via npm 99.0.0');
+            expect(rendered.getFrame()).not.toContain('Run npm install -g');
+            expect(runUpdate).toHaveBeenCalledOnce();
+            expect(checkForUpdates).toHaveBeenCalledTimes(2);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});

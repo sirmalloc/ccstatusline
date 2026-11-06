@@ -116,7 +116,7 @@ Stale-cache fallback removes each expired window's usage and reset fields while 
 - **Sandbox Status** reads `sandbox.enabled` from Claude Code's layered project-local, project, user-local, and user settings on every refresh. This reflects `/sandbox` file updates but remains a best-effort indicator when managed or CLI settings take precedence.
 - **Skills** reads only logs for session IDs accepted by `getSkillsFilePath()`. Rejected IDs return no metrics, and the hook handler exits before creating directories or writing a log.
 
-Usage, account profile, and service-status requests honor uppercase `HTTPS_PROXY` and share `isExcludedFromProxy()` for the `NO_PROXY`/`no_proxy` rules described in [Usage](USAGE.md#proxy-settings). Each request has a total five-second deadline in addition to its socket timeout. On expiry, `createProxyAgent().close()` aborts the pending proxy connection when `AbortController` is available; on older runtimes without it, that connection can remain open. The proxy integration tests require permission to listen on a local socket.
+Usage, account profile, service-status and update-check (npm registry) requests honor uppercase `HTTPS_PROXY` and share `isExcludedFromProxy()` for the `NO_PROXY`/`no_proxy` rules described in [Usage](USAGE.md#proxy-settings). Each request has a total five-second deadline; the usage, account profile and service-status requests also set a socket timeout. On expiry, `createProxyAgent().close()` aborts the pending proxy connection when `AbortController` is available; on older runtimes without it, that connection can remain open. The proxy integration tests require permission to listen on a local socket.
 
 ## Widget Implementation
 

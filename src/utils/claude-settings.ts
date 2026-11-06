@@ -427,6 +427,11 @@ function matchesCommandBase(command: string, baseCommand: string): boolean {
     return command === baseCommand || command.startsWith(`${baseCommand} --config `);
 }
 
+// Whether the status line runs the global `ccstatusline` from PATH (not npx, bunx or a checkout)
+export function isGlobalStatusLineCommand(command: string | null | undefined): boolean {
+    return matchesCommandBase(command ?? '', CCSTATUSLINE_COMMANDS.GLOBAL);
+}
+
 function isLocalDevelopmentCommand(command: string): boolean {
     return /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
 }
@@ -451,7 +456,7 @@ export function classifyInstallation(
         };
     }
 
-    if (matchesCommandBase(statusLineCommand, CCSTATUSLINE_COMMANDS.GLOBAL)) {
+    if (isGlobalStatusLineCommand(statusLineCommand)) {
         if (metadata?.method === 'pinned') {
             return metadata;
         }
