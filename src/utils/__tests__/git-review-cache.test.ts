@@ -232,6 +232,16 @@ function gitConfigFromEnv(env: NodeJS.ProcessEnv | undefined): [string, string][
     ]);
 }
 
+// The error execFileSync throws when `gh pr view` with CI checks exits non-zero.
+// Its message starts with the command line, which names statusCheckRollup
+// whatever went wrong; gh's own output is its stderr.
+function ghCiLookupFailure(stderr: string): Error {
+    return Object.assign(
+        new Error(`Command failed: gh pr view --json url,number,title,state,reviewDecision,statusCheckRollup\n${stderr}`),
+        { stderr }
+    );
+}
+
 // The fields a gh call asks for: the value after --json
 function jsonFields(args: string[] | undefined): string | undefined {
     const index = args?.indexOf('--json') ?? -1;
@@ -374,8 +384,8 @@ describe('git-review-cache', () => {
     it('does not retry metadata-only for ordinary CI lookup failures', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
-        harness.ghResponses.push(new Error('no pull request found'));
-        harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(ghCiLookupFailure('no pull requests found for branch "feature/cache-a"\n'));
+        harness.ghResponses.push(ghCiLookupFailure('no pull requests found for branch "feature/cache-a"\n'));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toBeNull();
 
@@ -667,7 +677,7 @@ describe('git-review-cache', () => {
     it('retries metadata-only when gh cannot query CI checks', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
-        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(ghCiLookupFailure('Unknown JSON field: "statusCheckRollup"\nAvailable fields:\n  additions\n  assignees\n'));
         harness.ghResponses.push(JSON.stringify({
             number: 42,
             reviewDecision: 'APPROVED',
@@ -821,7 +831,7 @@ describe('git-review-cache', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
         harness.ghResponses.push('');
-        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(ghCiLookupFailure('GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup.nodes.0.commit.statusCheckRollup)\n'));
         harness.ghResponses.push(JSON.stringify({
             number: 1,
             reviewDecision: '',
