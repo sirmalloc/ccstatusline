@@ -4,7 +4,10 @@ import {
     it
 } from 'vitest';
 
-import { makeTimerProgressBar } from '../../shared/progress-bar';
+import {
+    makeLineProgressBar,
+    makeTimerProgressBar
+} from '../../shared/progress-bar';
 
 describe('makeTimerProgressBar', () => {
     it('renders a fully empty bar at 0%', () => {
@@ -73,5 +76,30 @@ describe('makeTimerProgressBar', () => {
             const bar = makeTimerProgressBar(50, 16, {});
             expect(bar).toBe('████████░░░░░░░░');
         });
+    });
+});
+
+describe('makeLineProgressBar', () => {
+    it.each([
+        [-10, '────────────────'],
+        [0, '────────────────'],
+        [25, '━━━━────────────'],
+        [50, '━━━━━━━━────────'],
+        [73.9, '━━━━━━━━━━━━────'],
+        [100, '━━━━━━━━━━━━━━━━'],
+        [150, '━━━━━━━━━━━━━━━━']
+    ])('renders and clamps %s percent', (percent, expected) => {
+        expect(makeLineProgressBar(percent)).toBe(expected);
+    });
+
+    it.each([
+        [-10, '│━━━━━━━────────'],
+        [0, '│━━━━━━━────────'],
+        [25, '━━━━│━━━────────'],
+        [75, '━━━━━━━━────│───'],
+        [100, '━━━━━━━━───────│'],
+        [150, '━━━━━━━━───────│']
+    ])('positions and clamps the time cursor at %s percent', (cursorPercent, expected) => {
+        expect(makeLineProgressBar(50, 16, { cursorPercent })).toBe(expected);
     });
 });

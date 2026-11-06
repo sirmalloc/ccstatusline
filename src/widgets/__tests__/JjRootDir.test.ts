@@ -58,7 +58,7 @@ describe('JjRootDirWidget', () => {
 
         expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
@@ -67,7 +67,7 @@ describe('JjRootDirWidget', () => {
             cwd: '/home/user/my-project'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
@@ -94,5 +94,19 @@ describe('JjRootDirWidget', () => {
         mockExecFileSync.mockReturnValueOnce('/home/user/my-project/\n');
 
         expect(render()).toBe('my-project');
+    });
+
+    it('should handle trailing windows separators', () => {
+        mockExecFileSync.mockReturnValueOnce('C:\\Users\\me\\my-project\\/\n');
+        mockExecFileSync.mockReturnValueOnce('C:\\Users\\me\\my-project\\/\n');
+
+        expect(render()).toBe('my-project');
+    });
+
+    it('should render unix root path without returning empty output', () => {
+        mockExecFileSync.mockReturnValueOnce('/\n');
+        mockExecFileSync.mockReturnValueOnce('/\n');
+
+        expect(render()).toBe('/');
     });
 });

@@ -17,6 +17,7 @@ import * as usage from '../../utils/usage';
 import { BlockResetTimerWidget } from '../../widgets/BlockResetTimer';
 import { SessionUsageWidget } from '../../widgets/SessionUsage';
 import { WeeklyUsageWidget } from '../../widgets/WeeklyUsage';
+import * as dailySpend from '../daily-spend';
 import {
     extractUsageDataFromRateLimits,
     hasUsageDependentWidgets,
@@ -385,6 +386,54 @@ describe('usage prefetch', () => {
         expect(usageData).toEqual({ sessionUsage: 42 });
         expect(mockFetchUsageData.mock.calls).toEqual([
             [{ requiredFields: ['sessionResetAt'] }]
+        ]);
+    });
+
+    it('reads Weekly Limit Timer\'s data from rate_limits without fetching', async () => {
+        const lines = makeLines([{ id: '1', type: 'weekly-limit-timer' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { used_percentage: 72, resets_at: 1776211200 } } });
+
+        expect(usageData).toEqual({ weeklyUsage: 72, weeklyResetAt: epochToIso(1776211200) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('fetches the weekly reset time Weekly Limit Timer needs and keeps quiet when that fails', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines([{ id: '1', type: 'weekly-limit-timer' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { used_percentage: 72 } } });
+
+        expect(usageData).toEqual({ weeklyUsage: 72 });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['weeklyResetAt'] }]
+        ]);
+    });
+
+    it('fetches Fable\'s percent for Weekly Fable Limit Timer, using the all-models reset when Fable has none', async () => {
+        mockFetchUsageData.mockResolvedValue({ fableUsage: 8 });
+
+        const lines = makeLines([{ id: '1', type: 'fable-weekly-limit-timer' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { used_percentage: 72, resets_at: 1776211200 } } });
+
+        expect(usageData).toEqual({ weeklyUsage: 72, weeklyResetAt: epochToIso(1776211200), fableUsage: 8 });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['fableUsage'] }]
+        ]);
+    });
+
+    it('keeps quiet when the fetch made only for Weekly Fable Limit Timer fails', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines([{ id: '1', type: 'fable-weekly-limit-timer' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { used_percentage: 72, resets_at: 1776211200 } } });
+
+        expect(usageData).toEqual({ weeklyUsage: 72, weeklyResetAt: epochToIso(1776211200) });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['fableUsage'] }]
         ]);
     });
 
@@ -1040,6 +1089,115 @@ describe('usage prefetch in a session left idle', () => {
             weeklyUsage: 50,
             weeklyResetAt: epochToIso(WEEK_RESET)
         });
+    });
+});
+
+describe('today\'s extra usage spend', () => {
+    // When the usage API returned the data, as fetchUsageData reports it.
+    const FETCHED_AT = Date.parse('2026-10-05T14:58:00Z');
+    let mockFetchUsageData: {
+        mock: { calls: unknown[][] };
+        mockResolvedValue: (value: UsageData) => void;
+    };
+    let mockObserveSpend: {
+        mock: { calls: unknown[][] };
+        mockReturnValue: (value: number | undefined) => void;
+    };
+    let mockLookUpAccount: {
+        mock: { calls: unknown[][] };
+        mockResolvedValue: (value: usage.UsageAccount | null) => void;
+    };
+
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mockFetchUsageData = vi.spyOn(usage, 'fetchUsageData');
+        mockFetchUsageData.mockResolvedValue({ extraUsageEnabled: true, extraUsageUsed: 12345 });
+        mockObserveSpend = vi.spyOn(dailySpend, 'observeExtraUsageSpend');
+        mockObserveSpend.mockReturnValue(825);
+        // Until a test names the account, the profile lookup has no answer
+        // and today's spend stays under the login's token fingerprint.
+        mockLookUpAccount = vi.spyOn(usage, 'lookUpUsageAccount');
+        mockLookUpAccount.mockResolvedValue(null);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('works out today\'s spend for the Extra Usage Today widget', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(FETCHED_AT);
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-today' }]), {});
+
+        expect(usageData).toEqual({
+            extraUsageEnabled: true,
+            extraUsageUsed: 12345,
+            extraUsageUsedToday: 825
+        });
+        expect(mockObserveSpend.mock.calls).toEqual([['work-login', 12345, FETCHED_AT]]);
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]
+        ]);
+    });
+
+    it('leaves today\'s spend out when the login is unknown', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue(null);
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(FETCHED_AT);
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-today' }]), {});
+
+        expect(usageData).toEqual({ extraUsageEnabled: true, extraUsageUsed: 12345 });
+        expect(mockObserveSpend.mock.calls).toEqual([]);
+    });
+
+    it('leaves today\'s spend out when the fetch returned no data time', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(undefined);
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-today' }]), {});
+
+        expect(usageData).toEqual({ extraUsageEnabled: true, extraUsageUsed: 12345 });
+        expect(mockObserveSpend.mock.calls).toEqual([]);
+    });
+
+    it('only works out today\'s spend when a widget shows it', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+
+        await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-used' }]), {});
+
+        expect(mockObserveSpend.mock.calls).toEqual([]);
+    });
+
+    // The token fingerprint changes each time Claude Code refreshes its
+    // tokens; the account the profile lookup names doesn't. Records kept
+    // under the account's fingerprints move over to it.
+    it('keeps today\'s spend under the account the profile lookup names', async () => {
+        vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(FETCHED_AT);
+        mockLookUpAccount.mockResolvedValue({ key: 'account:work', fingerprints: ['work-login', 'earlier-work-login'] });
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-today' }]), {});
+
+        expect(usageData).toEqual({
+            extraUsageEnabled: true,
+            extraUsageUsed: 12345,
+            extraUsageUsedToday: 825
+        });
+        expect(mockObserveSpend.mock.calls).toEqual([
+            ['account:work', 12345, FETCHED_AT, undefined, ['work-login', 'earlier-work-login']]
+        ]);
+    });
+
+    it('only looks up the account when it records today\'s spend', async () => {
+        vi.spyOn(usage, 'getUsageFetchedAtMs').mockReturnValue(FETCHED_AT);
+        const accountKey = vi.spyOn(usage, 'getUsageAccountKey').mockReturnValue('work-login');
+
+        await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-used' }]), {});
+        accountKey.mockReturnValue(null);
+        await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'extra-usage-today' }]), {});
+
+        expect(mockLookUpAccount.mock.calls).toEqual([]);
     });
 });
 

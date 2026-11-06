@@ -127,6 +127,8 @@ interface EditorCase {
     emptyMessage: string;
     // A stored value and the option the editor opens on for it
     configured: { stored: string; selected: string };
+    // A valid stored value the built-in list doesn't offer, so the editor adds a row for it
+    unlisted: string;
     // A search that matches a few options
     query: string;
     listOptions: (current?: string) => ListedOption[];
@@ -143,6 +145,7 @@ const EDITORS: EditorCase[] = [
         defaultValue: 'en-US',
         emptyMessage: 'No locales match the search.',
         configured: { stored: 'ja-jp', selected: 'ja-JP' },
+        unlisted: 'en-AU',
         query: 'french',
         listOptions: current => getLocaleOptions(current),
         search: query => filterLocaleOptions(getLocaleOptions(), query)
@@ -156,6 +159,8 @@ const EDITORS: EditorCase[] = [
         defaultValue: 'UTC',
         emptyMessage: 'No timezones match the search.',
         configured: { stored: 'Asia/Tokyo', selected: 'Asia/Tokyo' },
+        // An alias: Intl lists only canonical zones, so no runtime lists it
+        unlisted: 'US/Pacific',
         query: 'tokyo',
         listOptions: current => getTimezoneOptions(current),
         search: query => filterTimezoneOptions(getTimezoneOptions(), query)
@@ -281,6 +286,30 @@ for (const editor of EDITORS) {
                     expect(rendered.onComplete).toHaveBeenCalledOnce();
                 });
                 expect(getSavedValue(rendered, editor)).toBe(selected);
+            } finally {
+                cleanupEditor(rendered);
+            }
+        });
+
+        it('opens on a configured value the list does not offer, and Enter keeps it', async () => {
+            const options = editor.listOptions(editor.unlisted);
+            const rendered = renderEditor(editor, {
+                id: 'reset',
+                type: 'reset-timer',
+                metadata: { [editor.metadataKey]: editor.unlisted }
+            });
+
+            try {
+                await waitFor(() => {
+                    expect(getPlainOutput(rendered)).toContain(`${editor.title} Current: ${editor.unlisted}`);
+                    expect(getSelectedRow(rendered)).toBe(describeOption(options.find(option => option.value === editor.unlisted)));
+                });
+
+                rendered.stdin.write(ENTER);
+                await waitFor(() => {
+                    expect(rendered.onComplete).toHaveBeenCalledOnce();
+                });
+                expect(getSavedValue(rendered, editor)).toBe(editor.unlisted);
             } finally {
                 cleanupEditor(rendered);
             }
