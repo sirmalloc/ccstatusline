@@ -1,5 +1,6 @@
 import type { NumberFormat } from '../../types/NumberFormat';
 import type { RenderContext } from '../../types/RenderContext';
+import type { Settings } from '../../types/Settings';
 import type {
     CustomKeybind,
     HideableState,
@@ -12,6 +13,11 @@ import {
 import { formatPercent } from '../../utils/number-format';
 
 import { makeModifierText } from './editor-display';
+import {
+    getGradientKeybinds,
+    getGradientModifier,
+    paintWidgetBar
+} from './gradient-bar';
 import {
     isMetadataFlagEnabled,
     removeMetadataKeys,
@@ -80,23 +86,26 @@ export function isUsageSliderMode(mode: UsageDisplayMode): boolean {
 interface SliderBarOptions { cursorPercent?: number }
 
 // The bar modes' text: "[████░░░░] 50.0%", "━━━━──── 50.0%", "▓▓▓▓░░░░ 50.0%" or
-// "▓▓▓▓░░░░". Null in the other modes, without calling getCursor, which can be costly
-// to resolve.
+// "▓▓▓▓░░░░", with the widget's gradient, if any. Null in the other modes, without
+// calling getCursor, which can be costly to resolve.
 export function formatUsageBar(
     item: WidgetItem,
     percent: number,
     format: NumberFormat,
+    settings: Settings,
     getCursor: () => SliderBarOptions | undefined = () => undefined
 ): string | null {
     const mode = getUsageDisplayMode(item);
+    let text: string;
     if (isUsageProgressMode(mode)) {
-        return `${renderUsageProgressBar(percent, mode, getCursor())} ${formatPercent(percent, format)}`;
-    }
-    if (isUsageSliderMode(mode)) {
+        text = `${renderUsageProgressBar(percent, mode, getCursor())} ${formatPercent(percent, format)}`;
+    } else if (isUsageSliderMode(mode)) {
         const slider = makeSliderBar(percent, undefined, getCursor());
-        return mode === 'slider' ? `${slider} ${formatPercent(percent, format)}` : slider;
+        text = mode === 'slider' ? `${slider} ${formatPercent(percent, format)}` : slider;
+    } else {
+        return null;
     }
-    return null;
+    return paintWidgetBar(text, item, settings, isUsageInverted(item));
 }
 
 export function makeSliderBar(percent: number, width: number = SLIDER_WIDTH, options?: SliderBarOptions): string {
@@ -296,7 +305,17 @@ export function getUsageDisplayModifierText(
         modifiers.push(localeModifier);
     }
 
+    const gradientModifier = showsUsageBar(item) ? getGradientModifier(item) : null;
+    if (gradientModifier) {
+        modifiers.push(gradientModifier);
+    }
+
     return makeModifierText(modifiers);
+}
+
+export function showsUsageBar(item: WidgetItem): boolean {
+    const mode = getUsageDisplayMode(item);
+    return isUsageProgressMode(mode) || isUsageSliderMode(mode);
 }
 
 export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = [], includeSlider = false, preserveInvertInTime = false): WidgetItem {
@@ -363,6 +382,8 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor =
         }
     }
 
+    keybinds.push(...getGradientKeybinds(item ? showsUsageBar(item) : false));
+
     return keybinds;
 }
 
@@ -410,6 +431,8 @@ export function getUsageTimerCustomKeybinds(
             keybinds.push(LOCALE_KEYBIND);
         }
     }
+
+    keybinds.push(...getGradientKeybinds(item !== undefined && isBarMode));
 
     return keybinds;
 }

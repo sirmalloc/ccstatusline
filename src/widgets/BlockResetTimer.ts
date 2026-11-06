@@ -18,6 +18,11 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import {
+    CYCLE_GRADIENT_ACTION,
+    cycleGradientPreset,
+    paintsBarGradient
+} from './shared/gradient-bar';
 import { isHidden } from './shared/hideable';
 import {
     LOCALE_EDITOR_ACTION,
@@ -45,6 +50,7 @@ import {
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
+    showsUsageBar,
     toggleUsageCompact,
     toggleUsageDateMode,
     toggleUsageHourFormat,
@@ -79,6 +85,10 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === CYCLE_GRADIENT_ACTION) {
+            return cycleGradientPreset(item);
+        }
+
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, ['compact', 'absolute'], true);
         }
@@ -109,9 +119,9 @@ export class BlockResetTimerWidget implements Widget {
         const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
-            const previewPercent = inverted ? 90.0 : 10.0;
+            const previewPercent = inverted ? 15.0 : 85.0;
 
-            const bar = formatUsageBar(item, previewPercent, format);
+            const bar = formatUsageBar(item, previewPercent, format, settings);
             if (bar !== null) {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
             }
@@ -127,7 +137,7 @@ export class BlockResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt ?? (compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC'));
             }
 
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), compact ? '4h30m' : '4hr 30m');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), '45m');
         }
 
         const usageData = context.usageData ?? {};
@@ -149,7 +159,7 @@ export class BlockResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(item), USAGE_TIMER_LOADING_MESSAGE);
         }
 
-        const bar = formatUsageBar(item, inverted ? window.remainingPercent : window.elapsedPercent, format);
+        const bar = formatUsageBar(item, inverted ? window.remainingPercent : window.elapsedPercent, format, settings);
         if (bar !== null) {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
         }
@@ -189,6 +199,11 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         return null;
+    }
+
+    // A gradient preset paints only the bar, so the renderer colors the rest
+    colorsOnlyItsRuns(item: WidgetItem): boolean {
+        return paintsBarGradient(item, showsUsageBar(item));
     }
 
     supportsRawValue(): boolean { return true; }

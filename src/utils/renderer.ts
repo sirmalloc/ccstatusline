@@ -538,7 +538,7 @@ function renderPowerlineStatusLine(
         } else if (fgCode && widgetColorsOnlyItsRuns(widget.widget)) {
             widgetContent += restoreForegroundAfterRuns(styledContent, fgCode);
         } else {
-            widgetContent += styledContent;
+            widgetContent += fgCode ? restoreForegroundAfterRuns(styledContent, fgCode) : styledContent;
         }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim

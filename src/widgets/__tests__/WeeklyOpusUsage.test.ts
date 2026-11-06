@@ -74,7 +74,7 @@ describe('WeeklyOpusUsageWidget', () => {
         errorMessageMock: usageErrorMessageMock,
         expectedInvertedTime: 'Weekly Opus: 57.9%',
         expectedModifierText: '(long bar, remaining)',
-        expectedPreviewInvertedTime: 'Weekly Opus: 96.0%',
+        expectedPreviewInvertedTime: 'Weekly Opus: 40.0%',
         expectedProgress: 'Weekly Opus: [███████████████████░░░░░░░░░░░░░] 57.9%',
         expectedRawInvertedTime: '57.9%',
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',

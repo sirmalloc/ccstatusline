@@ -60,7 +60,8 @@ const EXPECTED_TIMER_TIME_KEYBINDS: CustomKeybind[] = [
 
 const EXPECTED_TIMER_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+    { key: 'g', label: '(g)radient', action: 'cycle-gradient' }
 ];
 
 function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage' | 'fableUsage', value: number): RenderContext {
@@ -74,8 +75,10 @@ function getExpectedUsageKeybinds(item: WidgetItem, includeCursor = false): Cust
         { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
     ];
 
+    // Bar modes add the time cursor and the bar gradient
     if (includeCursor) {
         keybinds.push({ key: 't', label: '(t)ime cursor', action: 'toggle-cursor' });
+        keybinds.push({ key: 'g', label: '(g)radient', action: 'cycle-gradient' });
     }
 
     return keybinds;

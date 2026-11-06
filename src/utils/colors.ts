@@ -202,9 +202,7 @@ export function applyColors(
         if (fgCode) {
             prefix += fgCode;
             suffix = '\x1b[39m' + suffix;
-            if (keepColoredRuns) {
-                styledText = restoreForegroundAfterRuns(styledText, fgCode);
-            }
+            styledText = restoreForegroundAfterRuns(styledText, fgCode);
         }
     }
 

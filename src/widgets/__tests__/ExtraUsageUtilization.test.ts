@@ -135,7 +135,8 @@ describe('ExtraUsageUtilizationWidget', () => {
             metadata: { display: 'progress' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' }
+            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
+            { key: 'g', label: '(g)radient', action: 'cycle-gradient' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
@@ -256,6 +257,6 @@ describe('ExtraUsageUtilizationWidget', () => {
                 extraUsageUtilization: 25
             }
         })).toBe('75.0%');
-        expect(render(widget, item, { isPreview: true })).toBe('Overage: 97.4%');
+        expect(render(widget, item, { isPreview: true })).toBe('Overage: 15.0%');
     });
 });
