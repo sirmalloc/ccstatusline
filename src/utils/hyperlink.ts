@@ -2,7 +2,8 @@ import { isSafeHyperlinkUrl } from './terminal-sanitize';
 
 export const IDE_LINK_MODES = [
     'vscode',
-    'cursor'
+    'cursor',
+    'zed'
 ] as const;
 
 export type IdeLinkMode = (typeof IDE_LINK_MODES)[number];

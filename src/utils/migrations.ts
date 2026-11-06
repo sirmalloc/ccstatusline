@@ -1,3 +1,7 @@
+import {
+    SettingsSchema,
+    SettingsSchema_v1
+} from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 
 import { generateGuid } from './guid';
@@ -11,9 +15,7 @@ interface Migration {
 }
 
 type V1MigratedField
-    = | 'flexMode'
-        | 'compactThreshold'
-        | 'colorLevel'
+    = | 'colorLevel'
         | 'defaultSeparator'
         | 'defaultPadding'
         | 'inheritSeparatorColors'
@@ -32,14 +34,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const V1_FIELD_RULES: V1FieldRule[] = [
-    {
-        key: 'flexMode',
-        isValid: value => typeof value === 'string'
-    },
-    {
-        key: 'compactThreshold',
-        isValid: value => typeof value === 'number'
-    },
     {
         key: 'colorLevel',
         isValid: value => typeof value === 'number'
@@ -299,6 +293,17 @@ function migrateItemHideFlags(item: unknown): unknown {
     return migratedItem;
 }
 
+function migrateHideFlags(data: Record<string, unknown>): Record<string, unknown> {
+    return Array.isArray(data.lines)
+        ? {
+            ...data,
+            lines: data.lines.map((line: unknown) => (Array.isArray(line)
+                ? line.map(migrateItemHideFlags)
+                : line))
+        }
+        : data;
+}
+
 // Define all migrations here
 export const migrations: Migration[] = [
     {
@@ -355,20 +360,10 @@ export const migrations: Migration[] = [
         toVersion: 4,
         description: 'Migrate from v3 to v4',
         migrate: (data) => {
-            const migrated: Record<string, unknown> = { ...data };
-
             // Convert per-widget hide flags to the unified metadata.hide list.
             // No updatemessage: rendering is unchanged, so there is nothing
             // for users to act on.
-            if (Array.isArray(data.lines)) {
-                migrated.lines = data.lines.map((line: unknown) => (Array.isArray(line)
-                    ? line.map(migrateItemHideFlags)
-                    : line));
-            }
-
-            migrated.version = 4;
-
-            return migrated;
+            return { ...migrateHideFlags(data), version: 4 };
         }
     }
 ];
@@ -412,13 +407,32 @@ export function migrateConfig(data: unknown, targetVersion: number): unknown {
     return migrated;
 }
 
+// Settings that came after v1. v1 predates the version field, so a config without
+// one is read as v1, but one holding any of these was written for a later version
+// and only leaves the version out.
+const POST_V1_KEYS = Object.keys(SettingsSchema.shape).filter(key => !(key in SettingsSchema_v1.shape));
+
+function isVersionlessModernConfig(data: unknown): data is Record<string, unknown> {
+    return isRecord(data) && !('version' in data) && POST_V1_KEYS.some(key => key in data);
+}
+
+// Modern settings without a version bypass the destructive v1 migration, but
+// can still contain pre-v4 widget flags. Normalize those in memory without
+// assigning a version, changing widget IDs, or rewriting the user's file.
+export function normalizeVersionlessConfig(data: unknown): unknown {
+    return isVersionlessModernConfig(data) ? migrateHideFlags(data) : data;
+}
+
 /**
  * Check if a migration is needed
  */
 export function needsMigration(data: unknown, targetVersion: number): boolean {
-    // A version that is present but not a number is invalid, not v1: migrating it as v1
-    // would rebuild the config from its v1 fields and drop everything else
+    // A version that is present but not a number is invalid, not v1, and a config
+    // without a version that holds later settings is current, not v1: migrating either
+    // as v1 would rebuild the config from its v1 fields and drop everything else
     if (isRecord(data) && 'version' in data && typeof data.version !== 'number')
+        return false;
+    if (isVersionlessModernConfig(data))
         return false;
 
     return detectVersion(data) < targetVersion;

@@ -78,7 +78,6 @@ export const RESTORABLE_SCREENS = [
     'items',
     'colorLines',
     'colors',
-    'terminalWidth',
     'terminalConfig',
     'globalOverrides',
     'powerline'

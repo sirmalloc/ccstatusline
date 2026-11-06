@@ -32,7 +32,6 @@ const BEL_OSC8_CLOSE = '\x1b]8;;\x07';
 function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
         ...DEFAULT_SETTINGS,
-        flexMode: 'full',
         ...overrides,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,
@@ -182,7 +181,7 @@ describe('renderer ANSI/OSC handling', () => {
         expect(visible.startsWith('A')).toBe(true);
         expect(visible.endsWith('B')).toBe(true);
         expect(visible.includes('...')).toBe(false);
-        expect(getVisibleWidth(line)).toBe(20);
+        expect(getVisibleWidth(line)).toBe(21);
     });
 
     it('handles BEL-terminated OSC 8 sequences during truncation', () => {

@@ -252,6 +252,25 @@ describe('BlockResetTimerWidget', () => {
         expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-12T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true);
     });
 
+    it('shows the transcript block\'s reset as a timestamp when no reset time is reported', () => {
+        const widget = new BlockResetTimerWidget();
+        vi.useFakeTimers({ now: new Date('2026-03-12T06:15:00.000Z') });
+
+        try {
+            const blockMetrics = {
+                startTime: new Date('2026-03-12T05:00:00.000Z'),
+                lastActivity: new Date('2026-03-12T06:10:00.000Z')
+            };
+
+            expect(render(widget,
+                { id: 'reset', type: 'reset-timer', metadata: { absolute: 'true' } },
+                { usageData: {}, blockMetrics }
+            )).toBe('Reset: 2026-03-12 10:00 UTC');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('shows configured timestamp settings in editor display only in timestamp mode', () => {
         const widget = new BlockResetTimerWidget();
 
