@@ -1796,7 +1796,7 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
-    it.each([undefined, 'shared-id'])('aggregates subagents independently with message id %s', async (messageId) => {
+    it.each([false, true])('aggregates subagents independently with message ids %s', async (withMessageIds) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'speed-main-with-subagents.jsonl');
@@ -1810,7 +1810,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:10.000Z',
                 type: 'assistant',
-                messageId,
+                messageId: withMessageIds ? 'msg-main' : undefined,
                 input: 50,
                 output: 100
             }),
@@ -1834,7 +1834,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:15.000Z',
                 type: 'assistant',
-                messageId,
+                messageId: withMessageIds ? 'msg-a' : undefined,
                 input: 150,
                 output: 300,
                 isSidechain: true
@@ -1849,7 +1849,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:25.000Z',
                 type: 'assistant',
-                messageId,
+                messageId: withMessageIds ? 'msg-b' : undefined,
                 input: 25,
                 output: 50,
                 isSidechain: true
@@ -1864,6 +1864,90 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 450,
             totalTokens: 675,
             requestCount: 3
+        });
+    });
+
+    it('counts a response copied into a forked subagent transcript once', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-with-fork.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        // The main response spawns the fork in its second content block.
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:08.000Z',
+                type: 'assistant',
+                messageId: 'msg-spawn',
+                input: 50,
+                output: 100
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                messageId: 'msg-spawn',
+                input: 50,
+                output: 100
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'fork' }
+            })
+        ].join('\n'));
+
+        // A forked subagent's transcript opens with a copy of that response,
+        // then the fork's prompt. Rendered right as the fork starts.
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        const forkPath = path.join(subagentsDir, 'agent-fork.jsonl');
+        const forkLines = [
+            JSON.stringify({ type: 'fork-context-ref' }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:08.000Z',
+                type: 'assistant',
+                messageId: 'msg-spawn',
+                input: 50,
+                output: 100,
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.400Z',
+                type: 'user',
+                isSidechain: true
+            })
+        ];
+        fs.writeFileSync(forkPath, forkLines.join('\n'));
+
+        expect(await getSpeedMetrics(transcriptPath, { includeSubagents: true, windowSeconds: 30 })).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 50,
+            outputTokens: 100,
+            totalTokens: 150,
+            requestCount: 1
+        });
+
+        // The fork's own response still counts.
+        fs.writeFileSync(forkPath, [
+            ...forkLines,
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:20.000Z',
+                type: 'assistant',
+                messageId: 'msg-fork',
+                input: 30,
+                output: 60,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        expect(await getSpeedMetrics(transcriptPath, { includeSubagents: true })).toEqual({
+            totalDurationMs: 19600,
+            inputTokens: 80,
+            outputTokens: 160,
+            totalTokens: 240,
+            requestCount: 2
         });
     });
 

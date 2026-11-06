@@ -70,6 +70,7 @@ interface SpeedInterval {
 }
 
 interface SpeedRequest {
+    messageId: string | null;
     inputTokens: number;
     outputTokens: number;
     assistantTimestampMs: number | null;
@@ -389,7 +390,8 @@ interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
     lastUserTimestampMs: number | null;
     lastRequest: SpeedRequest | null;
     lastRequestInterval: SpeedInterval | null;
-    // Scoped to this transcript so subagent collectors keep independent requests.
+    // Scoped to this transcript, whose row order the interval handling relies on;
+    // mergeCollectedSpeedMetrics() folds a response found in several transcripts.
     requestsByMessageId: Map<string, SpeedRequest>;
 }
 
@@ -466,6 +468,7 @@ function collectSpeedMetricRecord(
     }
 
     const request: SpeedRequest = {
+        messageId,
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
@@ -489,15 +492,40 @@ async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: bo
     return state;
 }
 
+function foldRepeatedSpeedRequest(previous: SpeedRequest, request: SpeedRequest): void {
+    previous.inputTokens = Math.max(previous.inputTokens, request.inputTokens);
+    previous.outputTokens = Math.max(previous.outputTokens, request.outputTokens);
+    if (request.assistantTimestampMs !== null
+        && (previous.assistantTimestampMs === null || request.assistantTimestampMs > previous.assistantTimestampMs)) {
+        previous.assistantTimestampMs = request.assistantTimestampMs;
+    }
+    previous.intervals.push(...request.intervals);
+}
+
 function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSpeedMetrics {
     const requests: SpeedRequest[] = [];
     let latestTimestampMs: number | null = null;
+    const requestsByMessageId = new Map<string, SpeedRequest>();
 
     for (const part of parts) {
         // One push per request: spreading a long transcript's requests into a
         // single call exceeds the engine's argument limit and throws
         for (const request of part.requests) {
+            if (request.messageId === null) {
+                requests.push(request);
+                continue;
+            }
+
+            // A forked subagent's transcript opens with a copy of the response
+            // that spawned it, so one API call can appear in several files.
+            const previous = requestsByMessageId.get(request.messageId);
+            if (previous) {
+                foldRepeatedSpeedRequest(previous, request);
+                continue;
+            }
+
             requests.push(request);
+            requestsByMessageId.set(request.messageId, request);
         }
 
         if (part.latestTimestampMs !== null && (latestTimestampMs === null || part.latestTimestampMs > latestTimestampMs)) {
