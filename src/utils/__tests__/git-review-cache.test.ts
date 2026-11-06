@@ -23,9 +23,10 @@ interface FakeCacheFile {
 }
 
 interface PrCacheHarness {
+    authDurations: number[];
     cacheFiles: Map<string, FakeCacheFile>;
     deps: GitReviewCacheDeps;
-    execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[];
+    execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number }[];
     ghDurations: number[];
     ghResponses: (Error | string)[];
     glabResponses: (Error | string)[];
@@ -40,8 +41,9 @@ interface PrCacheHarness {
 }
 
 function createHarness(): PrCacheHarness {
+    const authDurations: number[] = [];
     const cacheFiles = new Map<string, FakeCacheFile>();
-    const execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[] = [];
+    const execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number }[] = [];
     const ghDurations: number[] = [];
     const ghResponses: (Error | string)[] = [];
     const glabResponses: (Error | string)[] = [];
@@ -71,6 +73,9 @@ function createHarness(): PrCacheHarness {
                     : undefined,
                 env: typeof options === 'object' && 'env' in options
                     ? options.env
+                    : undefined,
+                timeout: typeof options === 'object' && 'timeout' in options
+                    ? options.timeout
                     : undefined
             });
             const gitArgs = cmd === 'git' ? gitCommandOf(commandArgs).split(' ') : [];
@@ -99,6 +104,7 @@ function createHarness(): PrCacheHarness {
             if (cmd === 'gh' && commandArgs[0] === '--version')
                 return 'gh version 2.0.0\n';
             if (cmd === 'gh' && commandArgs[0] === 'auth' && commandArgs[1] === 'status') {
+                now += authDurations.shift() ?? 0;
                 const hostIdx = commandArgs.indexOf('--hostname');
                 const host = hostIdx >= 0 ? commandArgs[hostIdx + 1] : undefined;
                 if (!host || !authedHosts.gh.has(host))
@@ -120,6 +126,7 @@ function createHarness(): PrCacheHarness {
             if (cmd === 'glab' && commandArgs[0] === 'auth' && commandArgs[1] === 'status') {
                 if (!glabAvailable)
                     throw new Error('glab not installed');
+                now += authDurations.shift() ?? 0;
                 const hostIdx = commandArgs.indexOf('--hostname');
                 const host = hostIdx >= 0 ? commandArgs[hostIdx + 1] : undefined;
                 if (!host || !authedHosts.glab.has(host))
@@ -177,6 +184,7 @@ function createHarness(): PrCacheHarness {
     };
 
     return {
+        authDurations,
         cacheFiles,
         deps,
         execCalls,
@@ -243,6 +251,41 @@ function withoutJsonFields(args: string[] | undefined): string[] {
     const index = args?.indexOf('--json') ?? -1;
     return index >= 0 ? [...(args ?? []).slice(0, index), ...(args ?? []).slice(index + 2)] : [...(args ?? [])];
 }
+
+// The `gh pr checks` calls a lookup made
+function prChecksCalls(harness: PrCacheHarness): PrCacheHarness['execCalls'] {
+    return harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr' && call.args[1] === 'checks');
+}
+
+// The `auth status` calls a lookup made, each as its command line
+function authProbes(harness: PrCacheHarness): string[] {
+    return harness.execCalls
+        .filter(call => call.args[0] === 'auth')
+        .map(call => [call.cmd, ...call.args].join(' '));
+}
+
+// What `gh pr view` prints for PR #42 with this statusCheckRollup
+function prWithChecks(statusCheckRollup: unknown[]): string {
+    return JSON.stringify({
+        number: 42,
+        reviewDecision: '',
+        state: 'OPEN',
+        statusCheckRollup,
+        title: 'Re-run checks',
+        url: 'https://github.com/example-owner/example-repo/pull/42'
+    });
+}
+
+// The rollup lists every run on the PR's head commit: CI's `test` failed, then
+// passed on a re-run, and `lint` passed
+const RERUN_ROLLUP = [
+    { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'test', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' },
+    { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'test', startedAt: '2026-10-14T10:20:00Z', status: 'COMPLETED', workflowName: 'CI' },
+    { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'lint', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' }
+];
+// `gh pr checks` keeps the newest run of each check
+const RERUN_CHECK_ROWS = JSON.stringify([{ state: 'SUCCESS' }, { state: 'SUCCESS' }]);
+const RERUN_ROLLUP_COUNTS = { failing: 1, pending: 0, state: 'failing', success: 2 };
 
 mockExecutableResolution();
 
@@ -710,6 +753,173 @@ describe('git-review-cache', () => {
         expect(cachedGhPrCalls).toHaveLength(2);
     });
 
+    it('counts only the newest run of a re-run check, from gh pr checks', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push(RERUN_CHECK_ROWS);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual({
+            failing: 0,
+            pending: 0,
+            state: 'passing',
+            success: 2
+        });
+
+        const checksCalls = prChecksCalls(harness);
+        expect(checksCalls.map(call => call.args)).toEqual([['pr', 'checks', '--json', 'state', '--', '42']]);
+        expect(checksCalls[0]?.cwd).toBe('/tmp/repo');
+        expect(gitConfigFromEnv(checksCalls[0]?.env)).toEqual(expect.arrayContaining([
+            ['core.fsmonitor', ''],
+            ['safe.bareRepository', 'explicit']
+        ]));
+    });
+
+    it('counts only the newest run of a re-run status context, from gh pr checks', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks([
+            { __typename: 'StatusContext', context: 'ci/jenkins', startedAt: '2026-10-14T10:00:00Z', state: 'FAILURE' },
+            { __typename: 'StatusContext', context: 'ci/jenkins', startedAt: '2026-10-14T10:20:00Z', state: 'SUCCESS' }
+        ]));
+        harness.ghResponses.push(JSON.stringify([{ state: 'SUCCESS' }]));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual({
+            failing: 0,
+            pending: 0,
+            state: 'passing',
+            success: 1
+        });
+        expect(prChecksCalls(harness)).toHaveLength(1);
+    });
+
+    it('classifies gh pr checks rows as it classifies the rollup', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks([
+            // Failed, and its re-run is still going
+            { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'test', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: '', name: 'test', startedAt: '2026-10-14T10:20:00Z', status: 'IN_PROGRESS', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: 'SKIPPED', name: 'docs', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: 'CANCELLED', name: 'deploy', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: 'STARTUP_FAILURE', name: 'release', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'Release' }
+        ]));
+        // A check run's state is its conclusion once it has completed, and its
+        // status before that
+        harness.ghResponses.push(JSON.stringify([
+            { state: 'IN_PROGRESS' },
+            { state: 'SKIPPED' },
+            { state: 'CANCELLED' },
+            { state: 'STARTUP_FAILURE' }
+        ]));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual({
+            failing: 2,
+            pending: 1,
+            state: 'failing',
+            success: 0
+        });
+    });
+
+    // The rollup has no event field, so a workflow's push and pull_request runs
+    // look like runs of one check. GitHub lists them as two checks.
+    it('keeps a workflow\'s push and pull_request runs apart, as gh pr checks does', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks([
+            // push
+            { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'test', startedAt: '2026-10-14T10:00:00Z', status: 'COMPLETED', workflowName: 'CI' },
+            // pull_request, then its re-run
+            { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'test', startedAt: '2026-10-14T10:00:05Z', status: 'COMPLETED', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'test', startedAt: '2026-10-14T10:20:00Z', status: 'COMPLETED', workflowName: 'CI' }
+        ]));
+        // The newest pull_request run, and the push run
+        harness.ghResponses.push(JSON.stringify([{ state: 'SUCCESS' }, { state: 'FAILURE' }]));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual({
+            failing: 1,
+            pending: 0,
+            state: 'failing',
+            success: 1
+        });
+    });
+
+    // gh added --json to pr checks in 2.50
+    it('keeps the rollup\'s counts when gh is too old for pr checks --json', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push(new Error('unknown flag: --json'));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual(RERUN_ROLLUP_COUNTS);
+        expect(prChecksCalls(harness)).toHaveLength(1);
+    });
+
+    it('keeps the rollup\'s counts when gh pr checks prints no rows', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push('[]');
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual(RERUN_ROLLUP_COUNTS);
+        expect(prChecksCalls(harness)).toHaveLength(1);
+    });
+
+    it('makes no gh pr checks call when the rollup repeats no check', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(prWithChecks([
+            { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'build', status: 'COMPLETED', workflowName: 'CI' },
+            { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'build', status: 'COMPLETED', workflowName: 'Release' },
+            { __typename: 'StatusContext', context: 'build', state: 'SUCCESS' },
+            { conclusion: 'SUCCESS', status: 'COMPLETED' },
+            { conclusion: 'SUCCESS', status: 'COMPLETED' }
+        ]));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual({
+            failing: 0,
+            pending: 0,
+            state: 'passing',
+            success: 5
+        });
+        expect(prChecksCalls(harness)).toHaveLength(0);
+    });
+
+    it('passes the pinned --repo to gh pr checks', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push(RERUN_CHECK_ROWS);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks?.state).toBe('passing');
+        expect(prChecksCalls(harness).map(call => call.args)).toEqual([
+            ['pr', 'checks', '--repo', 'https://github.com/fork-owner/example-repo', '--json', 'state', '--', '42']
+        ]);
+    });
+
+    it('gives gh pr checks only what is left of the lookup\'s budget', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghDurations.push(3_000);
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push(RERUN_CHECK_ROWS);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks?.state).toBe('passing');
+        expect(prChecksCalls(harness).map(call => call.timeout)).toEqual([2_000]);
+    });
+
+    it('keeps the rollup\'s counts without a gh pr checks call once the lookup\'s budget is spent', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghDurations.push(5_000);
+        harness.ghResponses.push(prWithChecks(RERUN_ROLLUP));
+        harness.ghResponses.push(RERUN_CHECK_ROWS);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })?.checks).toEqual(RERUN_ROLLUP_COUNTS);
+        expect(prChecksCalls(harness)).toHaveLength(0);
+    });
+
     // A branch named like a flag (a planted HEAD can say `ref: refs/heads/--web`)
     // must stay an argument
     it('passes the branch to gh after --, so it can\'t become a flag', () => {
@@ -924,6 +1134,405 @@ describe('git-review-cache', () => {
         expect(ghPrCalls[1]?.args).not.toContain('https://ssh.github.com/owner/repo');
     });
 
+    it('preserves canonical GitLab SSH hosts when SSH config points at a transport endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:owner/repo.git');
+        harness.setSshHostAlias('gitlab.com', 'altssh.gitlab.com');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 78,
+            state: 'opened',
+            title: 'Canonical GitLab MR',
+            web_url: 'https://gitlab.com/owner/repo/-/merge_requests/78'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 78,
+            provider: 'glab',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Canonical GitLab MR',
+            url: 'https://gitlab.com/owner/repo/-/merge_requests/78'
+        });
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        expect(sshCalls).toHaveLength(0);
+
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('--repo');
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.com/owner/repo');
+        expect(glabMrCalls[1]?.args).not.toContain('https://altssh.gitlab.com/owner/repo');
+    });
+
+    // The usual way to use two GitHub accounts: `Host github-work` with
+    // `HostName github.com` in ~/.ssh/config
+    it('resolves SSH host aliases that name GitHub before pinning --repo', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github-work:owner/repo.git');
+        harness.setSshHostAlias('github-work', 'github.com');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1487,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Work account PR',
+            url: 'https://github.com/owner/repo/pull/1487'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(1487);
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        expect(sshCalls.length).toBeGreaterThan(0);
+        expect(sshCalls.every(call => call.args.join(' ') === '-G -- github-work')).toBe(true);
+
+        const ghAuthCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'auth'
+        );
+        expect(ghAuthCalls).toHaveLength(0);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
+    });
+
+    // glab is logged in to neither name, and a host without a dot reads as an
+    // alias
+    it('resolves SSH host aliases that name GitLab before pinning --repo', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab-corp:team/repo.git');
+        harness.setSshHostAlias('gitlab-corp', 'gitlab.corp.example');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 11,
+            state: 'opened',
+            title: 'Corp MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/11'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(11);
+
+        expect(authProbes(harness)).toEqual([
+            'glab auth status --hostname gitlab-corp',
+            'glab auth status --hostname gitlab.corp.example'
+        ]);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('--repo');
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.corp.example/team/repo');
+    });
+
+    it('keeps a self-hosted forge host that SSH config routes to an address naming no forge', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.example.com:team/repo.git');
+        harness.setSshHostAlias('gitlab.example.com', '10.0.0.5');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 12,
+            state: 'opened',
+            title: 'Self-hosted MR',
+            web_url: 'https://gitlab.example.com/team/repo/-/merge_requests/12'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.provider).toBe('glab');
+
+        expect(harness.execCalls.filter(call => call.args[0] === 'auth')).toHaveLength(0);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.example.com/team/repo');
+    });
+
+    // HTTPS can sit behind a proxy that doesn't carry SSH, so SSH config sends
+    // the forge's hostname to a separate SSH-only endpoint. glab is logged in to
+    // neither name, and a host with a dot reads as a hostname.
+    it('keeps a self-hosted GitLab host that SSH config routes to an SSH-only endpoint naming GitLab', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.corp.example:team/repo.git');
+        harness.setSshHostAlias('gitlab.corp.example', 'gitlab-ssh.corp.example');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 42,
+            state: 'opened',
+            title: 'Proxied MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/42'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(42);
+
+        expect(authProbes(harness)).toEqual([
+            'glab auth status --hostname gitlab.corp.example',
+            'glab auth status --hostname gitlab-ssh.corp.example'
+        ]);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.corp.example/team/repo');
+        expect(glabMrCalls[1]?.args).not.toContain('https://gitlab-ssh.corp.example/team/repo');
+    });
+
+    // gh is logged in to neither name
+    it('keeps a GitHub Enterprise host that SSH config routes to an SSH-only endpoint naming GitHub', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.corp.example:owner/repo.git');
+        harness.setSshHostAlias('github.corp.example', 'github-ssh.corp.example');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1488,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Enterprise PR',
+            url: 'https://github.corp.example/owner/repo/pull/1488'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(1488);
+
+        expect(authProbes(harness)).toEqual([
+            'gh auth status --hostname github.corp.example',
+            'gh auth status --hostname github-ssh.corp.example'
+        ]);
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('https://github.corp.example/owner/repo');
+        expect(ghPrCalls[1]?.args).not.toContain('https://github-ssh.corp.example/owner/repo');
+    });
+
+    // `Host github.com-personal` with `HostName ssh.github.com` and `Port 443`
+    // reaches GitHub through networks that block port 22
+    it('pins github.com for an SSH host alias that routes through GitHub\'s transport endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.com-personal:owner/repo.git');
+        harness.setSshHostAlias('github.com-personal', 'ssh.github.com');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1489,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Personal account PR',
+            url: 'https://github.com/owner/repo/pull/1489'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(1489);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
+    });
+
+    // A short hostname reached through a DNS search domain has no dot either
+    it('keeps a short GitLab hostname that glab is logged in to when SSH config routes it to an SSH-only endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab:team/repo.git');
+        harness.setSshHostAlias('gitlab', 'gitlab-ssh.corp.example');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'gitlab', true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 43,
+            state: 'opened',
+            title: 'Short host MR',
+            web_url: 'https://gitlab/team/repo/-/merge_requests/43'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(43);
+
+        expect(authProbes(harness)).toEqual(['glab auth status --hostname gitlab']);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab/team/repo');
+        expect(glabMrCalls[1]?.args).not.toContain('https://gitlab-ssh.corp.example/team/repo');
+    });
+
+    it('keeps a self-hosted GitLab host that glab is logged in to when SSH config routes it to an SSH-only endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.corp.example:team/repo.git');
+        harness.setSshHostAlias('gitlab.corp.example', 'gitlab-ssh.corp.example');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'gitlab.corp.example', true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 44,
+            state: 'opened',
+            title: 'Proxied MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/44'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(44);
+
+        expect(authProbes(harness)).toEqual(['glab auth status --hostname gitlab.corp.example']);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.corp.example/team/repo');
+    });
+
+    it('pins the host a GitLab alias resolves to when glab is logged in to that host', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab-corp:team/repo.git');
+        harness.setSshHostAlias('gitlab-corp', 'gitlab.corp.example');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'gitlab.corp.example', true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 45,
+            state: 'opened',
+            title: 'Corp MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/45'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(45);
+
+        expect(authProbes(harness)).toEqual([
+            'glab auth status --hostname gitlab-corp',
+            'glab auth status --hostname gitlab.corp.example'
+        ]);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.corp.example/team/repo');
+    });
+
+    // `Host github.com-work` with `HostName github.corp.example`: an alias can
+    // have a dot too
+    it('pins the GitHub Enterprise host a dotted alias resolves to when gh is logged in to that host', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.com-work:owner/repo.git');
+        harness.setSshHostAlias('github.com-work', 'github.corp.example');
+        harness.setCliAuthedForHost('gh', 'github.corp.example', true);
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1490,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Enterprise PR',
+            url: 'https://github.corp.example/owner/repo/pull/1490'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(1490);
+
+        expect(authProbes(harness)).toEqual([
+            'gh auth status --hostname github.com-work',
+            'gh auth status --hostname github.corp.example'
+        ]);
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('https://github.corp.example/owner/repo');
+        expect(ghPrCalls[1]?.args).not.toContain('https://github.com-work/owner/repo');
+    });
+
+    it('asks the CLI about each name once per lookup, and again on the next lookup', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab-corp:team/repo.git');
+        harness.setSshHostAlias('gitlab-corp', 'gitlab.corp.example');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push('', '');
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+
+        const probes = [
+            'glab auth status --hostname gitlab-corp',
+            'glab auth status --hostname gitlab.corp.example'
+        ];
+        expect(authProbes(harness)).toEqual(probes);
+        expect(harness.execCalls.filter(call => call.cmd === 'ssh')).toHaveLength(1);
+
+        harness.advanceNow(30_001);
+        harness.glabResponses.push('', '');
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+
+        expect(authProbes(harness)).toEqual([...probes, ...probes]);
+    });
+
+    // `auth status` checks the token with the server, as for a host naming no
+    // forge
+    it('starts the lookup deadline after the auth probes for a forge-named alias', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab-corp:team/repo.git');
+        harness.setSshHostAlias('gitlab-corp', 'gitlab.corp.example');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'gitlab.corp.example', true);
+        harness.authDurations.push(2_600, 2_600);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 46,
+            state: 'opened',
+            title: 'Corp MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/46'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(46);
+
+        expect(authProbes(harness)).toHaveLength(2);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls.map(call => call.timeout)).toEqual([5_000, 5_000]);
+    });
+
+    it('asks no CLI about its logins when SSH config leaves a self-hosted forge host as it is', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.corp.example:team/repo.git');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'gitlab.corp.example', true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 47,
+            state: 'opened',
+            title: 'Self-hosted MR',
+            web_url: 'https://gitlab.corp.example/team/repo/-/merge_requests/47'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(47);
+
+        expect(authProbes(harness)).toEqual([]);
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls[1]?.args).toContain('https://gitlab.corp.example/team/repo');
+    });
+
+    it('asks gh about no logins for a github.com SSH remote', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.com:owner/repo.git');
+        harness.setCliAuthedForHost('gh', 'github.com', true);
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1491,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'GitHub PR',
+            url: 'https://github.com/owner/repo/pull/1491'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(1491);
+
+        expect(authProbes(harness)).toEqual([]);
+    });
+
     it('falls back to --repo <origin> for forked GitLab repos when glab\'s default resolves elsewhere', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/example-fork.git');
@@ -1052,6 +1661,39 @@ describe('git-review-cache', () => {
             call => call.cmd === 'glab' && call.args[0] === 'mr'
         );
         expect(glabMrCalls).toHaveLength(0);
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(1);
+    });
+
+    // `auth status` checks the token with the server, so on a slow link the two
+    // probes together can take longer than the lookup's whole budget
+    it('starts the lookup deadline after the auth probes for an unknown host', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@git.self-hosted.example:team/repo.git');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('gh', 'git.self-hosted.example', true);
+        harness.authDurations.push(2_600, 2_600);
+        harness.ghResponses.push(JSON.stringify({
+            number: 7,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Self-hosted GHE PR',
+            url: 'https://git.self-hosted.example/team/repo/pull/7'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 7,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Self-hosted GHE PR',
+            url: 'https://git.self-hosted.example/team/repo/pull/7'
+        });
+
+        const authCalls = harness.execCalls.filter(call => call.args[0] === 'auth');
+        expect(authCalls.map(call => call.cmd)).toEqual(['glab', 'gh']);
         const ghPrCalls = harness.execCalls.filter(
             call => call.cmd === 'gh' && call.args[0] === 'pr'
         );

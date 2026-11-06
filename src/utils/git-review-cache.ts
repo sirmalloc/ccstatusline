@@ -102,19 +102,14 @@ function classifyCheck(entry: Record<string, unknown>): CiCheckKind {
     return 'failed';
 }
 
-export function computeCiRollup(rollup: unknown): GitCiChecks | null {
-    if (!Array.isArray(rollup) || rollup.length === 0)
+function summarizeCiChecks(kinds: CiCheckKind[]): GitCiChecks | null {
+    if (kinds.length === 0)
         return null;
 
     let failing = 0;
     let pending = 0;
     let success = 0;
-    let seen = 0;
-    for (const entry of rollup) {
-        if (typeof entry !== 'object' || entry === null)
-            continue;
-        seen++;
-        const kind = classifyCheck(entry as Record<string, unknown>);
+    for (const kind of kinds) {
         if (kind === 'failed')
             failing++;
         else if (kind === 'pending')
@@ -123,11 +118,67 @@ export function computeCiRollup(rollup: unknown): GitCiChecks | null {
             success++;
     }
 
-    if (seen === 0)
-        return null;
-
     const state: GitCiState = failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing';
     return { state, failing, pending, success };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+export function computeCiRollup(rollup: unknown): GitCiChecks | null {
+    if (!Array.isArray(rollup))
+        return null;
+    return summarizeCiChecks(rollup.filter(isRecord).map(classifyCheck));
+}
+
+// The statuses of a check run that hasn't completed, and a status context's
+// pending states
+const PENDING_CHECK_STATES = new Set(['REQUESTED', 'QUEUED', 'IN_PROGRESS', 'WAITING', 'PENDING', 'EXPECTED']);
+
+// Classify a `gh pr checks` row as classifyCheck does the rollup entry it came
+// from. Its state is a check run's conclusion once the run has completed and
+// its status before that, or a status context's state. (gh's own `bucket`
+// files STARTUP_FAILURE and STALE under pending.)
+function classifyCheckRowState(state: string): CiCheckKind {
+    if (state === 'SUCCESS')
+        return 'success';
+    if (state === 'NEUTRAL' || state === 'SKIPPED')
+        return 'ignored';
+    if (PENDING_CHECK_STATES.has(state))
+        return 'pending';
+    return 'failed';
+}
+
+// `gh pr checks --json state` prints one row per check
+function computeCiChecksFromRows(rows: unknown): GitCiChecks | null {
+    if (!Array.isArray(rows))
+        return null;
+    const states = rows.map(row => (isRecord(row) ? row.state : undefined));
+    if (!states.every((state): state is string => typeof state === 'string'))
+        return null;
+    return summarizeCiChecks(states.map(state => classifyCheckRowState(state.toUpperCase())));
+}
+
+// Two rollup entries are runs of the same check when they share a status
+// context, or a check run's name and workflow. Entries with neither can't be
+// told apart, so they never count as repeats.
+function getRollupCheckKey(entry: unknown): string | null {
+    if (!isRecord(entry))
+        return null;
+    const { context, name, workflowName } = entry;
+    if (typeof context === 'string' && context.length > 0)
+        return JSON.stringify(['context', context]);
+    if (typeof name === 'string' && name.length > 0)
+        return JSON.stringify(['check', name, typeof workflowName === 'string' ? workflowName : '']);
+    return null;
+}
+
+function hasRepeatedCheck(rollup: unknown): boolean {
+    if (!Array.isArray(rollup))
+        return false;
+    const keys = rollup.map(getRollupCheckKey).filter(key => key !== null);
+    return new Set(keys).size < keys.length;
 }
 
 const GIT_REVIEW_CACHE_TTL = 30_000;
@@ -136,6 +187,7 @@ const REFRESH_LOCK_STALE_MS = 30_000;
 const DEFAULT_TITLE_MAX_WIDTH = 30;
 const GH_PR_METADATA_FIELDS = 'url,number,title,state,reviewDecision';
 const GH_PR_WITH_CHECKS_FIELDS = `${GH_PR_METADATA_FIELDS},statusCheckRollup`;
+const GH_PR_CHECKS_FIELDS = 'state';
 export const GIT_REVIEW_REFRESH_FLAG = '--internal-refresh-git-review-cache';
 
 export interface GitReviewCacheDeps {
@@ -380,41 +432,78 @@ function getNamedForgeProvider(host: string): GitReviewProvider | null {
     return null;
 }
 
+// The forges' own hosts. SSH config can route them through a transport
+// endpoint such as ssh.github.com, which serves no repositories over HTTPS.
+const CANONICAL_FORGE_HOSTS = new Set(['github.com', 'gitlab.com']);
+const FORGE_TRANSPORT_HOSTS = new Map([
+    ['ssh.github.com', 'github.com'],
+    ['altssh.gitlab.com', 'gitlab.com']
+]);
+
 function getEffectiveRemoteHost(url: string, host: string, deps: GitReviewCacheDeps): string {
     const normalizedHost = host.toLowerCase();
-    if (!isSshRemoteUrl(url) || getNamedForgeProvider(normalizedHost)) {
+    if (!isSshRemoteUrl(url) || CANONICAL_FORGE_HOSTS.has(normalizedHost)) {
         return normalizedHost;
     }
 
-    return resolveSshHostAlias(normalizedHost, deps);
+    const resolvedHost = resolveSshHostAlias(normalizedHost, deps);
+    const hostProvider = getNamedForgeProvider(normalizedHost);
+    if (!hostProvider) {
+        return resolvedHost;
+    }
+
+    const canonicalHost = FORGE_TRANSPORT_HOSTS.get(resolvedHost) ?? resolvedHost;
+    if (CANONICAL_FORGE_HOSTS.has(canonicalHost)) {
+        return canonicalHost;
+    }
+    // Left as it is, or sent to an IP or to a host naming no forge, the host
+    // keeps its own name
+    const resolvedProvider = getNamedForgeProvider(resolvedHost);
+    if (resolvedHost === normalizedHost || !resolvedProvider) {
+        return normalizedHost;
+    }
+
+    // Both names name a forge. The host is an alias (github-work,
+    // github.com-work, gitlab-corp), or the forge's own hostname
+    // (gitlab.corp.example, or a short name such as gitlab reached through a
+    // DNS search domain) that SSH config sends to an SSH-only endpoint
+    // (gitlab-ssh.corp.example). Keep whichever name the forge's CLI is logged
+    // in to, which is the one serving the repo over HTTPS, trying the host's
+    // own name first. Logged in to neither, a host without a dot reads as an
+    // alias.
+    if (isCliAuthedForHost(hostProvider, normalizedHost, deps)) {
+        return normalizedHost;
+    }
+    if (isCliAuthedForHost(resolvedProvider, resolvedHost, deps)) {
+        return resolvedHost;
+    }
+    return normalizedHost.includes('.') ? normalizedHost : resolvedHost;
 }
 
-function getOriginHost(cwd: string, deps: GitReviewCacheDeps): string | null {
+interface OriginRemote {
+    // The host the forge's CLI knows origin by
+    host: string;
+    // origin's repo on that host, for `--repo`
+    repoRef: string;
+}
+
+// Worked out once per lookup: it can run `ssh -G` and `auth status` probes
+function getOriginRemote(cwd: string, deps: GitReviewCacheDeps): OriginRemote | null {
     const url = getOriginUrl(cwd, deps);
     if (!url) {
         return null;
     }
     const parsed = parseRemoteUrl(url);
-    return parsed ? getEffectiveRemoteHost(url, parsed.host, deps) : null;
-}
-
-function toHttpsRepoRef(url: string, deps: GitReviewCacheDeps): string | null {
-    const parsed = parseRemoteUrl(url);
     if (!parsed) {
         return null;
     }
-    return `https://${getEffectiveRemoteHost(url, parsed.host, deps)}/${parsed.owner}/${parsed.repo}`;
-}
-
-function getOriginRepoRef(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const url = getOriginUrl(cwd, deps);
-    return url ? toHttpsRepoRef(url, deps) : null;
+    const host = getEffectiveRemoteHost(url, parsed.host, deps);
+    return { host, repoRef: `https://${host}/${parsed.owner}/${parsed.repo}` };
 }
 
 // Self-hosted hosts that name neither forge are resolved by probing each CLI's
 // `auth status --hostname <host>` and keeping those that are authed.
-function getProviderCandidates(cwd: string, deps: GitReviewCacheDeps): GitReviewProvider[] {
-    const host = getOriginHost(cwd, deps);
+function getProviderCandidates(host: string | null, deps: GitReviewCacheDeps): GitReviewProvider[] {
     if (!host) {
         return ['gh', 'glab'];
     }
@@ -498,6 +587,18 @@ function isCiFieldUnavailableError(error: unknown): boolean {
         || text.includes('resource not accessible by integration');
 }
 
+function runGh(cwd: string, args: string[], deadline: number, deps: GitReviewCacheDeps): string {
+    return deps.execFileSync(resolveExecutable('gh'), args, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd,
+        // gh runs git in the repository too
+        env: withGitHardeningEnv(process.env),
+        timeout: getRemainingTimeout(deadline, deps),
+        windowsHide: true
+    }).trim();
+}
+
 // `branch` goes after `--`: a branch named like a flag (a planted HEAD can name
 // one `--web`) must stay an argument
 function queryGhPr(
@@ -508,25 +609,52 @@ function queryGhPr(
     deadline: number,
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
-    const output = deps.execFileSync(
-        resolveExecutable('gh'),
-        [...args, '--json', fields, ...(branch ? ['--', branch] : [])],
-        {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe'],
-            cwd,
-            // gh runs git in the repository too
-            env: withGitHardeningEnv(process.env),
-            timeout: getRemainingTimeout(deadline, deps),
-            windowsHide: true
-        }
-    ).trim();
+    const output = runGh(cwd, [...args, '--json', fields, ...(branch ? ['--', branch] : [])], deadline, deps);
 
     if (output.length === 0) {
         return null;
     }
 
     return JSON.parse(output) as Record<string, unknown>;
+}
+
+// gh pr view's statusCheckRollup lists every run of a check on the PR's head
+// commit, so counted as it is, a check that failed and then passed on a re-run
+// shows as failing. `gh pr checks` (which has --json since gh 2.50) keeps only
+// the newest run of each check, keyed on its name, workflow and the event that
+// started it. The rollup has no event, so its entries alone can't tell a
+// re-run from a workflow's push and pull_request runs, which GitHub lists as
+// two checks. So when the rollup repeats a check, the counts come from
+// `gh pr checks`, within the lookup's budget. If that call fails or prints no
+// rows, the rollup's own counts stay: they can overstate failures, but never
+// miss one.
+function getGhCiChecks(
+    cwd: string,
+    repoRef: string | null,
+    prNumber: number,
+    rollup: unknown,
+    deadline: number,
+    deps: GitReviewCacheDeps
+): GitCiChecks | undefined {
+    const rollupChecks = computeCiRollup(rollup);
+    if (!rollupChecks || !hasRepeatedCheck(rollup)) {
+        return rollupChecks ?? undefined;
+    }
+
+    try {
+        const output = runGh(cwd, [
+            'pr',
+            'checks',
+            ...(repoRef ? ['--repo', repoRef] : []),
+            '--json',
+            GH_PR_CHECKS_FIELDS,
+            '--',
+            String(prNumber)
+        ], deadline, deps);
+        return computeCiChecksFromRows(JSON.parse(output)) ?? rollupChecks;
+    } catch {
+        return rollupChecks;
+    }
 }
 
 function fetchFromGh(
@@ -574,7 +702,7 @@ function fetchFromGh(
         state: typeof parsed.state === 'string' ? parsed.state : '',
         reviewDecision: typeof parsed.reviewDecision === 'string' ? parsed.reviewDecision : '',
         provider: 'gh',
-        checks: computeCiRollup(parsed.statusCheckRollup) ?? undefined
+        checks: getGhCiChecks(cwd, repoRef, parsed.number, parsed.statusCheckRollup, deadline, deps)
     };
 }
 
@@ -667,10 +795,14 @@ export function fetchGitReviewData(
         && (!includeChecks || cached.checksQueried)) {
         return cached.data;
     }
-    const repoRef = getOriginRepoRef(cwd, deps);
+    // The auth probes that pick origin's host or its CLI each have their own
+    // timeout, so the lookup's budget starts after them
+    const origin = getOriginRemote(cwd, deps);
+    const repoRef = origin?.repoRef ?? null;
+    const providers = getProviderCandidates(origin?.host ?? null, deps);
     const deadline = deps.now() + CLI_TIMEOUT;
 
-    for (const provider of getProviderCandidates(cwd, deps)) {
+    for (const provider of providers) {
         if (!isCliAvailable(provider, deadline, deps)) {
             continue;
         }
