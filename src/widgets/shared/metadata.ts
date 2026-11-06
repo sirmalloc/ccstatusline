@@ -17,6 +17,15 @@ export function toggleMetadataFlag(item: WidgetItem, key: string): WidgetItem {
     };
 }
 
+// Null removes the key, so an option at its default stores nothing
+export function setMetadataValue(item: WidgetItem, key: string, value: string | null): WidgetItem {
+    if (value === null) {
+        return removeMetadataKeys(item, [key]);
+    }
+
+    return { ...item, metadata: { ...item.metadata, [key]: value } };
+}
+
 export function removeMetadataKeys(item: WidgetItem, keys: string[]): WidgetItem {
     const nextMetadata = Object.fromEntries(
         Object.entries(item.metadata ?? {}).filter(([key]) => !keys.includes(key))
