@@ -1331,9 +1331,10 @@ interface ProfileAnswer {
 
 function parseProfileAnswer(body: string): ProfileAnswer {
     const ids = parseJsonWithSchema(body, ProfileAccountIdsSchema);
+    const accountId = ids ? `${ids.organization.uuid}/${ids.account.uuid}` : null;
     return {
         email: parseJsonWithSchema(body, ProfileApiResponseSchema)?.account?.email ?? null,
-        accountKey: ids ? `account:${fingerprintUsageToken(`${ids.organization.uuid}/${ids.account.uuid}`)}` : null
+        accountKey: accountId === null ? null : `account:${fingerprintUsageToken(accountId)}`
     };
 }
 
