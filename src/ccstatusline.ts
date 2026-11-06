@@ -5,7 +5,10 @@ import type { SkillsMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
-import { getVisibleText } from './utils/ansi';
+import {
+    getVisibleText,
+    replaceSpacesForOutput
+} from './utils/ansi';
 import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
 import { ZERO_COMPACTION_STATS } from './utils/compaction';
@@ -30,6 +33,8 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { computeSessionForecastIfNeeded } from './utils/session-forecast-prefetch';
+import { getDefaultSessionUsageHistoryDeps } from './utils/session-usage-history';
 import { getSkillsMetrics } from './utils/skills';
 import {
     getWidgetSpeedWindowSeconds,
@@ -40,12 +45,37 @@ import {
     getTerminalWidth
 } from './utils/terminal';
 import { sanitizeTerminalText } from './utils/terminal-sanitize';
+import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
+
+// Captured before --config is parsed out of process.argv, so the dev reload
+// supervisor can relaunch with exactly the arguments it was started with
+const LAUNCH_ARGS = process.argv.slice(2);
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
+}
+
+const DISPATCHABLE_HOOK_EVENT_NAMES = new Set(['PreToolUse', 'UserPromptSubmit']);
+
+// syncWidgetHooks() builds the configured hook command as `${statusCommand} --hook`.
+// When statusCommand is itself a wrapped command (e.g. `bash -c '... ccstatusline'`),
+// that concatenation puts --hook outside the wrapper's quotes, so when Claude Code
+// executes the already-malformed configured command, the flag never reaches this
+// process's argv and the hook payload arrives on the piped-input path instead.
+// StatusJSONSchema is a looseObject that accepts this shape too, so without this
+// check the hook JSON would render as (garbled) status output.
+function isDispatchableHookPayload(data: unknown): boolean {
+    if (typeof data !== 'object' || data === null) {
+        return false;
+    }
+    const { hook_event_name: hookEventName, session_id: sessionId } = data as Record<string, unknown>;
+    return typeof hookEventName === 'string'
+        && DISPATCHABLE_HOOK_EVENT_NAMES.has(hookEventName)
+        && typeof sessionId === 'string'
+        && sessionId.length > 0;
 }
 
 async function readStdin(): Promise<string | null> {
@@ -77,7 +107,7 @@ async function readStdin(): Promise<string | null> {
     }
 }
 
-async function renderMultipleLines(data: StatusJSON) {
+async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unknown>) {
     const settings = await loadSettings();
     const configError = getConfigLoadError();
 
@@ -98,6 +128,7 @@ async function renderMultipleLines(data: StatusJSON) {
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
     const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const hasAccountEmailWidget = lines.some(line => line.some(item => item.type === 'claude-account-email'));
     const needsTranscriptThinkingEffort = hasThinkingEffortWidget
         && (!data.effort || !('level' in data.effort));
     const requestedSpeedWindows = new Set<number>();
@@ -120,11 +151,13 @@ async function renderMultipleLines(data: StatusJSON) {
             includeSessionName: hasSessionNameWidget
         })
         : Promise.resolve(null);
-    const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
+    const [transcriptAnalysis, usageData, claudeStatusData, accountEmail] = await Promise.all([
         transcriptAnalysisPromise,
         prefetchUsageDataIfNeeded(lines, data),
-        prefetchClaudeStatusIfNeeded(lines)
+        prefetchClaudeStatusIfNeeded(lines),
+        hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
     ]);
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data, usageData));
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
     const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;
@@ -143,11 +176,14 @@ async function renderMultipleLines(data: StatusJSON) {
     // Create render context
     const context: RenderContext = {
         data,
+        rawData,
         tokenMetrics,
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        sessionForecast,
         claudeStatusData,
+        accountEmail,
         sessionDuration,
         transcriptSessionName: hasSessionNameWidget
             ? (transcriptAnalysis?.sessionName ?? null)
@@ -200,10 +236,10 @@ async function renderMultipleLines(data: StatusJSON) {
                     configBadgePrepended = true;
                 }
 
-                // Replace all spaces with non-breaking spaces to prevent VSCode trimming
+                // Replace spaces with characters VS Code won't trim (see replaceSpacesForOutput)
                 // The renderer's own output is colors and links; this is the last
                 // stop before the terminal for anything else (separators, settings)
-                let outputLine = sanitizeTerminalText(line).replace(/ /g, '\u00A0');
+                let outputLine = replaceSpacesForOutput(sanitizeTerminalText(line));
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
@@ -222,7 +258,7 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Defensive fallback: if no content line was emitted, ensure the warning is not lost
     if (configError && !configBadgePrepended) {
-        console.log('\x1b[0m' + buildConfigWarningBadge(settings.colorLevel).replace(/ /g, '\u00A0'));
+        console.log('\x1b[0m' + replaceSpacesForOutput(buildConfigWarningBadge(settings.colorLevel)));
     }
 
     // Check if there's an update message to display
@@ -319,14 +355,27 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                // Parse and validate JSON in one step
-                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                const parsed: unknown = JSON.parse(input);
+
+                // A wrapped statusLine command may have dropped --hook before this
+                // process saw argv (see isDispatchableHookPayload above). Detect that
+                // shape here and dispatch it the same way the explicit --hook mode
+                // does, instead of falling through to status validation/rendering.
+                if (isDispatchableHookPayload(parsed)) {
+                    handleHookInput(input);
+                    return;
+                }
+
+                // Widgets read the validated copy; custom commands get the JSON
+                // as it arrived. Validation fails for anything but an object.
+                const rawData = parsed as Record<string, unknown>;
+                const result = StatusJSONSchema.safeParse(rawData);
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
                 }
 
-                await renderMultipleLines(result.data);
+                await renderMultipleLines(result.data, rawData);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
@@ -337,6 +386,15 @@ async function main() {
         }
     } else {
         // Interactive mode - run TUI
+        // With CCSTATUSLINE_DEV_RELOAD=1 this process only supervises: it runs
+        // the TUI in child processes and restarts one whenever ctrl+r asks
+        if (process.env.CCSTATUSLINE_DEV_RELOAD === '1') {
+            const { getDevReloadMode, superviseDevReload } = await import('./utils/dev-reload');
+            if (getDevReloadMode(process.env) === 'supervisor') {
+                process.exit(await superviseDevReload(LAUNCH_ARGS));
+            }
+        }
+
         // Remove updatemessage before running TUI
         const settings = await loadSettings();
         if (settings.updatemessage) {

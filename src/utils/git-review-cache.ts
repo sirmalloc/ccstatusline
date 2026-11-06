@@ -16,11 +16,14 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
+import type { RenderContext } from '../types/RenderContext';
+
 import {
     getVisibleWidth,
     truncateStyledText
 } from './ansi';
 import { resolveExecutable } from './executable-path';
+import { runGit } from './git';
 import {
     GIT_HARDENING_ARGS,
     withGitHardeningEnv
@@ -49,6 +52,13 @@ export interface GitReviewData {
 }
 
 export interface GitReviewFetchOptions { includeChecks?: boolean }
+
+export interface GitReviewCachedOptions extends GitReviewFetchOptions {
+    // The widget's render context. When given, the branch/HEAD lookup that
+    // keys the cache goes through git.ts's cached runGit (shared with the
+    // git-branch and git-sha widgets) instead of spawning git every render.
+    context?: RenderContext;
+}
 
 interface StoredGitReviewCache {
     version: 1;
@@ -195,6 +205,7 @@ export interface GitReviewCacheDeps {
     writeFileSync: typeof writeFileSync;
     getHomedir: typeof os.homedir;
     now: typeof Date.now;
+    runGit?: typeof runGit;
 }
 
 const DEFAULT_GIT_REVIEW_CACHE_DEPS: GitReviewCacheDeps = {
@@ -211,7 +222,8 @@ const DEFAULT_GIT_REVIEW_CACHE_DEPS: GitReviewCacheDeps = {
     unlinkSync,
     writeFileSync,
     getHomedir: os.homedir,
-    now: Date.now
+    now: Date.now,
+    runGit
 };
 
 function getCacheDir(deps: GitReviewCacheDeps): string {
@@ -236,9 +248,17 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
     }
 }
 
-function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
+const BRANCH_REF_PREFIX = 'refs/heads/';
+
+// Read from the full ref, since --short turns it into "heads/<name>" when a
+// tag has the same name, and no PR is on a branch by that name
+function toBranchName(ref: string): string | null {
+    const branch = ref.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     return branch.length > 0 ? branch : null;
+}
+
+function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
+    return toBranchName(runGitForCache(['symbolic-ref', 'HEAD'], cwd, deps));
 }
 
 function getCacheRef(cwd: string, deps: GitReviewCacheDeps): string {
@@ -248,6 +268,26 @@ function getCacheRef(cwd: string, deps: GitReviewCacheDeps): string {
     }
 
     const head = runGitForCache(['rev-parse', '--short', 'HEAD'], cwd, deps);
+    if (head.length > 0) {
+        return `head:${head}`;
+    }
+
+    return 'unknown';
+}
+
+// Same ref as getCacheRef (which the refresh child still uses to derive the
+// lock path it may release), read through the render's cached git commands.
+function getCacheRefFromContext(context: RenderContext, cwd: string, deps: GitReviewCacheDeps): string {
+    if (!deps.runGit) {
+        return getCacheRef(cwd, deps);
+    }
+
+    const branch = toBranchName(deps.runGit('symbolic-ref HEAD', context)?.trim() ?? '');
+    if (branch) {
+        return `branch:${branch}`;
+    }
+
+    const head = deps.runGit('rev-parse --short HEAD', context)?.trim() ?? '';
     if (head.length > 0) {
         return `head:${head}`;
     }
@@ -868,11 +908,14 @@ function scheduleRefresh(
 
 export function getCachedGitReviewData(
     cwd: string,
-    options: GitReviewFetchOptions = {},
+    options: GitReviewCachedOptions = {},
     deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS
 ): GitReviewData | null {
     const includeChecks = options.includeChecks ?? false;
-    const cachePath = getCachePath(cwd, getCacheRef(cwd, deps), deps);
+    const ref = options.context
+        ? getCacheRefFromContext(options.context, cwd, deps)
+        : getCacheRef(cwd, deps);
+    const cachePath = getCachePath(cwd, ref, deps);
     const cached = readCache(cachePath, deps);
     const needsRefresh = cached === 'miss'
         || cached.stale

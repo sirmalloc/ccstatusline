@@ -3,14 +3,18 @@ import {
     parseJsonlLine
 } from './jsonl-lines';
 
-export function getSessionNameFromRecord(record: unknown): string | null {
+export function getSessionNameFromRecord(
+    record: unknown,
+    type: 'custom-title' | 'ai-title' = 'custom-title'
+): string | null {
     if (typeof record !== 'object' || record === null) {
         return null;
     }
 
-    const entry = record as { type?: unknown; customTitle?: unknown };
-    return entry.type === 'custom-title' && typeof entry.customTitle === 'string' && entry.customTitle.length > 0
-        ? entry.customTitle
+    const entry = record as { type?: unknown; customTitle?: unknown; aiTitle?: unknown };
+    const title = type === 'custom-title' ? entry.customTitle : entry.aiTitle;
+    return entry.type === type && typeof title === 'string' && title.length > 0
+        ? title
         : null;
 }
 
@@ -19,16 +23,19 @@ export function getTranscriptSessionName(transcriptPath: string | undefined): st
         return null;
     }
 
+    let automaticTitle: string | null = null;
     try {
         for (const line of iterateJsonlLinesReverseSync(transcriptPath)) {
-            const sessionName = getSessionNameFromRecord(parseJsonlLine(line));
+            const record = parseJsonlLine(line);
+            const sessionName = getSessionNameFromRecord(record);
             if (sessionName !== null) {
                 return sessionName;
             }
+            automaticTitle ??= getSessionNameFromRecord(record, 'ai-title');
         }
     } catch {
         return null;
     }
 
-    return null;
+    return automaticTitle;
 }

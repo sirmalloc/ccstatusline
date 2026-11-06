@@ -1,13 +1,57 @@
+import { render } from 'ink';
+import { PassThrough } from 'node:stream';
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
+import { forceInkColors } from '../../tui/__tests__/helpers/ink-colors';
+import { waitFor } from '../../tui/__tests__/helpers/wait-for-ink';
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { LinkWidget } from '../Link';
+
+class MockTtyStream extends PassThrough {
+    isTTY = true;
+    columns = 120;
+    rows = 40;
+
+    setRawMode() {
+        return this;
+    }
+
+    ref() {
+        return this;
+    }
+
+    unref() {
+        return this;
+    }
+}
+
+interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+
+function createMockStdin(): NodeJS.ReadStream {
+    return new MockTtyStream() as unknown as NodeJS.ReadStream;
+}
+
+function createMockStdout(): CapturedWriteStream {
+    const stream = new MockTtyStream();
+    const chunks: string[] = [];
+
+    stream.on('data', (chunk: Buffer | string) => {
+        chunks.push(chunk.toString());
+    });
+
+    return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        getOutput() {
+            return chunks.join('');
+        }
+    });
+}
 
 function renderLink(
     metadata: Record<string, string> | undefined,
@@ -154,5 +198,107 @@ describe('LinkWidget', () => {
 
         expect(widget.supportsColors(item)).toBe(true);
         expect(widget.supportsRawValue()).toBe(true);
+    });
+
+    describe('editor', () => {
+        const LEFT = '\x1b[D';
+        const RIGHT = '\x1b[C';
+        const BACKSPACE = '\x7f';
+        const DELETE = '\x1b[3~';
+        const CODER = '\u{1F469}\u200D\u{1F4BB}';
+
+        function renderLinkEditor(metadata: Record<string, string>, action: string) {
+            const stdin = createMockStdin();
+            const stdout = createMockStdout();
+            const stderr = createMockStdout();
+            const onComplete = vi.fn();
+            const instance = render(
+                new LinkWidget().renderEditor({
+                    widget: { id: 'link', type: 'link', metadata },
+                    onComplete,
+                    onCancel: vi.fn(),
+                    action
+                }),
+                {
+                    stdin,
+                    stdout,
+                    stderr,
+                    debug: true,
+                    exitOnCtrlC: false,
+                    patchConsole: false
+                }
+            );
+
+            return {
+                onComplete,
+                output: () => stdout.getOutput(),
+                // Every key here moves the cursor or changes the text, so each
+                // waits for the redraw before the next one goes out
+                press: async (key: string) => {
+                    const drawn = stdout.getOutput().length;
+                    stdin.write(key);
+                    await waitFor(() => {
+                        expect(stdout.getOutput().length).toBeGreaterThan(drawn);
+                    });
+                },
+                ready: () => waitFor(() => {
+                    expect(stdout.getOutput()).toContain('Enter ');
+                }),
+                save: async () => {
+                    stdin.write('\r');
+                    await waitFor(() => {
+                        expect(onComplete).toHaveBeenCalledTimes(1);
+                    });
+                    return (onComplete.mock.calls[0]?.[0] as WidgetItem).metadata;
+                },
+                cleanup: () => {
+                    instance.unmount();
+                    instance.cleanup();
+                    stdin.destroy();
+                    stdout.destroy();
+                    stderr.destroy();
+                }
+            };
+        }
+
+        it.each([
+            { name: 'Backspace deletes an emoji in the text', action: 'edit-text', value: 'Docs \u{1F4D8}', keys: [BACKSPACE], saved: 'Docs' },
+            { name: 'Backspace deletes a joined emoji in the text', action: 'edit-text', value: `Docs ${CODER}`, keys: [BACKSPACE], saved: 'Docs' },
+            { name: 'Left steps over an emoji in the text', action: 'edit-text', value: 'Docs \u{1F4D8}', keys: [LEFT, 'x'], saved: 'Docs x\u{1F4D8}' },
+            { name: 'Right steps over an emoji in the text', action: 'edit-text', value: 'Docs \u{1F4D8}', keys: [LEFT, LEFT, RIGHT, 'x'], saved: 'Docs x\u{1F4D8}' },
+            { name: 'Delete deletes an emoji in the URL', action: 'edit-url', value: 'https://example.com/\u{1F680}', keys: [LEFT, DELETE], saved: 'https://example.com/' }
+        ])('$name whole', async ({ action, value, keys, saved }) => {
+            const field = action === 'edit-url' ? 'url' : 'text';
+            const editor = renderLinkEditor(field === 'url' ? { url: value } : { url: 'https://example.com', text: value }, action);
+
+            try {
+                await editor.ready();
+                for (const key of keys) {
+                    await editor.press(key);
+                }
+                expect((await editor.save())?.[field]).toBe(saved);
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('draws the whole emoji under the cursor', async () => {
+            // Without colors the cursor cell has no codes around it, so a
+            // split emoji would rejoin in the frame and look whole
+            const colors = await forceInkColors();
+            const editor = renderLinkEditor({ url: 'https://example.com', text: 'Docs \u{1F4D8}' }, 'edit-text');
+
+            try {
+                await editor.ready();
+                await editor.press(LEFT);
+                await waitFor(() => {
+                    expect(editor.output()).toContain(`Docs ${colors.chalk.bgGray.black('\u{1F4D8}')}`);
+                });
+                expect(editor.output()).not.toContain('\uFFFD');
+            } finally {
+                editor.cleanup();
+                colors.restore();
+            }
+        });
     });
 });

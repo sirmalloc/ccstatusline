@@ -4,7 +4,7 @@ import {
     parseJsonlLine
 } from './jsonl-lines';
 
-const KNOWN_THINKING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export const KNOWN_THINKING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const KNOWN_THINKING_EFFORTS_SET: ReadonlySet<string> = new Set(KNOWN_THINKING_EFFORTS);
 export type TranscriptThinkingEffort = typeof KNOWN_THINKING_EFFORTS[number];
 

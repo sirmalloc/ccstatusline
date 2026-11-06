@@ -335,6 +335,40 @@ describe('LineSelector', () => {
         }
     });
 
+    it('highlights the appended line when appending from the Back entry', async () => {
+        const view = renderLineSelector({ lines: [ONE_WIDGET, EMPTY], allowEditing: true });
+
+        try {
+            await waitFor(() => {
+                expect(view.frame()).toContain(FULL_EDITING_HELP);
+            });
+
+            view.press(UP_ARROW);
+            await waitFor(() => {
+                expect(view.rows().at(-1)).toBe('▶  ← Back');
+            });
+
+            view.press('a');
+            await waitFor(() => {
+                expect(view.rows()).toEqual([
+                    '☰ Line 1 (1 widget)',
+                    '☰ Line 2 (empty)',
+                    '▶  ☰ Line 3 (empty)',
+                    '← Back'
+                ]);
+            });
+            expect(view.onLinesUpdate).toHaveBeenCalledTimes(1);
+
+            view.press(ENTER);
+            await waitFor(() => {
+                expect(view.onSelect).toHaveBeenCalledWith(2);
+            });
+            expect(view.onBack).not.toHaveBeenCalled();
+        } finally {
+            view.cleanup();
+        }
+    });
+
     it('deletes the highlighted line after Yes and highlights the line above it', async () => {
         const view = renderLineSelector({ lines: [ONE_WIDGET, EMPTY, TWO_WIDGETS], allowEditing: true });
 
@@ -352,8 +386,7 @@ describe('LineSelector', () => {
             await waitFor(() => {
                 expect(view.frame()).toContain('Are you sure you want to delete line?');
             });
-            // The dialog heading prints no space before the number ('☰ Line2')
-            expect(view.frame()).toMatch(/☰ Line ?2 \(empty\)/);
+            expect(view.frame()).toContain('☰ Line 2 (empty)');
             expect(view.frame()).toMatch(/▶\s+Yes/);
             expect(view.frame()).toContain('No');
 
@@ -371,8 +404,9 @@ describe('LineSelector', () => {
             // Deleting the first line keeps the highlight on the first line
             view.press('d');
             await waitFor(() => {
-                expect(view.frame()).toMatch(/☰ Line ?1 \(1 widget\)/);
+                expect(view.frame()).toContain('Are you sure you want to delete line?');
             });
+            expect(view.frame()).toContain('☰ Line 1 (1 widget)');
 
             view.press(ENTER);
             await waitFor(() => {
