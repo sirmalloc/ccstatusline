@@ -14,10 +14,7 @@ import type { AccountEmailResult } from '../types/AccountEmail';
 import { withCacheLock } from './cache-lock';
 import { getClaudeConfigDir } from './claude-settings';
 import { isExcludedFromProxy } from './no-proxy';
-import {
-    createProxyAgent,
-    type ClosableProxyAgent
-} from './proxy-agent';
+import type { ClosableProxyAgent } from './proxy-agent';
 import type {
     UsageData,
     UsageDataField,
@@ -925,11 +922,19 @@ function getUsageApiProxyUrl(): string | null {
     return proxyUrl ?? null;
 }
 
-function getUsageApiRequest(token: string, apiPath: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
+async function getUsageApiRequest(token: string, apiPath: string): Promise<{ options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null> {
     const proxyUrl = getUsageApiProxyUrl();
 
     try {
-        const proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        let proxy: ClosableProxyAgent | null = null;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) only
+            // matters when a proxy is actually configured, and the statusline
+            // entry point is re-run on every repaint (#397).
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
+        }
+
         return {
             options: {
                 hostname: USAGE_API_HOST,
@@ -950,7 +955,7 @@ function getUsageApiRequest(token: string, apiPath: string): { options: https.Re
 }
 
 async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS, apiPath = USAGE_API_PATH): Promise<UsageApiFetchResult> {
-    const usageRequest = getUsageApiRequest(token, apiPath);
+    const usageRequest = await getUsageApiRequest(token, apiPath);
     if (!usageRequest) {
         return { kind: 'error' };
     }

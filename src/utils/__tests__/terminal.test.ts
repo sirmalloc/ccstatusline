@@ -68,12 +68,8 @@ describe('terminal utils', () => {
     it('returns width from the immediate parent tty when available', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
@@ -85,8 +81,7 @@ describe('terminal utils', () => {
 
         expect(getTerminalWidth()).toBe(120);
         expect(mockExecFileSync.mock.calls.map(([file, args]) => `${file as string} ${(args as string[]).join(' ')}`)).toEqual([
-            `ps -o ppid= -p ${process.pid}`,
-            'ps -o tty= -p 1234',
+            `ps -o ppid= -o tty= -p ${process.ppid}`,
             'stty -F /dev/ttys001 size'
         ]);
     });
@@ -94,20 +89,16 @@ describe('terminal utils', () => {
     it('walks ancestor processes until it finds a valid tty', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ?\n';
             }
 
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return '??\n';
+            if (file === 'ps' && args.join(' ') === '-o ppid= -o tty= -p 1234') {
+                return '5678 ??\n';
             }
 
-            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
-                return '5678\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 5678') {
-                return ' ttys009 \n';
+            if (file === 'ps' && args.join(' ') === '-o ppid= -o tty= -p 5678') {
+                return '1 ttys009\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys009 size') {
@@ -120,16 +111,31 @@ describe('terminal utils', () => {
         expect(getTerminalWidth()).toBe(104);
     });
 
+    it('reads the current generation TTY even when its PPID ends the walk', () => {
+        pinPosixPlatform();
+        // A PPID of 0 terminates the walk after this row, not before it:
+        // the parent's own width must still win over the tput fallback.
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '0 ttys001\n';
+            }
+
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 120\n';
+            }
+
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
+        });
+
+        expect(getTerminalWidth()).toBe(120);
+    });
+
     it('falls back through stty variants when the first form returns no value', () => {
         pinPosixPlatform();
         // Simulates BSD/macOS, where `stty -F` exits with an error; `stty -f` succeeds.
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys003\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys003\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys003 size') {
@@ -165,20 +171,16 @@ describe('terminal utils', () => {
     it('returns null when ancestor probes fail', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === '-o ppid= -o tty= -p 1234') {
+                return '0 ttys001\n';
             }
 
             if (file === 'stty') {
                 return 'not-a-number not-a-number\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
-                return '0\n';
             }
 
             throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
@@ -190,20 +192,16 @@ describe('terminal utils', () => {
     it('detects availability when an ancestor tty probe succeeds', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ?\n';
             }
 
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return '??\n';
+            if (file === 'ps' && args.join(' ') === '-o ppid= -o tty= -p 1234') {
+                return '5678 ??\n';
             }
 
-            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
-                return '5678\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 5678') {
-                return 'ttys010\n';
+            if (file === 'ps' && args.join(' ') === '-o ppid= -o tty= -p 5678') {
+                return '1 ttys010\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys010 size') {
@@ -235,12 +233,8 @@ describe('terminal utils', () => {
         process.env.CCSTATUSLINE_WIDTH = '0';
 
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
@@ -258,12 +252,8 @@ describe('terminal utils', () => {
         process.env.CCSTATUSLINE_WIDTH = 'wide';
 
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
@@ -305,12 +295,8 @@ describe('terminal utils', () => {
         process.env.COLUMNS = value;
 
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
@@ -342,12 +328,8 @@ describe('terminal utils', () => {
     it('probes only once across repeated calls when a width is found', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                return '1234\n';
-            }
-
-            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                return 'ttys001\n';
+            if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                return '1234 ttys001\n';
             }
 
             if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
@@ -493,12 +475,8 @@ describe('terminal utils', () => {
         it('never persists a discovered numeric width to the L2 cache', () => {
             pinPosixPlatform();
             mockExecFileSync.mockImplementation((file: string, args: string[]) => {
-                if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
-                    return '1234\n';
-                }
-
-                if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
-                    return 'ttys001\n';
+                if (file === 'ps' && args.join(' ') === `-o ppid= -o tty= -p ${process.ppid}`) {
+                    return '1234 ttys001\n';
                 }
 
                 if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
