@@ -5,6 +5,9 @@ import type {
 } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
 import type {
+    CustomKeybind,
+    HideableState,
+    Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../../types/Widget';
@@ -23,19 +26,15 @@ import {
 import type { UsageWindowMetrics } from '../../utils/usage-types';
 
 import { isHidden } from './hideable';
-import { makeTimerProgressBar } from './progress-bar';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
-    getUsageDisplayMode,
+    formatUsageBar,
     getUsageDisplayModifierText,
-    getUsageProgressBarWidth,
+    getUsagePercentCustomKeybinds,
     isUsageCursorEnabled,
     isUsageInverted,
-    isUsageProgressMode,
-    isUsageSliderMode,
-    makeSliderBar,
     toggleUsageCursor,
     toggleUsageInverted
 } from './usage-display';
@@ -117,11 +116,16 @@ function resolveUsageWindow(kind: UsagePercentWidgetKind, data: RenderUsageData,
     if (kind === 'weekly-opus') {
         return resolveWeeklyOpusUsageWindow(data);
     }
-    if (kind === 'spend-limit') {
-        // The payload does not say how long the limit's period is, so there is no window to place a cursor in.
+    if (!hasUsageWindow(kind)) {
         return null;
     }
     return resolveFableUsageWindow(data);
+}
+
+// The spend limit payload does not say how long the limit's period is, so there
+// is no window to place a time cursor in.
+function hasUsageWindow(kind: UsagePercentWidgetKind): boolean {
+    return kind !== 'spend-limit';
 }
 
 function renderUsageDisplay(
@@ -131,22 +135,8 @@ function renderUsageDisplay(
     format: NumberFormat,
     getCursorOptions: () => UsageCursorOptions | undefined
 ): string {
-    const displayMode = getUsageDisplayMode(item);
-
-    if (isUsageProgressMode(displayMode)) {
-        const width = getUsageProgressBarWidth(displayMode);
-        const progressBar = makeTimerProgressBar(percent, width, getCursorOptions());
-        const progressDisplay = `[${progressBar}] ${formatPercent(percent, format)}`;
-        return formatRawOrLabeledValue(item, label, progressDisplay);
-    }
-
-    if (isUsageSliderMode(displayMode)) {
-        const slider = makeSliderBar(percent, undefined, getCursorOptions());
-        const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(percent, format)}` : slider;
-        return formatRawOrLabeledValue(item, label, sliderDisplay);
-    }
-
-    return formatRawOrLabeledValue(item, label, formatPercent(percent, format));
+    const bar = formatUsageBar(item, percent, format, getCursorOptions);
+    return formatRawOrLabeledValue(item, label, bar ?? formatPercent(percent, format));
 }
 
 export function getUsagePercentWidgetDisplayName(kind: UsagePercentWidgetKind): string {
@@ -227,4 +217,45 @@ export function renderUsagePercentWidgetValue(
         }
         return { cursorPercent: inverted ? window.remainingPercent : window.elapsedPercent };
     });
+}
+
+// Session, Weekly, Weekly Sonnet, Weekly Opus and Fable Weekly Usage differ only
+// in their kind
+export class UsagePercentWidget implements Widget {
+    private readonly kind: UsagePercentWidgetKind;
+
+    constructor(kind: UsagePercentWidgetKind) {
+        this.kind = kind;
+    }
+
+    getDefaultColor(): string { return 'brightBlue'; }
+    getDescription(): string { return getUsagePercentWidgetDescription(this.kind); }
+    getDisplayName(): string { return getUsagePercentWidgetDisplayName(this.kind); }
+    getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return getUsagePercentWidgetLabel(this.kind); }
+
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        return getUsagePercentWidgetEditorDisplay(this.kind, item);
+    }
+
+    // The state hides the usage API's error, which a widget that ignores API errors never shows
+    getHideableStates(): HideableState[] {
+        return USAGE_PERCENT_WIDGET_CONFIG[this.kind].ignoreApiError ? [] : [USAGE_NO_DATA_HIDEABLE_STATE];
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        return handleUsagePercentWidgetEditorAction(action, item);
+    }
+
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        return renderUsagePercentWidgetValue(this.kind, item, context, settings);
+    }
+
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsagePercentCustomKeybinds(item, hasUsageWindow(this.kind));
+    }
+
+    supportsRawValue(): boolean { return true; }
+    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

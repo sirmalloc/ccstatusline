@@ -5,7 +5,10 @@ import type { SkillsMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
-import { getVisibleText } from './utils/ansi';
+import {
+    getVisibleText,
+    replaceSpacesForOutput
+} from './utils/ansi';
 import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
 import { ZERO_COMPACTION_STATS } from './utils/compaction';
@@ -154,7 +157,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
         prefetchClaudeStatusIfNeeded(lines),
         hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
     ]);
-    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data, usageData));
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
     const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;
@@ -233,10 +236,10 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
                     configBadgePrepended = true;
                 }
 
-                // Replace all spaces with non-breaking spaces to prevent VSCode trimming
+                // Replace spaces with characters VS Code won't trim (see replaceSpacesForOutput)
                 // The renderer's own output is colors and links; this is the last
                 // stop before the terminal for anything else (separators, settings)
-                let outputLine = sanitizeTerminalText(line).replace(/ /g, '\u00A0');
+                let outputLine = replaceSpacesForOutput(sanitizeTerminalText(line));
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
@@ -255,7 +258,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
 
     // Defensive fallback: if no content line was emitted, ensure the warning is not lost
     if (configError && !configBadgePrepended) {
-        console.log('\x1b[0m' + buildConfigWarningBadge(settings.colorLevel).replace(/ /g, '\u00A0'));
+        console.log('\x1b[0m' + replaceSpacesForOutput(buildConfigWarningBadge(settings.colorLevel)));
     }
 
     // Check if there's an update message to display

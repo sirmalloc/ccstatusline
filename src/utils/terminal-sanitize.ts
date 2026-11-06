@@ -16,10 +16,12 @@ const SGR = /(?:\x1b\[|\x9b)[0-9;:]*m/y;
 // sequence early or start another.
 const OSC8 = /(?:\x1b\]|\x9d)8;[A-Za-z0-9=:_.-]*;[^\x00-\x20\x7f-\x9f]*(?:\x1b\\|\x9c|\x07)/y;
 const SAFE_URL = /^[^\x00-\x20\x7f-\x9f]*$/;
-// C0 controls other than tab and newline, DEL, and the 8-bit C1 controls, which
-// some terminals read like ESC sequences
-const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/;
-const CONTROL_GLOBAL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+// C0 controls other than newline, DEL, and the 8-bit C1 controls, which some
+// terminals read like ESC sequences. A tab is one of them: how far it moves
+// depends on the column it lands in, which isn't known until the line is laid
+// out, so it is printed as one space, the column it is measured as.
+const CONTROL = /[\x00-\x09\x0b-\x1f\x7f-\x9f]/;
+const CONTROL_GLOBAL = /[\x00-\x09\x0b-\x1f\x7f-\x9f]/g;
 // Strings the terminal swallows up to ST: OSC, DCS, SOS, PM and APC
 const STRING_INTRODUCERS = new Set([']', 'P', 'X', '^', '_']);
 // The 8-bit C1 controls that start a sequence, and the character that follows
@@ -109,7 +111,7 @@ function skipEscapeSequence(text: string, index: number): number {
 /**
  * The text with every control character and escape sequence removed, except
  * color codes (SGR) and hyperlinks (OSC 8) whose URL holds no control characters or spaces.
- * Those are kept in their 7-bit form, even when written with 8-bit C1 controls.
+ * Those are kept in their 7-bit form, even when written with 8-bit C1 controls. Tabs become spaces.
  */
 export function sanitizeTerminalText(text: string): string {
     if (!CONTROL.test(text)) {
@@ -134,7 +136,7 @@ export function sanitizeTerminalText(text: string): string {
         while (end < text.length && !startsSequence(text[end])) {
             end++;
         }
-        result += text.slice(index, end).replace(CONTROL_GLOBAL, '');
+        result += text.slice(index, end).replace(CONTROL_GLOBAL, control => (control === '\t' ? ' ' : ''));
         index = end;
     }
 

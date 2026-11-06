@@ -85,3 +85,53 @@ export function resolveExecutable(name: string, lookup: ExecutableLookup = DEFAU
     }
     return resolved;
 }
+
+// Outside Windows, the shell searches PATH and `which` lists what it finds.
+// Minimal Linux images (Fedora, UBI, Arch without the which package) have no
+// `which`, so lookups that ask it fall back to searching PATH here.
+
+export interface PosixPathSearch {
+    env: NodeJS.ProcessEnv;
+    isExecutableFile: (candidate: string) => boolean;
+}
+
+function isExecutableFile(candidate: string): boolean {
+    try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return fs.statSync(candidate).isFile();
+    } catch {
+        return false;
+    }
+}
+
+function defaultPosixPathSearch(): PosixPathSearch {
+    return { env: process.env, isExecutableFile };
+}
+
+/**
+ * Every file named `name` on PATH that the user can run, in PATH order: what
+ * `which -a` lists. The default search reads process.env when called, so an env
+ * object swapped in after this module loaded is still seen.
+ */
+export function findAllOnPosixPath(name: string, search: PosixPathSearch = defaultPosixPathSearch()): string[] {
+    const pathValue = search.env.PATH;
+    if (!pathValue) {
+        return [];
+    }
+
+    const matches = new Set<string>();
+    for (const entry of pathValue.split(':')) {
+        // An empty or relative entry names a directory relative to wherever the
+        // TUI runs, which says nothing about what Claude Code runs; like the
+        // Windows lookup above, only absolute entries count
+        if (!path.posix.isAbsolute(entry)) {
+            continue;
+        }
+        const candidate = `${entry}/${name}`;
+        if (search.isExecutableFile(candidate)) {
+            matches.add(candidate);
+        }
+    }
+
+    return Array.from(matches);
+}
