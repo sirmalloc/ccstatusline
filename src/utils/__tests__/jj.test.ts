@@ -68,7 +68,7 @@ describe('jj utils', () => {
 
             expect(result).toBe('some-output');
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['log', '--limit', '1']);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'log', '--limit', '1']);
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
@@ -76,6 +76,24 @@ describe('jj utils', () => {
                 windowsHide: true,
                 cwd: '/tmp/repo'
             });
+        });
+
+        // ui.color = "always" in the user's jj config colors jj's output even
+        // into a pipe, and its codes would override the widget's own colors
+        it('asks jj for uncolored output, whatever the user\'s ui.color', () => {
+            mockExecFileSync.mockReturnValue('zs');
+
+            runJjArgs(['log', '--no-graph', '-r', '@', '-T', 'change_id.shortest()'], {});
+
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([
+                '--color=never',
+                'log',
+                '--no-graph',
+                '-r',
+                '@',
+                '-T',
+                'change_id.shortest()'
+            ]);
         });
 
         it('runs jj command without cwd when no context directory exists', () => {

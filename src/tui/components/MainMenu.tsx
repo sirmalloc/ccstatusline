@@ -4,10 +4,7 @@ import {
 } from 'ink';
 import React from 'react';
 
-import type {
-    InstallationMetadata,
-    Settings
-} from '../../types/Settings';
+import type { InstallationMetadata } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
@@ -34,9 +31,7 @@ export interface MainMenuProps {
     initialSelection?: number;
     onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
-    settings: Settings | null;
     installation?: InstallationMetadata;
-    previewIsTruncated?: boolean;
 }
 
 interface MainMenuItem {
@@ -117,11 +112,10 @@ export function buildMainMenuItems(
                 'Set global padding, separators, and color overrides that apply to all widgets'
         },
         {
+            // Open before an install too: only its refresh interval needs one
             label: '🔧 Configure Status Line',
-            sublabel: isClaudeInstalled ? undefined : '(install first)',
-            disabled: !isClaudeInstalled,
             value: 'configureStatusLine',
-            description: 'Configure Claude Code status line settings like refresh interval'
+            description: 'Set ccstatusline\'s cache TTLs, and Claude Code\'s refresh interval once ccstatusline is installed'
         },
         '-',
         {
@@ -216,29 +210,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     initialSelection = 0,
     onSelectionChange,
     powerlineFontStatus,
-    settings,
-    installation,
-    previewIsTruncated
+    installation
 }) => {
     const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
 
-    // Check if we should show the truncation warning
-    const showTruncationWarning
-        = previewIsTruncated && settings?.flexMode === 'full-minus-40';
-
     return (
         <Box flexDirection='column'>
-            {showTruncationWarning && (
-                <Box marginBottom={1}>
-                    <Text color='yellow'>
-                        ⚠ Some lines are truncated, see Terminal Options → Terminal Width
-                        for info
-                    </Text>
-                </Box>
-            )}
-
             <Text bold>Main Menu</Text>
 
+            {/* initialSelection is the highlighted row's index. Saving swaps Save &
+                Exit and Exit without saving for Exit, which moves the entries
+                below, and the highlight must stay on its entry, not its row. */}
             <List
                 items={menuItems}
                 marginTop={1}
@@ -251,6 +233,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 }}
                 initialSelection={initialSelection}
                 onSelectionChange={(_, index) => onSelectionChange?.(index)}
+                keepHighlightOnItemsChange={true}
             />
         </Box>
     );

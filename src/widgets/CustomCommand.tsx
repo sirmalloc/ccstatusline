@@ -23,6 +23,7 @@ import { shouldInsertInput } from '../utils/input-guards';
 
 import { BlinkingCursor } from './shared/BlinkingCursor';
 import { applyMaxWidth } from './shared/max-width';
+import { getAdjacentBoundaries } from './shared/text-cursor';
 
 export class CustomCommandWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -64,10 +65,11 @@ export class CustomCommandWidget implements Widget {
         if (context.isPreview) {
             return item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
         } else if (item.commandPath && context.data) {
+            const payload = context.rawData ?? context.data;
             const jsonInput = JSON.stringify(
                 typeof context.terminalWidth === 'number'
-                    ? { ...context.data, terminal_width: context.terminalWidth }
-                    : context.data
+                    ? { ...payload, terminal_width: context.terminalWidth }
+                    : payload
             );
             const result = runCustomCommand({
                 command: item.commandPath,
@@ -88,6 +90,12 @@ export class CustomCommandWidget implements Widget {
             if (!item.preserveColors) {
                 // Strip ANSI/OSC escape sequences and keep only visible text
                 output = getVisibleText(output);
+            }
+
+            // Output with no visible text, such as color codes around an empty
+            // value, renders empty whether or not its colors are preserved
+            if (!getVisibleText(output)) {
+                return null;
             }
 
             // Truncate by display columns, skipping escape sequences and never
@@ -146,6 +154,9 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
     const [commandCursorPos, setCommandCursorPos] = useState(commandInput.length);
     const [widthInput, setWidthInput] = useState(widget.maxWidth?.toString() ?? '');
     const [timeoutInput, setTimeoutInput] = useState(widget.timeout?.toString() ?? '1000');
+    const { previous, next } = getAdjacentBoundaries(commandInput, commandCursorPos);
+    // The grapheme under the cursor ends here, so an emoji is drawn whole
+    const cursorEnd = next ?? commandInput.length;
 
     useInput((input, key) => {
         if (mode === 'command') {
@@ -154,17 +165,17 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             } else if (key.escape) {
                 onCancel();
             } else if (key.leftArrow) {
-                setCommandCursorPos(Math.max(0, commandCursorPos - 1));
+                setCommandCursorPos(previous ?? commandCursorPos);
             } else if (key.rightArrow) {
-                setCommandCursorPos(Math.min(commandInput.length, commandCursorPos + 1));
+                setCommandCursorPos(next ?? commandCursorPos);
             } else if (key.backspace) {
-                if (commandCursorPos > 0) {
-                    setCommandInput(commandInput.slice(0, commandCursorPos - 1) + commandInput.slice(commandCursorPos));
-                    setCommandCursorPos(commandCursorPos - 1);
+                if (previous !== undefined) {
+                    setCommandInput(commandInput.slice(0, previous) + commandInput.slice(commandCursorPos));
+                    setCommandCursorPos(previous);
                 }
             } else if (key.delete) {
-                if (commandCursorPos < commandInput.length) {
-                    setCommandInput(commandInput.slice(0, commandCursorPos) + commandInput.slice(commandCursorPos + 1));
+                if (next !== undefined) {
+                    setCommandInput(commandInput.slice(0, commandCursorPos) + commandInput.slice(next));
                 }
             } else if (shouldInsertInput(input, key)) {
                 setCommandInput(commandInput.slice(0, commandCursorPos) + input + commandInput.slice(commandCursorPos));
@@ -212,8 +223,8 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                     Enter command path:
                     {' '}
                     {commandInput.slice(0, commandCursorPos)}
-                    <BlinkingCursor>{commandInput[commandCursorPos] ?? ' '}</BlinkingCursor>
-                    {commandInput.slice(commandCursorPos + 1)}
+                    <BlinkingCursor>{commandInput.slice(commandCursorPos, cursorEnd) || ' '}</BlinkingCursor>
+                    {commandInput.slice(cursorEnd)}
                 </Text>
                 <Text dimColor>←→ move cursor, Enter save, ESC cancel</Text>
             </Box>

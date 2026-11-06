@@ -79,12 +79,19 @@ export function isValidLocale(locale: string): boolean {
     return canonicalizeLocale(locale) !== null;
 }
 
+// A System or Configured row takes the place of the common row for its
+// locale, so it keeps that row's keywords: 'uk' still finds en-GB when en-GB
+// is the system or configured locale
+function getCommonLocaleKeywords(locale: string): string {
+    return COMMON_LOCALES.find(common => common.value === locale)?.searchText ?? '';
+}
+
 function createSystemLocaleOption(systemLocale: string): LocaleOption {
     return {
         value: systemLocale,
         displayName: `System (${systemLocale})`,
         description: 'Current system locale',
-        searchText: `system current local machine runtime ${systemLocale}`,
+        searchText: `system current local machine runtime ${systemLocale} ${getCommonLocaleKeywords(systemLocale)}`.trimEnd(),
         sortText: `0001 ${systemLocale}`
     };
 }
@@ -104,7 +111,7 @@ function createConfiguredLocaleOption(locale: string): LocaleOption {
         value: locale,
         displayName: locale,
         description: 'Configured locale',
-        searchText: `configured current ${locale}`,
+        searchText: `configured current ${locale} ${getCommonLocaleKeywords(locale)}`.trimEnd(),
         sortText: `0002 ${locale}`
     };
 }
@@ -164,9 +171,16 @@ export function filterLocaleOptions(options: LocaleOption[], query: string): Loc
         return matches;
     }
 
+    // A typed tag the list doesn't offer comes first, after any locale that
+    // lists the search as a keyword: 'uk' and 'ca' are there to find en-GB
+    // and en-CA, though they also spell Ukrainian and Catalan
+    const keyword = query.trim().toLowerCase();
+    const isKeywordMatch = (option: LocaleOption): boolean => option.searchText.split(' ').includes(keyword);
+
     return [
+        ...matches.filter(isKeywordMatch),
         createCustomLocaleOption(canonicalQuery),
-        ...matches
+        ...matches.filter(option => !isKeywordMatch(option))
     ];
 }
 

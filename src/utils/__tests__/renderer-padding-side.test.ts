@@ -10,9 +10,13 @@ import {
     type Settings
 } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { stripSgrCodes } from '../ansi';
+import {
+    getVisibleWidth,
+    stripSgrCodes
+} from '../ansi';
 import {
     calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
     renderStatusLine,
     type PreRenderedWidget
 } from '../renderer';
@@ -181,6 +185,36 @@ describe('defaultPaddingSide', () => {
             // '.' + 'A' + 'B' + '.' = 4: the merged pair renders as '.AB.'
             expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
             expect(render([text('a', { merge: 'no-padding' }), text('b')], { 0: 'A', 1: 'B' }, settings)).toBe('.AB.');
+        });
+
+        it.each([
+            // The ideographic space is one UTF-16 unit but two columns wide
+            { name: 'a wide', padding: '\u3000', expected: [6] },
+            // U+1D400 is two UTF-16 units but one column wide
+            { name: 'an astral', padding: '\u{1D400}', expected: [4] }
+        ])('counts $name padding glyph by the columns it takes', ({ padding, expected }) => {
+            const lines = [[pre('AB')]];
+
+            expect(calculateMaxWidthsFromPreRendered(lines, createSettings({ defaultPadding: padding }))).toEqual(expected);
+        });
+
+        it('lines up auto-aligned columns padded with a wide glyph', () => {
+            const settings = createSettings({
+                defaultPadding: '\u3000',
+                powerline: { ...DEFAULT_SETTINGS.powerline, enabled: true, separators: ['|'], autoAlign: true }
+            });
+            const lines = [[text('A'), text('B')], [text('CCCCC'), text('D')]];
+            const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+            const preRendered = preRenderAllWidgets(lines, settings, context);
+            const maxWidths = calculateMaxWidthsFromPreRendered(preRendered, settings);
+            const separatorColumns = lines.map((line, lineIndex) => {
+                const lineContext: RenderContext = { ...context, lineIndex };
+                const output = stripSgrCodes(renderStatusLine(line, settings, lineContext, preRendered[lineIndex] ?? [], maxWidths));
+                return getVisibleWidth(output.slice(0, output.indexOf('|')));
+            });
+
+            // Two padding glyphs of two columns each around 'CCCCC'
+            expect(separatorColumns).toEqual([9, 9]);
         });
     });
 
