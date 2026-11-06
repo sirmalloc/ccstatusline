@@ -1532,6 +1532,7 @@ export const App: React.FC = () => {
                     <RefreshIntervalMenu
                         currentInterval={currentRefreshInterval}
                         supportsRefreshInterval={supportsRefreshInterval}
+                        isClaudeInstalled={isClaudeInstalled}
                         gitCacheTtlSeconds={settings.gitCacheTtlSeconds}
                         terminalWidthCacheTtlSeconds={settings.terminalWidthCacheTtlSeconds}
                         customCommandCacheTtlSeconds={settings.customCommandCacheTtlSeconds}

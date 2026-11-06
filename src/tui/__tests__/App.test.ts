@@ -335,12 +335,12 @@ describe('Main menu structure', () => {
             installedVersion: '2.2.13'
         };
 
-        expect(configureItem).toEqual(expect.objectContaining({
-            disabled: true,
-            sublabel: '(install first)'
-        }));
+        // Its cache TTLs are ccstatusline's own settings, so it opens before an install
+        expect(configureItem).toEqual(expect.objectContaining({ label: '🔧 Configure Status Line' }));
+        expect(configureItem).not.toEqual(expect.objectContaining({ disabled: true }));
+        expect(configureItem).not.toEqual(expect.objectContaining({ sublabel: '(install first)' }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(8);
         expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
         expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
         expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
@@ -348,6 +348,53 @@ describe('Main menu structure', () => {
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
         )).toBe(8);
+    });
+});
+
+describe('App with a status line command it doesn\'t recognize as installed', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeSettings, 'isClaudeCodeVersionAtLeast').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('edits the cache TTLs in Configure Status Line and leaves the refresh interval to an install', async () => {
+        const statusLine = { type: 'command', command: '~/.claude/ccstatusline-wrapper.sh', padding: 0, refreshInterval: 10 };
+        fs.mkdirSync(claudeSettings.getClaudeConfigDir(), { recursive: true });
+        fs.writeFileSync(claudeSettings.getClaudeSettingsPath(), JSON.stringify({ statusLine }));
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify(DEFAULT_SETTINGS));
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('📦 Install to Claude Code');
+            });
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.down, '▶  🌐 Global Overrides');
+            await pressKey(rendered, KEYS.down, '▶  🔧 Configure Status Line');
+            await pressKey(rendered, KEYS.enter, '▶  🧮 Git Cache TTL');
+            expect(rendered.getFrame()).toContain('🔄 Refresh Interval (install first)');
+
+            await pressKey(rendered, KEYS.down, '▶  🔧 Custom Command Cache TTL');
+            await pressKey(rendered, KEYS.enter, 'Enter custom command cache TTL in seconds (0-60): 0s');
+            await pressKey(rendered, '7', 'Enter custom command cache TTL in seconds (0-60): 07s');
+            await pressKey(rendered, KEYS.enter, '✓ Custom command cache TTL updated');
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { customCommandCacheTtlSeconds: number };
+            expect(saved.customCommandCacheTtlSeconds).toBe(7);
+            const claude = JSON.parse(fs.readFileSync(claudeSettings.getClaudeSettingsPath(), 'utf-8')) as { statusLine: unknown };
+            expect(claude.statusLine).toEqual(statusLine);
+        } finally {
+            rendered.cleanup();
+        }
     });
 });
 

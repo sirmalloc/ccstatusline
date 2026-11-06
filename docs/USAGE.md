@@ -182,9 +182,9 @@ Gradients self-degrade where they can't render: at Basic or No Color levels, gra
 
 ## Claude Code Status Line Settings
 
-When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty. Reinstalling preserves an existing refresh interval even if the Claude Code version check fails.
+The main menu's **Configure Status Line** sets Claude Code's refresh interval and ccstatusline's cache settings. The refresh interval is part of Claude Code's `statusLine` setting, so it needs ccstatusline installed in Claude Code; until then its row reads `(install first)`. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty. Reinstalling preserves an existing refresh interval even if the Claude Code version check fails.
 
-The same menu controls these ccstatusline cache settings, saved with **Save & Exit** or `Ctrl+S`:
+The same menu controls these ccstatusline cache settings, saved with **Save & Exit** or `Ctrl+S`. They're ccstatusline's own settings, so they can be set before an install, or when Claude Code runs ccstatusline some other way, such as through a wrapper script:
 
 | Setting | JSON key | Default | Range | Meaning of `0` |
 | --- | --- | --- | --- | --- |

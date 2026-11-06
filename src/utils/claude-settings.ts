@@ -15,6 +15,7 @@ import {
 import {
     getConfigPath,
     isCustomConfigPath,
+    resolveConfigPath,
     saveInstallationMetadata
 } from './config';
 
@@ -342,6 +343,84 @@ export function getBaseCommandForMode(commandMode: StatusLineCommandMode): strin
 
 export function buildStatusLineCommand(commandMode: StatusLineCommandMode): string {
     return buildCommand(getBaseCommandForMode(commandMode));
+}
+
+// Whether the backslash at index escapes the next character: outside quotes it
+// escapes any, inside double quotes only those the shell would otherwise read
+function escapesNextCharacter(command: string, index: number, quote: string | null): boolean {
+    const next = command.charAt(index + 1);
+    return command.charAt(index) === '\\'
+        && next !== ''
+        && quote !== '\''
+        && (quote === null || '"\\$`'.includes(next));
+}
+
+// Splits a command into the words a POSIX shell passes on, undoing
+// quotePathIfNeeded: whitespace separates words, quotes group them, and a
+// backslash escapes the next character. Expand home references while their
+// quote/escape context is available. On Windows only double quotes group,
+// a backslash is a path separator, and POSIX home references stay literal.
+function splitCommandWords(command: string): string[] {
+    const posix = process.platform !== 'win32';
+    const words: string[] = [];
+    let word: string | null = null;
+    let quote: string | null = null;
+
+    for (let index = 0; index < command.length; index++) {
+        const char = command.charAt(index);
+        if (quote === null && /\s/.test(char)) {
+            if (word !== null) {
+                words.push(word);
+            }
+            word = null;
+        } else if (char === quote) {
+            quote = null;
+        } else if (quote === null && (char === '"' || (posix && char === '\''))) {
+            quote = char;
+            word = word ?? '';
+        } else if (posix && escapesNextCharacter(command, index, quote)) {
+            index++;
+            word = (word ?? '') + command.charAt(index);
+        } else if (posix && char === '~' && quote === null && word === null
+            && (index + 1 === command.length || /[\s/]/.test(command.charAt(index + 1)))) {
+            word = os.homedir();
+        } else if (posix && char === '$' && quote !== '\'') {
+            const homeReference = /^\$(?:HOME(?![a-zA-Z0-9_])|\{HOME\})/.exec(command.slice(index));
+            if (homeReference) {
+                word = (word ?? '') + os.homedir();
+                index += homeReference[0].length - 1;
+            } else {
+                word = (word ?? '') + char;
+            }
+        } else {
+            word = (word ?? '') + char;
+        }
+    }
+
+    if (word !== null) {
+        words.push(word);
+    }
+    return words;
+}
+
+/**
+ * The ccstatusline settings file a status line command loads: the path after
+ * its --config, read as the shell passes it on and resolved as ccstatusline
+ * resolves it, or the default file without one. A command that runs a script
+ * is taken to load the default file. Null when --config has no path, which
+ * stops ccstatusline before it loads any.
+ */
+export function getStatusLineConfigPath(command: string): string | null {
+    const words = splitCommandWords(command);
+    const index = words.indexOf('--config');
+    if (index === -1) {
+        return resolveConfigPath();
+    }
+
+    const configPath = words[index + 1];
+    return configPath && !configPath.startsWith('--')
+        ? resolveConfigPath(configPath)
+        : null;
 }
 
 function matchesCommandBase(command: string, baseCommand: string): boolean {
