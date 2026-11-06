@@ -35,7 +35,10 @@ import {
 } from './proxy-test-helpers';
 
 const require = createRequire(import.meta.url);
-const { execFile: realExecFile } = require('node:child_process') as { execFile: typeof childProcess.execFile };
+const { execFile: realExecFile, execFileSync: realExecFileSync } = require('node:child_process') as {
+    execFile: typeof childProcess.execFile;
+    execFileSync: typeof childProcess.execFileSync;
+};
 
 type StatusPageRequestFn = NonNullable<Parameters<typeof __testing.fetchStatusPagePath>[1]>;
 
@@ -354,6 +357,106 @@ describe('claude-status prefetch predicates', () => {
         expect(isClaudeStatusHistoryEnabled({ id: '1', type: 'claude-status' })).toBe(false);
         expect(isClaudeStatusHistoryEnabled({ id: '1', type: 'claude-status', metadata: { history: 'true' } })).toBe(true);
         expect(isClaudeStatusHistoryEnabled({ id: '1', type: 'custom-text', metadata: { history: 'true' } })).toBe(false);
+    });
+});
+
+// A file left read-only in a folder this account can still write to, as a
+// run under sudo leaves one it created. Every render is a new process that
+// finds its cache folder from the home directory as the module loads, so each
+// render here runs in a child process with a scratch HOME.
+describe.skipIf(process.platform === 'win32')('Claude Status cache files left read-only', () => {
+    let tempRoot = '';
+    let home = '';
+    let cacheDir = '';
+    let probeScriptPath = '';
+
+    beforeEach(() => {
+        tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-status-files-'));
+        home = path.join(tempRoot, 'home');
+        cacheDir = path.join(home, '.cache', 'ccstatusline');
+        probeScriptPath = path.join(tempRoot, 'probe.mjs');
+        fs.mkdirSync(cacheDir, { recursive: true });
+        // An empty TEST_STATUS_BODY fails the request, as when the page can't be reached
+        fs.writeFileSync(probeScriptPath, `
+import * as os from 'node:os';
+import { createRequire } from 'node:module';
+
+const https = createRequire(import.meta.url)('node:https');
+const body = process.env.TEST_STATUS_BODY;
+let requestCount = 0;
+https.request = (options, onResponse) => {
+    requestCount += 1;
+    const handlers = new Map();
+    const request = {
+        on(event, handler) { handlers.set(event, handler); return request; },
+        destroy() {},
+        end() {
+            if (!body) {
+                handlers.get('error')?.(new Error('connect ECONNREFUSED'));
+                return;
+            }
+            const responseHandlers = new Map();
+            onResponse({
+                statusCode: 200,
+                setEncoding() {},
+                on(event, handler) { responseHandlers.set(event, handler); }
+            });
+            responseHandlers.get('data')?.(body);
+            responseHandlers.get('end')?.();
+        }
+    };
+    return request;
+};
+
+const { prefetchClaudeStatusIfNeeded } = await import(${JSON.stringify(fileURLToPath(new URL('../claude-service-status.ts', import.meta.url)))});
+const result = await prefetchClaudeStatusIfNeeded([[{ id: '1', type: 'claude-status' }]]);
+process.stdout.write(JSON.stringify({ result, requestCount, homedir: os.homedir() }));
+`);
+    });
+
+    afterEach(() => {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    function render(statusBody: string): { result: unknown; requestCount: number } {
+        const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
+            const normalizedKey = key.toUpperCase();
+            return normalizedKey !== 'HTTPS_PROXY' && normalizedKey !== 'NO_PROXY';
+        }));
+        // os.homedir() prefers USERPROFILE on Windows
+        Object.assign(env, { HOME: home, USERPROFILE: home, TEST_STATUS_BODY: statusBody });
+
+        const output = JSON.parse(realExecFileSync(process.execPath, [probeScriptPath], { encoding: 'utf8', env })) as {
+            homedir: string;
+            requestCount: number;
+            result: unknown;
+        };
+        // A probe resolving a different home has escaped its sandbox and would
+        // read or write the real user's ~/.cache/ccstatusline
+        expect(output.homedir).toBe(home);
+        return { result: output.result, requestCount: output.requestCount };
+    }
+
+    function writeReadOnlyFile(name: string, contents: string, mtimeMs: number): void {
+        const filePath = path.join(cacheDir, name);
+        fs.writeFileSync(filePath, contents);
+        fs.utimesSync(filePath, mtimeMs / 1000, mtimeMs / 1000);
+        fs.chmodSync(filePath, 0o444);
+    }
+
+    it('backs off after a failed fetch when the lock file was left read-only', () => {
+        writeReadOnlyFile('claude-status.lock', '', Date.now() - HOUR_MS);
+
+        expect(render('')).toEqual({ result: { error: true }, requestCount: 1 });
+        expect(render('')).toEqual({ result: { error: true }, requestCount: 0 });
+    });
+
+    it('serves the next render from the cache when the cache file was left read-only', () => {
+        const fetchedAt = Date.now() - HOUR_MS;
+        writeReadOnlyFile('claude-status.json', JSON.stringify({ fetchedAt, indicator: 'major', incidents: null, incidentsQueried: false }), fetchedAt);
+
+        expect(render('{"status":{"indicator":"none"}}')).toEqual({ result: { indicator: 'none' }, requestCount: 1 });
+        expect(render('')).toEqual({ result: { indicator: 'none' }, requestCount: 0 });
     });
 });
 

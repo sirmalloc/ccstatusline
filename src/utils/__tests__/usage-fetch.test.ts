@@ -1457,6 +1457,119 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    // A file left read-only in a folder this account can still write to, as
+    // a run under sudo leaves one it created. Every render is a new process,
+    // so these files are the only backoff between renders.
+    it.skipIf(process.platform === 'win32')('backs off after a 429 when the lock file was left read-only', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('read-only-lock');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            const lockFile = path.join(cacheDir, 'usage.lock');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(lockFile, JSON.stringify({ blockedUntil: Math.floor(nowMs / 1000) - 60, error: 'timeout' }));
+            fs.chmodSync(lockFile, 0o444);
+
+            const rateLimited = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: rateLimitedResponseBody,
+                responseHeaders: { 'retry-after': '600' },
+                statusCode: 429
+            });
+            expect(rateLimited.requestCount).toBe(1);
+            expect(parseLockContents(rateLimited.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 600,
+                error: 'rate-limited'
+            });
+
+            const backedOff = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin
+            });
+            expect(backedOff.first).toEqual({ error: 'rate-limited' });
+            expect(backedOff.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.skipIf(process.platform === 'win32')('serves the next render from the cache when the cache file was left read-only', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('read-only-cache');
+            // The cache's age comes from its mtime, which is real time
+            const renderNowMs = Date.now();
+            const { cacheFile } = seedUsageCache(home, { sessionUsage: 10, weeklyUsage: 5 });
+            fs.utimesSync(cacheFile, new Date(renderNowMs - 600000), new Date(renderNowMs - 600000));
+            fs.chmodSync(cacheFile, 0o444);
+
+            const fetched = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: renderNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+            expect(fetched.first.sessionUsage).toBe(42);
+            expect(fetched.requestCount).toBe(1);
+
+            const cached = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: renderNowMs + 10000,
+                pathDir: home.bin
+            });
+            expect(cached.first).toEqual(fetched.first);
+            expect(cached.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.skipIf(process.platform === 'win32')('backs off credential lookups when the lookup lock was left read-only', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('read-only-credentials-lock');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            const lockFile = path.join(cacheDir, 'usage-credentials.lock');
+            const credentialsFile = path.join(home.claudeConfig, '.credentials.json');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(lockFile, JSON.stringify({ blockedUntil: Math.floor(nowMs / 1000) - 60, source: 'expired' }));
+            fs.chmodSync(lockFile, 0o444);
+            fs.rmSync(credentialsFile);
+            const renderAt = (probeNowMs: number) => harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
+
+            // A login made inside the backoff is only picked up once it ends
+            fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const backedOff = renderAt(nowMs + 10000);
+            expect(backedOff.first).toEqual({ error: 'no-credentials' });
+            expect(backedOff.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('refetches a fresh cache when the token fingerprint changes (account switch)', () => {
         const harness = createProbeHarness();
 
