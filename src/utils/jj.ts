@@ -9,6 +9,10 @@ import { resolveGitCwd } from './git';
 // snapshot) must not hold up the status line
 const JJ_COMMAND_TIMEOUT_MS = 5_000;
 
+// Also git's: past execFileSync's 1 MiB default, `jj diff --stat` on a large
+// change set would fail
+const JJ_COMMAND_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
 export interface JjChangeCounts {
     insertions: number;
     deletions: number;
@@ -23,6 +27,7 @@ export function runJjArgs(args: string[], context: RenderContext, allowEmpty = f
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: JJ_COMMAND_TIMEOUT_MS,
+            maxBuffer: JJ_COMMAND_MAX_BUFFER_BYTES,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
@@ -48,6 +53,9 @@ function parseDiffStat(stat: string): JjChangeCounts {
     };
 }
 
-export function getJjChangeCounts(context: RenderContext): JjChangeCounts {
-    return parseDiffStat(runJjArgs(['diff', '--stat'], context) ?? '');
+// null when `jj diff --stat` fails (a stale working copy, a slow snapshot),
+// which says nothing about the changes
+export function getJjChangeCounts(context: RenderContext): JjChangeCounts | null {
+    const stat = runJjArgs(['diff', '--stat'], context, true);
+    return stat === null ? null : parseDiffStat(stat);
 }

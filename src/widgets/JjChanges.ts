@@ -28,8 +28,11 @@ export class JjChangesWidget extends JjWidgetBase<JjChangeCounts> {
     getDescription(): string { return 'Shows jujutsu changes count (+insertions, -deletions)'; }
     getDisplayName(): string { return 'JJ Changes'; }
 
-    protected getValue(context: RenderContext): JjChangeCounts {
-        const stat = runJjArgs(['diff', '--stat'], context);
+    protected getValue(context: RenderContext): JjChangeCounts | null {
+        const stat = runJjArgs(['diff', '--stat'], context, true);
+        if (stat === null) {
+            return null;
+        }
 
         let totalInsertions = 0;
         let totalDeletions = 0;

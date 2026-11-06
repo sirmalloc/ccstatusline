@@ -71,7 +71,7 @@ export function buildConfigureStatusLineItems(
             label: '🧮 Git Cache TTL',
             sublabel: getGitCacheTtlSublabel(gitCacheTtlSeconds),
             value: 'gitCacheTtl',
-            description: 'How long git widget subprocess output can be reused while .git/HEAD and .git/index are unchanged. Enter 0-60 seconds;\n0 disables age-based expiry, so cached output is reused until those git metadata mtimes change.'
+            description: 'How long git widget subprocess output can be reused while .git/HEAD and .git/index are unchanged. Enter 0-60 seconds;\n0 disables age-based expiry, so cached output is reused until those git metadata mtimes change; a failed command is retried after 5 seconds.'
         },
         {
             label: '🔧 Custom Command Cache TTL',
@@ -193,7 +193,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
             maxInputLength: 2,
             prompt: 'Enter Git cache TTL in seconds (0-60):',
             helperText: 'This affects how quickly git widgets notice unstaged and untracked working-tree changes.',
-            hint: '0 disables age-based expiry; cache validity uses .git/HEAD and .git/index mtimes only.',
+            hint: '0 disables age-based expiry; output is reused until .git/HEAD or .git/index mtimes change, and a failed command is retried after 5 seconds.',
             validate: validateGitCacheTtlInput,
             onSave: onGitCacheTtlUpdate
         },

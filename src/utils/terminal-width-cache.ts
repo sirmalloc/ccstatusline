@@ -87,7 +87,9 @@ function readCache(deps: WidthCacheDeps): PersistentWidthCache {
  * no-TTY case -- the expensive one -- re-probe on every render.
  *
  * ttlSeconds of 0 disables the cache (always a miss). NOTE: this differs from
- * gitCacheTtlSeconds, where 0 means "never expire". Divergence is intentional.
+ * gitCacheTtlSeconds, where 0 disables age-based expiry (output is reused
+ * until .git/HEAD or .git/index changes; a failed command is retried after
+ * 5 seconds). Divergence is intentional.
  */
 export function readCachedWidth(
     sessionId: string,

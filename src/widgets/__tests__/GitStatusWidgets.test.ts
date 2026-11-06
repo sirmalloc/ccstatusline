@@ -32,16 +32,18 @@ vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 const mockExecFileSync = execFileSync as unknown as { mockImplementation: (impl: (command: string, args: string[], options?: { cwd?: string }) => string) => void };
 
 // Repositories keyed by working directory: what `git status --porcelain -z`
-// prints there, and the short HEAD SHA (none before the first commit).
-// '/repos/none' is not a git work tree.
-const REPOS: Record<string, { status: string; sha?: string }> = {
+// prints there (null where it fails), and the short HEAD SHA (none before the
+// first commit). '/repos/none' is not a git work tree.
+const REPOS: Record<string, { status: string | null; sha?: string }> = {
     '/repos/dirty': { status: 'M  app.ts\0 M lib.ts\0?? notes.md\0', sha: 'abc1234' },
     '/repos/clean': { status: '', sha: 'def5678' },
     '/repos/staged': { status: 'A  new.ts\0', sha: '1111111' },
     '/repos/unstaged': { status: ' M lib.ts\0', sha: '2222222' },
     '/repos/untracked': { status: '?? notes.md\0', sha: '3333333' },
     '/repos/conflict': { status: 'UU f.txt\0', sha: '4444444' },
-    '/repos/empty': { status: '?? readme.md\0' }
+    '/repos/empty': { status: '?? readme.md\0' },
+    // A damaged index, or status cut off by the timeout
+    '/repos/broken': { status: null, sha: '5555555' }
 };
 
 // Answers the three commands these widgets run like git would
@@ -54,6 +56,9 @@ beforeEach(() => {
             return 'true\n';
         }
         if (repo && command === 'status --porcelain -z') {
+            if (repo.status === null) {
+                throw new Error('fatal: index file smaller than expected');
+            }
             return repo.status;
         }
         if (repo?.sha && command === 'rev-parse --short HEAD') {
@@ -88,32 +93,32 @@ const WIDGETS: WidgetCase[] = [
     {
         type: 'git-staged', widget: new GitStagedWidget(), name: 'Git Staged', color: 'green', raw: true, glyphs: true,
         preview: ['+', 'true'],
-        shows: { dirty: ['+', 'true'], clean: [null, null], staged: ['+', 'true'], unstaged: [null, null], untracked: [null, null], conflict: ['+', 'true'], empty: [null, null] }
+        shows: { dirty: ['+', 'true'], clean: [null, null], staged: ['+', 'true'], unstaged: [null, null], untracked: [null, null], conflict: ['+', 'true'], empty: [null, null], broken: [null, null] }
     },
     {
         type: 'git-unstaged', widget: new GitUnstagedWidget(), name: 'Git Unstaged', color: 'yellow', raw: true, glyphs: true,
         preview: ['*', 'true'],
-        shows: { dirty: ['*', 'true'], clean: [null, null], staged: [null, null], unstaged: ['*', 'true'], untracked: [null, null], conflict: ['*', 'true'], empty: [null, null] }
+        shows: { dirty: ['*', 'true'], clean: [null, null], staged: [null, null], unstaged: ['*', 'true'], untracked: [null, null], conflict: ['*', 'true'], empty: [null, null], broken: [null, null] }
     },
     {
         type: 'git-untracked', widget: new GitUntrackedWidget(), name: 'Git Untracked', color: 'red', raw: true, glyphs: true,
         preview: ['?', 'true'],
-        shows: { dirty: ['?', 'true'], clean: [null, null], staged: [null, null], unstaged: [null, null], untracked: ['?', 'true'], conflict: [null, null], empty: ['?', 'true'] }
+        shows: { dirty: ['?', 'true'], clean: [null, null], staged: [null, null], unstaged: [null, null], untracked: ['?', 'true'], conflict: [null, null], empty: ['?', 'true'], broken: [null, null] }
     },
     {
         type: 'git-clean-status', widget: new GitCleanStatusWidget(), name: 'Git Clean Status', color: 'green', raw: true, glyphs: true,
         preview: ['✓', 'clean'],
-        shows: { dirty: ['✗', 'dirty'], clean: ['✓', 'clean'], staged: ['✗', 'dirty'], unstaged: ['✗', 'dirty'], untracked: ['✗', 'dirty'], conflict: ['✗', 'dirty'], empty: ['✗', 'dirty'] }
+        shows: { dirty: ['✗', 'dirty'], clean: ['✓', 'clean'], staged: ['✗', 'dirty'], unstaged: ['✗', 'dirty'], untracked: ['✗', 'dirty'], conflict: ['✗', 'dirty'], empty: ['✗', 'dirty'], broken: [null, null] }
     },
     {
         type: 'git-status', widget: new GitStatusWidget(), name: 'Git Status', color: 'yellow', raw: false, glyphs: true,
         preview: ['+*'],
-        shows: { dirty: ['+*?'], clean: [null], staged: ['+'], unstaged: ['*'], untracked: ['?'], conflict: ['!+*'], empty: ['?'] }
+        shows: { dirty: ['+*?'], clean: [null], staged: ['+'], unstaged: ['*'], untracked: ['?'], conflict: ['!+*'], empty: ['?'], broken: [null] }
     },
     {
         type: 'git-sha', widget: new GitShaWidget(), name: 'Git SHA', color: 'brightBlack', raw: false, glyphs: false,
         preview: ['a1b2c3d'],
-        shows: { dirty: ['abc1234'], clean: ['def5678'], staged: ['1111111'], unstaged: ['2222222'], untracked: ['3333333'], conflict: ['4444444'], empty: ['(no commit)'] }
+        shows: { dirty: ['abc1234'], clean: ['def5678'], staged: ['1111111'], unstaged: ['2222222'], untracked: ['3333333'], conflict: ['4444444'], empty: ['(no commit)'], broken: ['5555555'] }
     }
 ];
 
@@ -185,6 +190,10 @@ describe('Git Staged, Unstaged and Untracked', () => {
         expect(widget.getNumericValue?.(live(set), item)).toBe(1);
         expect(widget.getNumericValue?.(live(unset), item)).toBe(0);
         expect(widget.getNumericValue?.(live('none'), item)).toBeNull();
+    });
+
+    it.each(FLAGS)('$type counts nothing when git status fails', ({ type, widget }) => {
+        expect(widget.getNumericValue?.(live('broken'), { id: 'w', type })).toBeNull();
     });
 
     it('only these three report a numeric value', () => {

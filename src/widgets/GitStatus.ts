@@ -31,8 +31,8 @@ export class GitStatusWidget extends GitStatusWidgetBase {
     protected renderInWorkTree(item: WidgetItem, context: RenderContext): string | null {
         const status = getGitStatus(context);
 
-        // Hide if clean
-        if (!status.staged && !status.unstaged && !status.untracked && !status.conflicts) {
+        // Hide if clean, or when git couldn't tell
+        if (!status || (!status.staged && !status.unstaged && !status.untracked && !status.conflicts)) {
             return null;
         }
 

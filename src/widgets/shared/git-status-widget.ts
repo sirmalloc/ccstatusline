@@ -26,7 +26,7 @@ import {
 // Git Staged, Unstaged, Untracked, Clean Status, Status and SHA show the work
 // tree's state. Outside a git work tree they show "(no git)", or nothing when
 // that state is hidden. Each says what it shows in the TUI preview and inside
-// a work tree.
+// a work tree, where the ones read from git status show nothing when it fails.
 export abstract class GitStatusWidgetBase implements Widget {
     abstract getDefaultColor(): string;
     abstract getDescription(): string;
@@ -72,7 +72,7 @@ export abstract class GitStatusFlagWidget extends GitStatusWidgetBase {
     }
 
     protected renderInWorkTree(item: WidgetItem, context: RenderContext): string | null {
-        return getGitStatus(context)[this.flag] ? this.formatFlag(item) : null;
+        return getGitStatus(context)?.[this.flag] ? this.formatFlag(item) : null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -86,7 +86,10 @@ export abstract class GitStatusFlagWidget extends GitStatusWidgetBase {
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
         if (!isInsideGitWorkTree(context))
             return null;
-        return getGitStatus(context)[this.flag] ? 1 : 0;
+        const status = getGitStatus(context);
+        if (!status)
+            return null;
+        return status[this.flag] ? 1 : 0;
     }
 
     supportsRawValue(): boolean { return true; }

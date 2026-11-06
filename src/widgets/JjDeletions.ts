@@ -24,8 +24,8 @@ export class JjDeletionsWidget extends JjWidgetBase<number> {
     getDescription(): string { return 'Shows jujutsu deletions count'; }
     getDisplayName(): string { return 'JJ Deletions'; }
 
-    protected getValue(context: RenderContext): number {
-        return getJjChangeCounts(context).deletions;
+    protected getValue(context: RenderContext): number | null {
+        return getJjChangeCounts(context)?.deletions ?? null;
     }
 
     protected formatValue(item: WidgetItem, deletions: number): string {

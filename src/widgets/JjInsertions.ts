@@ -24,8 +24,8 @@ export class JjInsertionsWidget extends JjWidgetBase<number> {
     getDescription(): string { return 'Shows jujutsu insertions count'; }
     getDisplayName(): string { return 'JJ Insertions'; }
 
-    protected getValue(context: RenderContext): number {
-        return getJjChangeCounts(context).insertions;
+    protected getValue(context: RenderContext): number | null {
+        return getJjChangeCounts(context)?.insertions ?? null;
     }
 
     protected formatValue(item: WidgetItem, insertions: number): string {

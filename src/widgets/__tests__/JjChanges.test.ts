@@ -63,6 +63,7 @@ describe('JjChangesWidget', () => {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
+            maxBuffer: 64 * 1024 * 1024,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
@@ -72,6 +73,7 @@ describe('JjChangesWidget', () => {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
+            maxBuffer: 64 * 1024 * 1024,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
@@ -82,6 +84,16 @@ describe('JjChangesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('(+0,-0)');
+    });
+
+    // `jj root` doesn't snapshot the working copy; `jj diff` does, and fails
+    it('should render no jj, not zero counts, when jj diff --stat fails', () => {
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockImplementation(() => { throw new Error('Error: The working copy is stale (not updated since operation cb43528b7717).'); });
+
+        expect(render()).toBe('(no jj)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should render no jj when not in jj repo', () => {

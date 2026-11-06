@@ -69,6 +69,7 @@ describe('JjBookmarksWidget', () => {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
+            maxBuffer: 64 * 1024 * 1024,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
@@ -86,6 +87,7 @@ describe('JjBookmarksWidget', () => {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
+            maxBuffer: 64 * 1024 * 1024,
             windowsHide: true,
             cwd: '/tmp/repo'
         });

@@ -26,18 +26,18 @@ export class GitCleanStatusWidget extends GitStatusWidgetBase {
         return item.rawValue ? 'clean' : getSlotSymbol(item, CLEAN_SLOT);
     }
 
-    protected renderInWorkTree(item: WidgetItem, context: RenderContext): string {
-        const clean = this.isClean(context);
+    protected renderInWorkTree(item: WidgetItem, context: RenderContext): string | null {
+        const status = getGitStatus(context);
+        if (!status) {
+            return null;
+        }
+
+        const clean = !status.staged && !status.unstaged && !status.untracked && !status.conflicts;
         if (item.rawValue) {
             return clean ? 'clean' : 'dirty';
         }
 
         return clean ? getSlotSymbol(item, CLEAN_SLOT) : getSlotSymbol(item, DIRTY_SLOT);
-    }
-
-    private isClean(context: RenderContext): boolean {
-        const status = getGitStatus(context);
-        return !status.staged && !status.unstaged && !status.untracked && !status.conflicts;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

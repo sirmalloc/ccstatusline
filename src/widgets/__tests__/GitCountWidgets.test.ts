@@ -31,10 +31,10 @@ vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const mockExecFileSync = execFileSync as unknown as { mockImplementation: (impl: (command: string, args: string[], options?: { cwd?: string }) => string) => void };
 
-// Repositories keyed by working directory: what `git status --porcelain -z`,
-// `git diff --shortstat` and `git diff --cached --shortstat` print there.
-// '/repos/none' is not a git work tree.
-const REPOS: Record<string, { status: string; unstagedStat: string; stagedStat: string }> = {
+// Repositories keyed by working directory: what `git status --porcelain -z`
+// (null where it fails), `git diff --shortstat` and `git diff --cached
+// --shortstat` print there. '/repos/none' is not a git work tree.
+const REPOS: Record<string, { status: string | null; unstagedStat: string; stagedStat: string }> = {
     // 3 staged, 2 unstaged and 2 untracked files; 11 lines added, 9 removed
     '/repos/dirty': {
         status: 'M  a.ts\0A  b.ts\0 M c.ts\0MM d.ts\0?? e.ts\0?? f/\0',
@@ -47,7 +47,9 @@ const REPOS: Record<string, { status: string; unstagedStat: string; stagedStat: 
     // Only added lines, staged
     '/repos/added': { status: 'M  a.ts\0', unstagedStat: '', stagedStat: ' 1 file changed, 2 insertions(+)' },
     // One untracked file, so no line changes
-    '/repos/untracked': { status: '?? a.ts\0', unstagedStat: '', stagedStat: '' }
+    '/repos/untracked': { status: '?? a.ts\0', unstagedStat: '', stagedStat: '' },
+    // Status fails (a damaged index, or cut off by the timeout); diff still works
+    '/repos/broken': { status: null, unstagedStat: ' 1 file changed, 1 insertion(+)', stagedStat: '' }
 };
 
 // Answers the four commands these widgets run like git would
@@ -58,7 +60,7 @@ beforeEach(() => {
         if (!repo) {
             throw new Error('fatal: not a git repository');
         }
-        const outputs: Record<string, string> = {
+        const outputs: Record<string, string | null> = {
             'rev-parse --is-inside-work-tree': 'true\n',
             'status --porcelain -z': repo.status,
             'diff --shortstat': repo.unstagedStat,
@@ -67,6 +69,9 @@ beforeEach(() => {
         const output = outputs[gitCommandOf(args)];
         if (output === undefined) {
             throw new Error(`unexpected git ${gitCommandOf(args)}`);
+        }
+        if (output === null) {
+            throw new Error('fatal: index file smaller than expected');
         }
         return output;
     });
@@ -90,40 +95,40 @@ interface WidgetCase {
     zeroLabel: string;
     raw: boolean;
     preview: [string, string];
-    shows: Record<string, [string, string, string | null]>;
+    shows: Record<string, [string | null, string | null, string | null]>;
 }
 
 const WIDGETS: WidgetCase[] = [
     {
         type: 'git-staged-files', widget: new GitStagedFilesWidget(), name: 'Git Staged Files', color: 'green',
         zeroLabel: 'when the staged file count is zero', raw: true, preview: ['S:3', '3'],
-        shows: { dirty: ['S:3', '3', 'S:3'], clean: ['S:0', '0', null], removed: ['S:0', '0', null], added: ['S:1', '1', 'S:1'], untracked: ['S:0', '0', null] }
+        shows: { dirty: ['S:3', '3', 'S:3'], clean: ['S:0', '0', null], removed: ['S:0', '0', null], added: ['S:1', '1', 'S:1'], untracked: ['S:0', '0', null], broken: [null, null, null] }
     },
     {
         type: 'git-unstaged-files', widget: new GitUnstagedFilesWidget(), name: 'Git Unstaged Files', color: 'yellow',
         zeroLabel: 'when the unstaged file count is zero', raw: true, preview: ['M:2', '2'],
-        shows: { dirty: ['M:2', '2', 'M:2'], clean: ['M:0', '0', null], removed: ['M:1', '1', 'M:1'], added: ['M:0', '0', null], untracked: ['M:0', '0', null] }
+        shows: { dirty: ['M:2', '2', 'M:2'], clean: ['M:0', '0', null], removed: ['M:1', '1', 'M:1'], added: ['M:0', '0', null], untracked: ['M:0', '0', null], broken: [null, null, null] }
     },
     {
         type: 'git-untracked-files', widget: new GitUntrackedFilesWidget(), name: 'Git Untracked Files', color: 'red',
         zeroLabel: 'when the untracked file count is zero', raw: true, preview: ['?:1', '1'],
-        shows: { dirty: ['?:2', '2', '?:2'], clean: ['?:0', '0', null], removed: ['?:0', '0', null], added: ['?:0', '0', null], untracked: ['?:1', '1', '?:1'] }
+        shows: { dirty: ['?:2', '2', '?:2'], clean: ['?:0', '0', null], removed: ['?:0', '0', null], added: ['?:0', '0', null], untracked: ['?:1', '1', '?:1'], broken: [null, null, null] }
     },
     // No raw mode: a raw item shows the same as a labeled one
     {
         type: 'git-insertions', widget: new GitInsertionsWidget(), name: 'Git Insertions', color: 'green',
         zeroLabel: 'when the insertion count is zero', raw: false, preview: ['+42', '+42'],
-        shows: { dirty: ['+11', '+11', '+11'], clean: ['+0', '+0', null], removed: ['+0', '+0', null], added: ['+2', '+2', '+2'], untracked: ['+0', '+0', null] }
+        shows: { dirty: ['+11', '+11', '+11'], clean: ['+0', '+0', null], removed: ['+0', '+0', null], added: ['+2', '+2', '+2'], untracked: ['+0', '+0', null], broken: ['+1', '+1', '+1'] }
     },
     {
         type: 'git-deletions', widget: new GitDeletionsWidget(), name: 'Git Deletions', color: 'red',
         zeroLabel: 'when the deletion count is zero', raw: false, preview: ['-10', '-10'],
-        shows: { dirty: ['-9', '-9', '-9'], clean: ['-0', '-0', null], removed: ['-3', '-3', '-3'], added: ['-0', '-0', null], untracked: ['-0', '-0', null] }
+        shows: { dirty: ['-9', '-9', '-9'], clean: ['-0', '-0', null], removed: ['-3', '-3', '-3'], added: ['-0', '-0', null], untracked: ['-0', '-0', null], broken: ['-0', '-0', null] }
     },
     {
         type: 'git-changes', widget: new GitChangesWidget(), name: 'Git Changes', color: 'yellow',
         zeroLabel: 'when there are no changes', raw: false, preview: ['(+42,-10)', '(+42,-10)'],
-        shows: { dirty: ['(+11,-9)', '(+11,-9)', '(+11,-9)'], clean: ['(+0,-0)', '(+0,-0)', null], removed: ['(+0,-3)', '(+0,-3)', '(+0,-3)'], added: ['(+2,-0)', '(+2,-0)', '(+2,-0)'], untracked: ['(+0,-0)', '(+0,-0)', null] }
+        shows: { dirty: ['(+11,-9)', '(+11,-9)', '(+11,-9)'], clean: ['(+0,-0)', '(+0,-0)', null], removed: ['(+0,-3)', '(+0,-3)', '(+0,-3)'], added: ['(+2,-0)', '(+2,-0)', '(+2,-0)'], untracked: ['(+0,-0)', '(+0,-0)', null], broken: ['(+1,-0)', '(+1,-0)', '(+1,-0)'] }
     }
 ];
 
@@ -178,6 +183,10 @@ describe('Git Staged, Unstaged and Untracked Files', () => {
         expect(widget.getNumericValue?.(live('dirty'), item)).toBe(dirty);
         expect(widget.getNumericValue?.(live('clean'), item)).toBe(0);
         expect(widget.getNumericValue?.(live('none'), item)).toBeNull();
+    });
+
+    it.each(FILES)('$type counts nothing when git status fails', ({ type, widget }) => {
+        expect(widget.getNumericValue?.(live('broken'), { id: 'w', type })).toBeNull();
     });
 
     it.each(FILES)('$type has no keys of its own', ({ widget }) => {

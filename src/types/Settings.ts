@@ -74,7 +74,9 @@ export const SettingsSchema = z.object({
     // How long a "no TTY" result is reused for the same session, in seconds.
     // Detected widths are re-probed each render so terminal resizes take effect.
     // NOTE: 0 disables the cache (always probe). This deliberately differs from
-    // gitCacheTtlSeconds above, where 0 means "never expire".
+    // gitCacheTtlSeconds above, where 0 disables age-based expiry: output is
+    // reused until .git/HEAD or .git/index changes, and a failed command is
+    // retried after 5 seconds.
     terminalWidthCacheTtlSeconds: z.number().min(0).max(300).default(5),
     customCommandCacheTtlSeconds: z.number().min(0).max(60).default(0),
     minimalistMode: z.boolean().default(false),

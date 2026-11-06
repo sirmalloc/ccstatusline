@@ -42,7 +42,7 @@ ccstatusline --version
 - **Git CI Status** - Summarize GitHub checks for the current branch's pull request as failing (`✗`), pending (`●`), and successful (`✓`) counts. Raw-value mode renders `failing`, `pending`, or `passing`; `-` means no pull request or readable check rollup. This widget is GitHub-only and uses the same cached `gh` lookup as Git PR.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show combined or separate insertion/deletion counts, with customizable signs through `g`.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
-- **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state. Git Clean Status supports custom clean/dirty glyphs through `g`; raw mode shows the words `clean` or `dirty`.
+- **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state. Git Clean Status supports custom clean/dirty glyphs through `g`; raw mode shows the words `clean` or `dirty`. When `git status` fails or times out, they show nothing instead of reporting a clean tree, and so do Git Status, Git Staged, Git Unstaged and Git Untracked.
 - **Git Origin Owner** / **Git Origin Repo** / **Git Origin Owner/Repo** - Show parsed `origin` remote metadata.
 - **Git Upstream Owner** / **Git Upstream Repo** / **Git Upstream Owner/Repo** / **Git Is Fork** - Show upstream remote metadata and whether the current repo is a fork. Git Is Fork displays `⑂` for forks by default; press `g` to customize it, or use raw mode for `true`/`false`.
 - **Git Worktree** / **Git Worktree Mode** / **Git Worktree Name** / **Git Worktree Branch** / **Git Worktree Original Branch** - Show worktree status plus the active worktree's name and branch metadata. Git Worktree supports `f` for fish-style abbreviation, including `main` → `m`.
@@ -50,7 +50,7 @@ ccstatusline --version
 ### Jujutsu (JJ)
 
 - **JJ Revision** / **JJ Bookmarks** / **JJ Workspace** - Show the current change ID, bookmarks, or workspace name, with customizable prefix glyphs through `g`.
-- **JJ Changes** / **JJ Insertions** / **JJ Deletions** - Show combined or separate insertion/deletion counts, with customizable signs through `g`.
+- **JJ Changes** / **JJ Insertions** / **JJ Deletions** - Show combined or separate insertion/deletion counts, with customizable signs through `g`. When `jj diff --stat` fails or times out, as in a stale workspace, they show `(no jj)` instead of zero counts.
 - **JJ Root Dir** / **JJ Description** - Show the repository root directory name or current change description.
 
 ### Tokens, Usage & Context
@@ -188,7 +188,7 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 
 | Setting | JSON key | Default | Range | Meaning of `0` |
 | --- | --- | --- | --- | --- |
-| Git Cache TTL | `gitCacheTtlSeconds` | 5 seconds | 0–60 seconds | Reuse until `.git/HEAD` or `.git/index` modification times change; no age-based expiry |
+| Git Cache TTL | `gitCacheTtlSeconds` | 5 seconds | 0–60 seconds | Reuse output until `.git/HEAD` or `.git/index` modification times change; no age-based expiry, though a failed command is retried after 5 seconds |
 | Custom Command Cache TTL | `customCommandCacheTtlSeconds` | 0 seconds | 0–60 seconds | Run commands on every render |
 | Terminal Width Cache TTL | `terminalWidthCacheTtlSeconds` | 5 seconds | 0–300 seconds | Re-probe on every render, even after no width was found |
 
@@ -372,7 +372,7 @@ appear in the editor as `(hide: no-git, zero)`.
 Supported states by widget family:
 - **Git widgets**: `no-git` hides the `(no git)` placeholder outside a repo
 - **Git count widgets** (`Git Changes`, `Git Insertions`, `Git Deletions`, `Git Staged/Unstaged/Untracked Files`, `Git Conflicts`): `zero` hides the widget while its count is zero
-- **JJ widgets**: `no-jj` hides the `(no jj)` placeholder outside a jj repo
+- **JJ widgets**: `no-jj` hides the `(no jj)` placeholder outside a jj repo, and the placeholder a widget shows when its jj command fails
 - **Git Origin widgets**: `no-remote` hides the `no remote` placeholder
 - **Git Upstream widgets / Git Ahead/Behind**: `no-upstream` hides the `no upstream` placeholder
 - **Git Ahead/Behind**: `zero` hides `↑0↓0` when the branch is not diverged (enabled by default; uncheck it to show zeros)
