@@ -6,7 +6,10 @@ import path from 'node:path';
 import type { BlockMetrics } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
-import { getBlockMetrics } from './jsonl-blocks';
+import {
+    advanceBlockChain,
+    getBlockMetrics
+} from './jsonl-blocks';
 
 const readFileSync = fs.readFileSync;
 const writeFileSync = fs.writeFileSync;
@@ -133,8 +136,10 @@ function readEmptyBlockCache(expectedConfigDir?: string): Date | null {
  *
  * @param emptyUntil - Instant at which scanning may resume
  * @param configDir - Config directory the entry belongs to
+ * @param lastStartTime - The last block found, kept so the chain can be
+ * carried forward from it once activity resumes
  */
-function writeEmptyBlockCache(emptyUntil: Date, configDir = getClaudeConfigDir()): void {
+function writeEmptyBlockCache(emptyUntil: Date, configDir = getClaudeConfigDir(), lastStartTime?: Date): void {
     try {
         const normalizedConfigDir = normalizeConfigDir(configDir);
         const cachePath = getBlockCachePath(normalizedConfigDir);
@@ -143,6 +148,7 @@ function writeEmptyBlockCache(emptyUntil: Date, configDir = getClaudeConfigDir()
             mkdirSync(cacheDir, { recursive: true });
         }
         const cache: BlockCache = {
+            ...(lastStartTime ? { startTime: lastStartTime.toISOString() } : {}),
             emptyUntil: emptyUntil.toISOString(),
             configDir: normalizedConfigDir
         };
@@ -206,13 +212,19 @@ export function getCachedBlockMetrics(sessionDurationHours = 5): BlockMetrics | 
         return null;
     }
 
-    // Cache miss or expired - run full calculation
-    const metrics = getBlockMetrics();
+    // Expired - carry the cached block forward, which reads only the activity
+    // since it ended. Too old a block, or a cache miss, needs the full scan
+    const advanced = cachedStartTime ? advanceBlockChain(cachedStartTime, sessionDurationHours) : undefined;
+    const metrics = advanced === undefined ? getBlockMetrics() : advanced;
 
     if (metrics) {
         writeBlockCache(metrics.startTime, activeConfigDir);
     } else {
-        writeEmptyBlockCache(new Date(now.getTime() + EMPTY_RESULT_TTL_MS), activeConfigDir);
+        writeEmptyBlockCache(
+            new Date(now.getTime() + EMPTY_RESULT_TTL_MS),
+            activeConfigDir,
+            advanced === null ? cachedStartTime ?? undefined : undefined
+        );
     }
 
     return metrics;

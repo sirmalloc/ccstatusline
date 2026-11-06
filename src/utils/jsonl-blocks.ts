@@ -5,11 +5,25 @@ import type { BlockMetrics } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
 import {
-    iterateJsonlLinesSync,
+    iterateJsonlLinesReverseSync,
     parseJsonlLine
 } from './jsonl-lines';
 
 const statSync = fs.statSync;
+
+/**
+ * How far past a lookback cutoff a transcript is read before it stops. Rows
+ * are appended in time order, but not strictly: this slack keeps a row that
+ * landed slightly out of order from ending the read early
+ */
+const READ_PAST_CUTOFF_MS = 60 * 60 * 1000;
+
+/**
+ * Only rows that carry usage can be block activity or stop a read. Lines
+ * without this key (tool results, file snapshots), which are often the
+ * largest in a transcript, are skipped before they are decoded or parsed
+ */
+const USAGE_KEY = '"usage"';
 
 /**
  * Gets block metrics for the current 5-hour block from JSONL files
@@ -28,17 +42,85 @@ export function getBlockMetrics(): BlockMetrics | null {
 }
 
 /**
- * Efficiently finds the most recent 5-hour block start time from JSONL files
- * Uses file modification times as hints to avoid unnecessary reads
+ * Furthest back a block chain is followed, by a full scan or from a cached block
  */
-function findMostRecentBlockStartTime(
-    rootDir: string,
+const MAX_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Carries a known block forward to the current one, reading only the activity
+ * since that block ended
+ *
+ * @remarks
+ * Blocks chain: each one starts at the first activity after the previous one
+ * ends. A full scan has to find where continuous work began to place the
+ * chain, and under continuous use that means reading back the full lookback
+ * on every block. Starting from the last block found keeps the chain where
+ * the scan put it and reads at most the hours since then.
+ *
+ * @returns The current block, null when there is none, or undefined when the
+ * previous block is too old to start from and a full scan is needed
+ */
+export function advanceBlockChain(
+    previousStart: Date,
     sessionDurationHours = 5
-): BlockMetrics | null {
+): BlockMetrics | null | undefined {
+    const claudeDir: string | null = getClaudeConfigDir();
+    if (!claudeDir)
+        return undefined;
+
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
     const now = new Date();
+    const previousEndMs = previousStart.getTime() + sessionDurationMs;
+    if (previousStart.getTime() > now.getTime() || now.getTime() - previousEndMs > MAX_LOOKBACK_MS)
+        return undefined;
 
-    // Step 1: Find all JSONL files with their modification times
+    const activity: number[] = [];
+    try {
+        for (const { file, mtime } of listTranscriptsNewestFirst(claudeDir)) {
+            if (mtime.getTime() < previousEndMs) {
+                break;
+            }
+
+            const reader = new TranscriptActivityReader(file);
+            try {
+                for (const timestamp of reader.readSince(previousEndMs)) {
+                    if (timestamp.getTime() > previousEndMs) {
+                        activity.push(timestamp.getTime());
+                    }
+                }
+            } finally {
+                reader.close();
+            }
+        }
+    } catch {
+        return undefined;
+    }
+
+    activity.sort((a, b) => a - b);
+    const mostRecent = activity[activity.length - 1];
+    if (mostRecent === undefined || now.getTime() - mostRecent > sessionDurationMs)
+        return null;
+
+    // The same rule the full scan applies going forward
+    let blockStart = previousStart;
+    let blockEndMs = previousEndMs;
+    for (const timestamp of activity) {
+        if (timestamp > blockEndMs) {
+            blockStart = floorToHour(new Date(timestamp));
+            blockEndMs = blockStart.getTime() + sessionDurationMs;
+        }
+    }
+
+    if (now.getTime() < blockStart.getTime() || now.getTime() > blockEndMs)
+        return null;
+
+    return { startTime: blockStart, lastActivity: new Date(mostRecent) };
+}
+
+/**
+ * All transcripts under the config directory, most recently modified first
+ */
+function listTranscriptsNewestFirst(rootDir: string): { file: string; mtime: Date }[] {
     // Keep the pattern relative to cwd: inside a pattern, characters a directory
     // name can contain, such as ( ) [ ] { } * ?, are glob syntax
     const files = globSync(['projects/**/*.jsonl'], {
@@ -46,16 +128,49 @@ function findMostRecentBlockStartTime(
         cwd: rootDir     // Set working directory to rootDir
     });
 
-    if (files.length === 0)
-        return null;
-
-    // Step 2: Get file stats and sort by modification time (most recent first)
     const filesWithStats = files.map((file) => {
         const stats = statSync(file);
         return { file, mtime: stats.mtime };
     });
 
     filesWithStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    return filesWithStats;
+}
+
+/**
+ * Efficiently finds the most recent 5-hour block start time from JSONL files
+ * Uses file modification times as hints to avoid unnecessary reads
+ */
+function findMostRecentBlockStartTime(
+    rootDir: string,
+    sessionDurationHours = 5
+): BlockMetrics | null {
+    // Each transcript is read newest-first and only as far back as the current
+    // lookback needs, so the cost tracks recent activity rather than file size.
+    // A longer lookback resumes the same read instead of starting over
+    const readers = new Map<string, TranscriptActivityReader>();
+    try {
+        return findBlockStartWithReaders(rootDir, sessionDurationHours, readers);
+    } finally {
+        for (const reader of readers.values()) {
+            reader.close();
+        }
+    }
+}
+
+function findBlockStartWithReaders(
+    rootDir: string,
+    sessionDurationHours: number,
+    readers: Map<string, TranscriptActivityReader>
+): BlockMetrics | null {
+    const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
+    const now = new Date();
+
+    // Steps 1 and 2: all JSONL files, most recently modified first
+    const filesWithStats = listTranscriptsNewestFirst(rootDir);
+
+    if (filesWithStats.length === 0)
+        return null;
 
     // Step 3: Progressive lookback - start small and expand if needed
     // Start with 2x session duration (10 hours), expand to 48 hours if needed
@@ -79,9 +194,16 @@ function findMostRecentBlockStartTime(
             if (mtime.getTime() < cutoffTime.getTime()) {
                 break;
             }
+
+            let reader = readers.get(file);
+            if (!reader) {
+                reader = new TranscriptActivityReader(file);
+                readers.set(file, reader);
+            }
+
             // One push per timestamp: spreading a long transcript's timestamps
             // into a single call exceeds the engine's argument limit and throws
-            for (const timestamp of getAllTimestampsFromFile(file)) {
+            for (const timestamp of reader.readSince(cutoffTime.getTime())) {
                 timestamps.push(timestamp);
             }
         }
@@ -190,27 +312,108 @@ interface TranscriptRow {
     message?: { usage?: { input_tokens?: number; output_tokens?: number } };
 }
 
+interface ReadRow {
+    timestampMs: number;
+    activity: Date | null;
+}
+
 /**
- * Gets all timestamps from a JSONL file
+ * Reads a transcript's block activity newest-first, stopping once it is past
+ * the requested cutoff. Calls with an earlier cutoff continue from where the
+ * previous call stopped, so no part of the file is read twice
  */
-function getAllTimestampsFromFile(filePath: string): Date[] {
-    const timestamps: Date[] = [];
-    try {
-        for (const line of iterateJsonlLinesSync(filePath)) {
-            const json = parseJsonlLine(line) as TranscriptRow | null;
-            if (!json) {
+class TranscriptActivityReader {
+    private lines: Generator<string> | null;
+    private readonly activity: Date[] = [];
+    // The row that ended the last read: older than that call's cutoff, but it
+    // may still fall inside the next, earlier one
+    private heldRow: ReadRow | null = null;
+
+    constructor(filePath: string) {
+        try {
+            this.lines = iterateJsonlLinesReverseSync(filePath, USAGE_KEY);
+        } catch {
+            this.lines = null;
+        }
+    }
+
+    /**
+     * Activity timestamps from the end of the file back to the cutoff,
+     * newest first. May include a few rows from just before the cutoff, and
+     * ends with the row that stopped the read: a gap reaching back past the
+     * cutoff only shows up with the row on its far side
+     */
+    readSince(cutoffMs: number): Date[] {
+        this.readBackTo(cutoffMs - READ_PAST_CUTOFF_MS);
+
+        const boundary = this.heldRow?.activity;
+        return boundary ? [...this.activity, boundary] : this.activity;
+    }
+
+    close(): void {
+        // Returning the generator runs its finally block, which closes the file
+        this.lines?.return(undefined);
+        this.lines = null;
+    }
+
+    private readBackTo(stopBeforeMs: number): void {
+        if (this.heldRow) {
+            if (this.heldRow.timestampMs < stopBeforeMs) {
+                return;
+            }
+            this.keep(this.heldRow);
+            this.heldRow = null;
+        }
+
+        while (this.lines) {
+            let row: ReadRow | null;
+            try {
+                const next = this.lines.next();
+                if (next.done) {
+                    this.close();
+                    break;
+                }
+                row = readRow(next.value);
+            } catch {
+                // Keep what was read before the error, as a forward read would
+                this.close();
+                break;
+            }
+
+            if (!row) {
                 continue;
             }
 
-            const date = getActivityTimestamp(json);
-            if (date)
-                timestamps.push(date);
+            if (row.timestampMs < stopBeforeMs) {
+                this.heldRow = row;
+                break;
+            }
+            this.keep(row);
         }
-
-        return timestamps;
-    } catch {
-        return [];
     }
+
+    private keep(row: ReadRow): void {
+        if (row.activity) {
+            this.activity.push(row.activity);
+        }
+    }
+}
+
+/**
+ * Parses a transcript line far enough to place it in time
+ */
+function readRow(line: string): ReadRow | null {
+    const json = parseJsonlLine(line) as TranscriptRow | null;
+    if (!json || typeof json.timestamp !== 'string') {
+        return null;
+    }
+
+    const timestampMs = Date.parse(json.timestamp);
+    if (Number.isNaN(timestampMs)) {
+        return null;
+    }
+
+    return { timestampMs, activity: getActivityTimestamp(json) };
 }
 
 /**

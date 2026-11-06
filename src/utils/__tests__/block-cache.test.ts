@@ -415,3 +415,100 @@ describe('getCachedBlockMetrics negative caching', () => {
         expect(result?.startTime.getTime()).toBe(startTime.getTime());
     });
 });
+
+describe('getCachedBlockMetrics carrying an expired block forward', () => {
+    const HOUR_MS = 60 * 60 * 1000;
+    let tempDir: string;
+    let originalClaudeConfigDir: string | undefined;
+
+    function floorToHourUtc(timestamp: number): number {
+        const floored = new Date(timestamp);
+        floored.setUTCMinutes(0, 0, 0);
+        return floored.getTime();
+    }
+
+    // One served request every 20 minutes, counting back from toMs to fromMs,
+    // so the newest row is at toMs whatever minute of the hour the test runs in
+    function writeActivity(fromMs: number, toMs: number): void {
+        const projectDir = path.join(process.env.CLAUDE_CONFIG_DIR ?? '', 'projects', 'project-a');
+        fs.mkdirSync(projectDir, { recursive: true });
+        const rows: string[] = [];
+        for (let t = toMs; t >= fromMs; t -= 20 * 60 * 1000) {
+            rows.unshift(JSON.stringify({
+                timestamp: new Date(t).toISOString(),
+                message: { usage: { input_tokens: 100, output_tokens: 50 } }
+            }));
+        }
+        fs.writeFileSync(path.join(projectDir, 'session.jsonl'), rows.join('\n'));
+    }
+
+    function readRawCache(): { startTime?: string; emptyUntil?: string } {
+        return JSON.parse(fs.readFileSync(getBlockCachePath(), 'utf-8')) as { startTime?: string; emptyUntil?: string };
+    }
+
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-chain-'));
+        vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
+        originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = path.join(tempDir, '.claude');
+        fs.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        if (originalClaudeConfigDir === undefined) {
+            delete process.env.CLAUDE_CONFIG_DIR;
+        } else {
+            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('starts the next block where the cached one ended, keeping the chain the scan placed', async () => {
+        const { getBlockMetrics, getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+        const now = Date.now();
+        const currentHour = floorToHourUtc(now);
+        // Continuous work for 30 hours: a fresh scan chains blocks from where
+        // it began
+        writeActivity(now - (30 * HOUR_MS), now);
+        const scanned = getBlockMetrics()?.startTime.getTime();
+
+        // A block cached on a different footing, which ended 1 or 2 hours ago.
+        // The next one starts as it ended and runs past now
+        const cachedStart = [6, 7]
+            .map(hours => currentHour - (hours * HOUR_MS))
+            .find(start => start + (5 * HOUR_MS) !== scanned) ?? 0;
+        writeBlockCache(new Date(cachedStart));
+
+        const result = getCachedBlockMetrics();
+
+        expect(result?.startTime.getTime()).toBe(cachedStart + (5 * HOUR_MS));
+        expect(result?.startTime.getTime()).not.toBe(scanned);
+        expect(readRawCache().startTime).toBe(new Date(cachedStart + (5 * HOUR_MS)).toISOString());
+    });
+
+    it('reports no block when nothing has run since the cached block ended, and keeps it to carry forward', async () => {
+        const { getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+        const cachedStart = floorToHourUtc(Date.now()) - (7 * HOUR_MS);
+        writeActivity(cachedStart + (10 * 60 * 1000), cachedStart + (4 * HOUR_MS));
+        writeBlockCache(new Date(cachedStart));
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        const cached = readRawCache();
+        expect(typeof cached.emptyUntil).toBe('string');
+        expect(cached.startTime).toBe(new Date(cachedStart).toISOString());
+    });
+
+    it('falls back to a full scan when the cached block ended too long ago to carry forward', async () => {
+        const { getBlockMetrics, getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+        const now = Date.now();
+        writeActivity(now - (30 * HOUR_MS), now);
+        writeBlockCache(new Date(floorToHourUtc(now) - (60 * HOUR_MS)));
+
+        const result = getCachedBlockMetrics();
+
+        expect(result).not.toBeNull();
+        expect(result?.startTime.getTime()).toBe(getBlockMetrics()?.startTime.getTime());
+    });
+});

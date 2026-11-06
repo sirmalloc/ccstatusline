@@ -199,6 +199,33 @@ describe('jsonl line streaming', () => {
         expect(lines).toEqual(['latest', older]);
     });
 
+    it('reverse-reads only the records containing mustContain', () => {
+        const filePath = writeTranscript('reverse-filter.jsonl', [
+            '{"type":"assistant","usage":{"output_tokens":1}}',
+            `{"type":"tool_result","content":"${'x'.repeat(3 * JSONL_READ_CHUNK_BYTES)}"}`,
+            '{"type":"assistant","usage":{"output_tokens":2}}',
+            '{"type":"user","content":"hi"}'
+        ].join('\n'));
+
+        expect(Array.from(iterateJsonlLinesReverseSync(filePath, '"usage"'))).toEqual([
+            '{"type":"assistant","usage":{"output_tokens":2}}',
+            '{"type":"assistant","usage":{"output_tokens":1}}'
+        ]);
+    });
+
+    it('matches mustContain text that straddles a read chunk boundary', () => {
+        // The last read starts JSONL_READ_CHUNK_BYTES from the end, three bytes
+        // into `"usage"`, so neither chunk holds the whole needle
+        const head = `{"pad":"${'x'.repeat(100)}",`;
+        const after = `,"pad2":"${'y'.repeat(JSONL_READ_CHUNK_BYTES - 17)}"}`;
+        const line = `${head}"usage":1${after}`;
+        const filePath = writeTranscript('reverse-filter-boundary.jsonl', line);
+
+        expect(fs.statSync(filePath).size - JSONL_READ_CHUNK_BYTES).toBe(head.length + 3);
+        expect(Array.from(iterateJsonlLinesReverseSync(filePath, '"usage"'))).toEqual([line]);
+        expect(Array.from(iterateJsonlLinesReverseSync(filePath, '"absent"'))).toEqual([]);
+    });
+
     it('never reads the file as one string, which would throw past the max string length', async () => {
         const filePath = writeTranscript('stream.jsonl', [
             '{"line":1}',
