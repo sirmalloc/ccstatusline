@@ -83,7 +83,7 @@ The interactive configuration tool provides a terminal UI where you can:
 > export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
 > ```
 
-> 🌐 **HTTPS proxy:** Usage and Claude Status requests honor uppercase `HTTPS_PROXY`, with exclusions from both `NO_PROXY` and `no_proxy`. See [proxy settings](docs/USAGE.md#proxy-settings) for host, domain, and port matching.
+> 🌐 **HTTPS proxy:** Usage, Claude Status and update-check requests honor uppercase `HTTPS_PROXY`, with exclusions from both `NO_PROXY` and `no_proxy`. See [proxy settings](docs/USAGE.md#proxy-settings) for host, domain, and port matching.
 
 > 🪟 **Windows Support:** PowerShell examples, installation notes, fonts, troubleshooting, WSL, and Windows Terminal configuration are in [docs/WINDOWS.md](docs/WINDOWS.md).
 
@@ -136,6 +136,23 @@ For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -
 </details>
 
 ## 🆕 Recent Updates
+
+### v2.2.33 - v2.2.34 - Cache insights, daily spend, and flexible displays
+
+Includes all 47 merged PRs and the package-size badge fix since the v2.2.33 tag.
+
+- **💳 Extra Usage Today** - Track daily extra usage across sessions and devices using a saved UTC-day baseline; without an earlier baseline, tracking starts at the first reading of the day (or zero on the first of the month).
+- **📊 Prompt cache insights** - New Cache Misses, Last Cache Miss, Cache Miss Tokens, and Cache If Cold widgets show Claude Code's reported cache statistics and miss causes.
+- **🔮 Weekly limit forecasts** - New Weekly Limit Timer and Weekly Fable Limit Timer estimate time to the weekly limit; 5-hour forecasts now disappear when the block reaches its limit.
+- **🔄 Usage in idle sessions** - After three minutes without a response, usage widgets can use newer API readings to reflect activity from other sessions and devices when the status line refreshes.
+- **🎨 More display choices** - Pick 256-color values from a live grid, add brackets and per-level colors to Thinking Effort, and use a thin line display in Context Bar.
+- **⏱️ Time and speed controls** - Speed widgets support rolling windows up to an hour, and Cache Timer offers labeled or compact countdowns such as `4m 52s` and `4m52s`.
+- **📐 Simpler terminal width** - Use Claude Code's `COLUMNS` after `CCSTATUSLINE_WIDTH`, with full width minus five columns for truncation and alignment; the old width modes are removed.
+- **🔗 Directory and Git links** - Open directories in Zed, preserve plain-HTTP remote links, and resolve PRs and tracking remotes correctly when refs share a name.
+- **⌨️ Reliable editing and rendering** - Preserve emoji in editors and abbreviated paths, keep Nerd Font icons aligned in Ghostty and kitty, retain adjacent separators, and fix text insertion, menu focus, and color previews.
+- **⚙️ Configuration and updates** - Configure caches before installation, sync hooks only from the active status-line config, report settings-write failures, and improve update-check deadlines, proxies, and self-managed version detection.
+- **🩹 Miscellaneous bug fixes** - Preserve Custom Powerline themes and versionless modern configs; correct reset timestamps and locale formatting, stale service health, long-transcript metrics, custom-command styling, JJ colors, and cache temporary-file cleanup.
+- **🔧 Maintenance** - Refresh development dependencies, consolidate progress-bar rendering, and improve TUI test synchronization.
 
 ### v2.2.32 - v2.2.33 - Usage forecasts, live previews, and accurate metrics
 

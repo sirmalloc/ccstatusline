@@ -112,11 +112,10 @@ export function buildMainMenuItems(
                 'Set global padding, separators, and color overrides that apply to all widgets'
         },
         {
+            // Open before an install too: only its refresh interval needs one
             label: '🔧 Configure Status Line',
-            sublabel: isClaudeInstalled ? undefined : '(install first)',
-            disabled: !isClaudeInstalled,
             value: 'configureStatusLine',
-            description: 'Configure Claude Code status line settings like refresh interval'
+            description: 'Set ccstatusline\'s cache TTLs, and Claude Code\'s refresh interval once ccstatusline is installed'
         },
         '-',
         {
