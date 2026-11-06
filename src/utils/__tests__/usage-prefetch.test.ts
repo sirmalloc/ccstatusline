@@ -18,6 +18,7 @@ import { BlockResetTimerWidget } from '../../widgets/BlockResetTimer';
 import { SessionUsageWidget } from '../../widgets/SessionUsage';
 import { WeeklyUsageWidget } from '../../widgets/WeeklyUsage';
 import * as dailySpend from '../daily-spend';
+import { getDefaultSessionUsageHistoryDeps } from '../session-usage-history';
 import {
     extractUsageDataFromRateLimits,
     hasUsageDependentWidgets,
@@ -1017,6 +1018,24 @@ describe('usage prefetch in a session left idle', () => {
         expect(usageData).toMatchObject({ sessionUsage: 60, weeklyUsage: 55 });
         expect(mockFetchUsageData.mock.calls).toHaveLength(1);
         expect(mockFetchUsageData.mock.calls[0]?.[0]).toMatchObject({ requiredFields: ['sessionUsage', 'weeklyUsage'] });
+    });
+
+    it.each([
+        ['the same window', BLOCK_RESET],
+        ['a new window', (NOW - 10 * MINUTE) / 1000]
+    ])('keeps the API observation time when its percent equals the payload in %s', async (_label, payloadReset) => {
+        const fetchedAtMs = NOW - MINUTE;
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 20, sessionResetAt: epochToIso(BLOCK_RESET) });
+        mockFetchedAt.mockReturnValue(fetchedAtMs);
+        const payload = payloadAfterResponse(NOW - 20 * MINUTE, { five_hour: { used_percentage: 20, resets_at: payloadReset } });
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, payload);
+        // The accepted observation must survive later changes to the fetcher's state.
+        mockFetchedAt.mockReturnValue(NOW);
+
+        expect(usageData?.sessionUsage).toBe(20);
+        expect(usageData?.sessionResetAt).toBe(epochToIso(BLOCK_RESET));
+        expect(getDefaultSessionUsageHistoryDeps(payload, usageData).percentSeenAt?.()).toBe(fetchedAtMs);
     });
 
     it('asks only for the windows the line shows', async () => {

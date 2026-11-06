@@ -238,6 +238,9 @@ function refreshIdlePayloadUsage(usageData: UsageData, rateLimitsData: UsageData
         if (isSameWindow ? apiPercent >= payloadPercent : isPayloadWindowOver) {
             setUsageField(usageData, usageField, apiPercent);
             setUsageField(usageData, resetField, apiData[resetField]);
+            if (usageField === 'sessionUsage') {
+                usageData.sessionUsageObservedAtMs = fetchedAtMs;
+            }
         }
     }
 }

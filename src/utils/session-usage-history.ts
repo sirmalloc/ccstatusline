@@ -109,11 +109,13 @@ export function getLastResponseAtMs(transcriptPath: string | undefined): number 
 // The payload's 5-hour percent dates from its session's last response; the
 // usage API's from when the API sent it, which for a cached one can be hours
 // ago. The API's is the one in use when the payload has none, or when it
-// replaced an idle session's older one (see usage-prefetch.ts).
+// replaced an idle session's older one (see usage-prefetch.ts). An accepted
+// refresh carries its observation time even when the percent is unchanged.
 export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON, usageData?: RenderUsageData | null): SessionUsageHistoryDeps {
-    const payloadPercent = payload?.rate_limits?.five_hour?.used_percentage;
-    const isPayloadPercent = typeof payloadPercent === 'number'
-        && (usageData?.sessionUsage === undefined || usageData.sessionUsage === payloadPercent);
+    const observedAtMs = usageData?.sessionUsageObservedAtMs;
+    const defaultPercentSeenAt = typeof payload?.rate_limits?.five_hour?.used_percentage === 'number'
+        ? () => getLastResponseAtMs(payload.transcript_path)
+        : getUsageFetchedAtMs;
     return {
         readFileSync: (p: string) => fs.readFileSync(p, 'utf-8'),
         writeFileSync: (p: string, data: string) => { fs.writeFileSync(p, data, 'utf-8'); },
@@ -124,7 +126,7 @@ export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON, usageDat
         statSync: (p: string) => fs.statSync(p),
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
-        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload?.transcript_path) : getUsageFetchedAtMs,
+        percentSeenAt: observedAtMs === undefined ? defaultPercentSeenAt : () => observedAtMs,
         loginFingerprint: getUsageLoginFingerprint,
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
     };

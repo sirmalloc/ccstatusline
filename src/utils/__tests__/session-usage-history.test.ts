@@ -584,7 +584,7 @@ describe('getDefaultSessionUsageHistoryDeps', () => {
     it('dates the usage API\'s percent by when the API sent it once it replaced the payload\'s', () => {
         fs.writeFileSync(transcriptPath, `${transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1' } })}\n`);
 
-        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), { sessionUsage: 35 }).percentSeenAt).toBe(getUsageFetchedAtMs);
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), { sessionUsage: 35, sessionUsageObservedAtMs: NOW - MINUTE }).percentSeenAt?.()).toBe(NOW - MINUTE);
         expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), { sessionUsage: 20 }).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
         expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath), null).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
     });
