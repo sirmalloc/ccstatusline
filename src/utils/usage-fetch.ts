@@ -371,6 +371,7 @@ let usageErrorCacheMaxAge = LOCK_MAX_AGE;
 // When the usage API sent cachedUsageData's values, in ms: a cache file's are
 // as old as the file, which may have been written hours ago
 let usageFetchedAtMs: number | undefined;
+let usageCredentialCheckKey: string | null = null;
 // The last good cache each time getStaleUsageOrError serves it after it has
 // outlived a refresh, because the usage API couldn't be reached. Like a fresh
 // answer, it carries no error.
@@ -407,6 +408,7 @@ function ensureCacheDirExists(): void {
 function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_AGE): UsageData {
     const errorData: UsageData = { error };
     cachedUsageData = errorData;
+    usageCredentialCheckKey = getRecentCredentialCheckKey(now);
     usageCacheTime = now;
     usageErrorCacheMaxAge = maxAge;
     usageFetchedAtMs = undefined;
@@ -415,6 +417,7 @@ function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_A
 
 function cacheUsageData(data: UsageData, now: number, fetchedAtMs: number): UsageData {
     cachedUsageData = data;
+    usageCredentialCheckKey = getRecentCredentialCheckKey(now);
     usageCacheTime = now;
     usageErrorCacheMaxAge = LOCK_MAX_AGE;
     usageFetchedAtMs = fetchedAtMs;
@@ -684,9 +687,9 @@ export function getMacKeychainConfigDirService(): string | null {
     return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
 }
 
-export function getUsageCredentials(): UsageCredentials | null {
+function resolveUsageCredentials(): { credentials: UsageCredentials | null; fromFile: boolean } {
     if (process.platform !== 'darwin') {
-        return readUsageCredentialsFromCredentialsFile();
+        return { credentials: readUsageCredentialsFromCredentialsFile(), fromFile: true };
     }
 
     const configDirService = getMacKeychainConfigDirService();
@@ -697,74 +700,119 @@ export function getUsageCredentials(): UsageCredentials | null {
         // profile's own .credentials.json rather than surface another
         // account's usage.
         const result = readUsageCredentialsFromMacKeychainService(configDirService);
-        return result.kind === 'found' ? result.credentials : readUsageCredentialsFromCredentialsFile();
+        return result.kind === 'found'
+            ? { credentials: result.credentials, fromFile: false }
+            : { credentials: readUsageCredentialsFromCredentialsFile(), fromFile: true };
     }
 
     const defaultResult = readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE);
     if (defaultResult.kind === 'found') {
-        return defaultResult.credentials;
+        return { credentials: defaultResult.credentials, fromFile: false };
     }
 
     if (defaultResult.kind === 'timeout') {
-        return readUsageCredentialsFromCredentialsFile();
+        return { credentials: readUsageCredentialsFromCredentialsFile(), fromFile: true };
     }
 
     const accountResult = readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE);
     if (accountResult.kind === 'found') {
-        return accountResult.credentials;
+        return { credentials: accountResult.credentials, fromFile: false };
     }
 
     if (accountResult.kind === 'timeout') {
-        return readUsageCredentialsFromCredentialsFile();
+        return { credentials: readUsageCredentialsFromCredentialsFile(), fromFile: true };
     }
 
     const candidateResult = readUsageCredentialsFromMacKeychainCandidates();
     return candidateResult.kind === 'found'
-        ? candidateResult.credentials
-        : readUsageCredentialsFromCredentialsFile();
+        ? { credentials: candidateResult.credentials, fromFile: false }
+        : { credentials: readUsageCredentialsFromCredentialsFile(), fromFile: true };
+}
+
+export function getUsageCredentials(): UsageCredentials | null {
+    return resolveUsageCredentials().credentials;
 }
 
 export function getUsageToken(): string | null {
     return getUsageCredentials()?.accessToken ?? null;
 }
 
-// A lookup that finds no OAuth login (an API-key user, a logged-out profile)
-// stands for LOCK_MAX_AGE across renders, as it already does within one
-// process: on macOS the default profile's lookup can run `security` multiple
-// times, including a full keychain dump. The record names the credential stores it
-// covers, so one profile's miss never suppresses another profile's lookup.
-const NoCredentialsLockSchema = z.object({
+// Share credential checks across renders without persisting credentials. A
+// Keychain-only login change is detected within 30 seconds; file and profile
+// changes invalidate the record immediately.
+const CredentialCheckSchema = z.object({
     blockedUntil: z.number(),
-    source: z.string()
+    source: z.string(),
+    fileHash: z.string(),
+    fromFile: z.boolean(),
+    identity: z.object({
+        preferredHash: z.string(),
+        accessTokenHash: z.string()
+    }).nullable()
 });
 
 function getUsageCredentialsSource(): string {
     return JSON.stringify([getMacKeychainConfigDirService(), getClaudeConfigDir()]);
 }
 
-function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
-    const source = getUsageCredentialsSource();
+function getCredentialFileHash(): string | null {
     try {
-        const lock = parseJsonWithSchema(fs.readFileSync(getUsageFilePath('credentials.lock'), 'utf8'), NoCredentialsLockSchema);
-        // Bounded like the usage lock, so a deadline written before the clock
-        // was set back cannot stretch the backoff.
-        if (lock?.source === source && lock.blockedUntil > now && lock.blockedUntil <= now + LOCK_MAX_AGE) {
-            return null;
-        }
+        const contents = fs.readFileSync(path.join(getClaudeConfigDir(), '.credentials.json'));
+        return createHash('sha256').update(contents).digest('hex');
+    } catch (error) {
+        // An unreadable file cannot establish unchanged credentials.
+        return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : null;
+    }
+}
+
+function readRecentCredentialCheck(now: number): z.infer<typeof CredentialCheckSchema> | null {
+    try {
+        const check = parseJsonWithSchema(fs.readFileSync(getUsageFilePath('credentials.lock'), 'utf8'), CredentialCheckSchema);
+        return check?.source === getUsageCredentialsSource()
+            && check.fileHash === getCredentialFileHash()
+            && check.blockedUntil > now && check.blockedUntil <= now + LOCK_MAX_AGE
+            ? check : null;
     } catch {
-        // No recorded miss - look the credentials up
+        return null;
+    }
+}
+
+function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
+    const recent = readRecentCredentialCheck(now);
+    if (recent && !recent.identity) {
+        return null;
+    }
+    if (recent?.fromFile) {
+        // File fallback also holds off repeated failed Keychain reads.
+        return readUsageCredentialsFromCredentialsFile();
     }
 
-    const credentials = getUsageCredentials();
-    if (!credentials) {
+    const source = getUsageCredentialsSource();
+    const fileHash = getCredentialFileHash();
+    const { credentials, fromFile } = resolveUsageCredentials();
+    if (fileHash !== null) {
+        const checkFile = getUsageFilePath('credentials.lock');
+        const temporaryFile = `${checkFile}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`;
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(getUsageFilePath('credentials.lock'), JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
+            fs.writeFileSync(temporaryFile, JSON.stringify({
+                blockedUntil: now + LOCK_MAX_AGE,
+                source,
+                fileHash,
+                fromFile,
+                identity: credentials ? getUsageCacheIdentity(credentials) : null
+            }), { mode: 0o600, flag: 'wx' });
+            fs.renameSync(temporaryFile, checkFile);
         } catch {
-            // Ignore lock file errors
+            // Cache errors must not prevent credential lookup or API requests.
+        } finally {
+            try {
+                fs.unlinkSync(temporaryFile);
+            } catch {
+                // Already renamed or never created.
+            }
         }
     }
-
     return credentials;
 }
 
@@ -784,13 +832,23 @@ function dropResetWindows(data: UsageData, now: number): UsageData {
     return result;
 }
 
+function getRecentCredentialCheckKey(now: number): string | null {
+    const recent = readRecentCredentialCheck(now);
+    return recent ? JSON.stringify(recent) : null;
+}
+
 /**
  * The login whose usage the status line shows: the usage cache's fingerprint
  * of it (see getUsageCacheIdentity), or null with no OAuth login found. It
  * stays the same across access-token refreshes, and changes with /login.
  */
 export function getUsageLoginFingerprint(): string | null {
-    const credentials = getUsageCredentialsWithBackoff(Math.floor(Date.now() / 1000));
+    const now = Math.floor(Date.now() / 1000);
+    const recent = readRecentCredentialCheck(now);
+    if (recent) {
+        return recent.identity?.preferredHash ?? null;
+    }
+    const credentials = getUsageCredentialsWithBackoff(now);
     return credentials ? getUsageCacheIdentity(credentials).preferredHash : null;
 }
 
@@ -803,6 +861,29 @@ function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null, now: numb
         }
         const data = parseCachedUsageData(rawCache);
         return data ? { data: dropResetWindows(data, now), fetchedAtMs } : null;
+    } catch {
+        return null;
+    }
+}
+
+function readFreshUsageCache(identity: UsageCacheIdentity | null, now: number, requiredFields: readonly UsageDataField[]): { data: UsageData; fetchedAtMs: number } | null {
+    try {
+        const fetchedAtMs = fs.statSync(getUsageFilePath('json')).mtimeMs;
+        // Small future mtimes may come from a concurrent writer; larger clock
+        // jumps must not extend the usage cache's lifetime.
+        const age = now - Math.floor(fetchedAtMs / 1000);
+        if (Math.abs(age) >= CACHE_MAX_AGE) {
+            return null;
+        }
+        const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), identity)) {
+            return null;
+        }
+        // Fresh successful responses retain their windows. Reset-window
+        // removal belongs to the stale fallback after a failed refresh.
+        const data = parseCachedUsageData(rawCache);
+        return data && !data.error && hasRequiredUsageFields(data, requiredFields)
+            ? { data, fetchedAtMs } : null;
     } catch {
         return null;
     }
@@ -1012,8 +1093,9 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     const now = Math.floor(Date.now() / 1000);
     const requiredFields = options.requiredFields ?? [];
 
-    // Check memory cache (fast path)
-    if (cachedUsageData) {
+    const recent = readRecentCredentialCheck(now);
+    // A memory hit must belong to the same still-current credential check.
+    if (cachedUsageData && recent && JSON.stringify(recent) === usageCredentialCheckKey) {
         const cacheAge = now - usageCacheTime;
         if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
             return cachedUsageData;
@@ -1023,33 +1105,26 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
-    // Resolve the credentials up front (before lock/rate-limit checks so auth
-    // failures are not masked as timeout) and fingerprint them so the file cache
-    // can be invalidated on an account switch: a different login, written by a
-    // logout/login, no longer matches the cached fingerprint.
+    // A recent identity can answer cached reads without another Keychain call.
+    // Resolving an actual token is still required before an API request.
+    if (recent?.identity) {
+        const fresh = readFreshUsageCache(recent.identity, now, requiredFields);
+        if (fresh) {
+            return cacheUsageData(fresh.data, now, fresh.fetchedAtMs);
+        }
+        const lock = readActiveUsageLock(now);
+        if (lock) {
+            return getStaleUsageOrError(lock.error, now, recent.identity,
+                Math.max(1, lock.blockedUntil - now), requiredFields);
+        }
+    }
+
     const credentials = getUsageCredentialsWithBackoff(now);
     const token = credentials?.accessToken ?? null;
     const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
-
-    // Check file cache
-    try {
-        const stat = fs.statSync(getUsageFilePath('json'));
-        const fileAge = now - Math.floor(stat.mtimeMs / 1000);
-        // A file dated ahead of now still counts within one cache lifetime: a
-        // concurrent render may have written it after this one read the clock.
-        // Further ahead, it was written under a clock since set back, and
-        // trusting it would keep that data on screen until real time caught up.
-        if (Math.abs(fileAge) < CACHE_MAX_AGE) {
-            const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
-            const fileData = parseCachedUsageData(rawCache);
-            if (fileData && !fileData.error
-                && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
-                && hasRequiredUsageFields(fileData, requiredFields)) {
-                return cacheUsageData(fileData, now, stat.mtimeMs);
-            }
-        }
-    } catch {
-        // File doesn't exist or read error - continue to API call
+    const fresh = readFreshUsageCache(cacheIdentity, now, requiredFields);
+    if (fresh) {
+        return cacheUsageData(fresh.data, now, fresh.fetchedAtMs);
     }
 
     if (!token) {
@@ -1249,6 +1324,16 @@ function writeAccountEmailLock(tokenHash: string, blockedUntil: number): void {
  */
 export async function fetchAccountEmail(): Promise<AccountEmailResult> {
     const now = Math.floor(Date.now() / 1000);
+    const recent = readRecentCredentialCheck(now);
+    if (recent?.identity) {
+        const cached = readCachedAccountEmail(recent.identity.preferredHash);
+        if (cached !== null) {
+            return { status: 'available', email: cached };
+        }
+        if (readAccountEmailBackoff(recent.identity.preferredHash, now)) {
+            return { status: 'unavailable' };
+        }
+    }
     const credentials = getUsageCredentialsWithBackoff(now);
     if (!credentials) {
         return { status: 'no-credentials' };
