@@ -474,6 +474,58 @@ describe('ItemsEditor', () => {
         }
     });
 
+    it.each([
+        {
+            name: 'a joined emoji',
+            widget: { id: '1', type: 'custom-text', customText: '\u{1F469}‍\u{1F4BB}', merge: true },
+            row: '1. Custom Text (\u{1F469}‍\u{1F4BB}) (merged→)'
+        },
+        {
+            name: 'a flag',
+            widget: { id: '1', type: 'custom-text', customText: '\u{1F1FA}\u{1F1F8}', merge: 'no-padding' as const },
+            row: '1. Custom Text (\u{1F1FA}\u{1F1F8}) (merged-no-pad→)'
+        },
+        {
+            name: 'a skin-toned label',
+            widget: { id: '1', type: 'model', metadata: { label: '\u{1F44D}\u{1F3FD} ' }, merge: true },
+            row: '1. Model (label: "\u{1F44D}\u{1F3FD} ") (merged→)'
+        }
+    ])('shows a row with $name in full before the tags that follow it', async ({ widget, row }) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Debug mode writes whole frames; the last one starts at the last title
+        const lastFrame = () => {
+            const output = stripAnsi(stdout.getOutput());
+            return output.slice(output.lastIndexOf('Edit Line 1'));
+        };
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [widget, { id: '2', type: 'version' }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(lastFrame()).toContain('2. Version');
+            });
+            expect(lastFrame()).toContain(row);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
     it('keeps a label equal to the bar-mode default for every mode, and Tab clears it', async () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();

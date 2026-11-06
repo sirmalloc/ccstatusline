@@ -1,8 +1,11 @@
+import { render } from 'ink';
 import type { SpawnSyncReturns } from 'node:child_process';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { PassThrough } from 'node:stream';
+import stripAnsi from 'strip-ansi';
 import {
     afterEach,
     beforeEach,
@@ -12,6 +15,8 @@ import {
     vi
 } from 'vitest';
 
+import { forceInkColors } from '../../tui/__tests__/helpers/ink-colors';
+import { waitFor } from '../../tui/__tests__/helpers/wait-for-ink';
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
 import { StatusJSONSchema } from '../../types/StatusJSON';
@@ -78,6 +83,45 @@ function useTempHome(): void {
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     vi.spyOn(os, 'homedir').mockReturnValue(home);
+}
+
+class MockTtyStream extends PassThrough {
+    isTTY = true;
+    columns = 120;
+    rows = 40;
+
+    setRawMode() {
+        return this;
+    }
+
+    ref() {
+        return this;
+    }
+
+    unref() {
+        return this;
+    }
+}
+
+interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+
+function createMockStdin(): NodeJS.ReadStream {
+    return new MockTtyStream() as unknown as NodeJS.ReadStream;
+}
+
+function createMockStdout(): CapturedWriteStream {
+    const stream = new MockTtyStream();
+    const chunks: string[] = [];
+
+    stream.on('data', (chunk: Buffer | string) => {
+        chunks.push(chunk.toString());
+    });
+
+    return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        getOutput() {
+            return chunks.join('');
+        }
+    });
 }
 
 describe('CustomCommandWidget', () => {
@@ -292,6 +336,109 @@ describe('CustomCommandWidget', () => {
 
         it('counts a tab as one column, the space the renderer prints for it', () => {
             expect(renderWith('0\t3 ahead/behind', { maxWidth: 10 })).toBe('0\t3 ahe...');
+        });
+    });
+
+    describe('command editor', () => {
+        function renderCommandEditor() {
+            const stdin = createMockStdin();
+            const stdout = createMockStdout();
+            const stderr = createMockStdout();
+            const onComplete = vi.fn();
+            const instance = render(
+                widget.renderEditor({
+                    widget: { id: 'test', type: 'custom-command' },
+                    onComplete,
+                    onCancel: vi.fn(),
+                    action: 'edit-command'
+                }),
+                {
+                    stdin,
+                    stdout,
+                    stderr,
+                    debug: true,
+                    exitOnCtrlC: false,
+                    patchConsole: false
+                }
+            );
+
+            return {
+                stdin,
+                onComplete,
+                output: () => stripAnsi(stdout.getOutput()),
+                rawOutput: () => stdout.getOutput(),
+                cleanup: () => {
+                    instance.unmount();
+                    instance.cleanup();
+                    stdin.destroy();
+                    stdout.destroy();
+                    stderr.destroy();
+                }
+            };
+        }
+
+        const LEFT = '\x1b[D';
+        const RIGHT = '\x1b[C';
+
+        it.each([
+            ['Backspace deletes', ['\x7f'], 'echo '],
+            ['Left steps over', [LEFT, 'x'], 'echo x\u{1F680}'],
+            ['Right steps over', [LEFT, LEFT, RIGHT, 'x'], 'echo x\u{1F680}'],
+            ['Delete deletes', [LEFT, '\x1b[3~'], 'echo ']
+        ])('%s an emoji whole', async (_case, keys, expected) => {
+            const editor = renderCommandEditor();
+
+            try {
+                await waitFor(() => {
+                    expect(editor.output()).toContain('Enter command path:');
+                });
+                editor.stdin.write('echo \u{1F680}');
+                await waitFor(() => {
+                    expect(editor.output()).toContain('Enter command path: echo \u{1F680}');
+                });
+
+                // Each key moves the cursor or changes the command, so each
+                // waits for the redraw before the next one goes out
+                for (const key of keys) {
+                    const drawn = editor.output().length;
+                    editor.stdin.write(key);
+                    await waitFor(() => {
+                        expect(editor.output().length).toBeGreaterThan(drawn);
+                    });
+                }
+                editor.stdin.write('\r');
+                await waitFor(() => {
+                    expect(editor.onComplete).toHaveBeenCalledTimes(1);
+                });
+                expect(editor.onComplete.mock.calls[0]?.[0]).toMatchObject({ commandPath: expected });
+            } finally {
+                editor.cleanup();
+            }
+        });
+
+        it('draws the whole emoji under the cursor', async () => {
+            // Without colors the cursor cell has no codes around it, so a
+            // split emoji would rejoin in the frame and look whole
+            const colors = await forceInkColors();
+            const editor = renderCommandEditor();
+
+            try {
+                await waitFor(() => {
+                    expect(editor.output()).toContain('Enter command path:');
+                });
+                editor.stdin.write('echo \u{1F680}');
+                await waitFor(() => {
+                    expect(editor.output()).toContain('Enter command path: echo \u{1F680}');
+                });
+                editor.stdin.write(LEFT);
+                await waitFor(() => {
+                    expect(editor.rawOutput()).toContain(`echo ${colors.chalk.bgGray.black('\u{1F680}')}`);
+                });
+                expect(editor.rawOutput()).not.toContain('\uFFFD');
+            } finally {
+                editor.cleanup();
+                colors.restore();
+            }
         });
     });
 });

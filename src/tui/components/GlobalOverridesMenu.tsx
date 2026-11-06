@@ -463,8 +463,12 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
 
                     <Box>
                         <Text>  Default Padding: </Text>
-                        <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
-                        <Text dimColor> - Press (p) to edit</Text>
+                        {/* One Text, because Ink measures a toned or joined emoji as
+                            several columns and a sibling Text would overwrite its end */}
+                        <Text>
+                            <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
+                            <Text dimColor> - Press (p) to edit</Text>
+                        </Text>
                     </Box>
 
                     <Box>
@@ -535,10 +539,11 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         {isPowerlineEnabled ? (
                             <Text dimColor>[disabled - Powerline active]</Text>
                         ) : (
-                            <>
+                            // One Text, as for Default Padding
+                            <Text>
                                 <Text color='cyan'>{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
                                 <Text dimColor> - Press (s) to edit</Text>
-                            </>
+                            </Text>
                         )}
                     </Box>
 

@@ -917,7 +917,7 @@ export function calculateMaxWidthsFromPreRendered(
     const maxWidths: number[] = [];
     const defaultPadding = settings.defaultPadding ?? '';
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(defaultPadding, settings.defaultPaddingSide);
-    const paddingPairLength = sideLeadingPadding.length + sideTrailingPadding.length;
+    const paddingPairLength = getVisibleWidth(sideLeadingPadding) + getVisibleWidth(sideTrailingPadding);
 
     for (const preRenderedLine of preRenderedLines) {
         const isSeparatorBoundary = (entry: PreRenderedWidget | undefined): boolean => (
