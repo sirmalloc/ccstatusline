@@ -29,6 +29,11 @@ describe('DailyCostRateWidget', () => {
         expect(render({ ...item, rawValue: true }, context)).toBe('$6.20/hr');
     });
 
+    it('offers its label to the label editor, and draws an edited one', () => {
+        expect(new DailyCostRateWidget().getLabelPrefix()).toBe('Rate Today: ');
+        expect(render({ ...item, metadata: { label: 'Today: ' } }, context)).toBe('Today: $6.20/hr');
+    });
+
     it('divides by the time sessions were running when clock time is on', () => {
         expect(render(clockItem, context)).toBe('Rate Today: $3.10/hr');
     });

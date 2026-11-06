@@ -53,6 +53,7 @@ export class DailyCostRateWidget implements Widget {
     getDescription(): string { return 'Shows today\'s cost per hour across all of today\'s Claude Code sessions, from Claude Code\'s costs or billed spend'; }
     getDisplayName(): string { return 'Daily Cost Rate'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const time = isClockTime(item) ? 'clock time' : 'active time';
