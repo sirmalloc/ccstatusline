@@ -1049,6 +1049,25 @@ describe('jsonl transcript metrics', () => {
         });
     }, 30000);
 
+    it('keeps automatic titles when skipping lines no collector reads', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'automatic-title.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({ type: 'user', message: { content: 'hello' } }),
+            JSON.stringify({ type: 'ai-title', aiTitle: 'Automatic Title' }),
+            JSON.stringify({ type: 'user', message: { content: 'more' } })
+        ].join('\n'));
+
+        const automatic = await getTranscriptAnalysis(transcriptPath, { includeSessionName: true });
+        expect(automatic.sessionName).toBe('Automatic Title');
+
+        fs.appendFileSync(transcriptPath, `\n${JSON.stringify({ type: 'custom-title', customTitle: 'Chosen Title' })}`);
+        const custom = await getTranscriptAnalysis(transcriptPath, { includeSessionName: true });
+        expect(custom.sessionName).toBe('Chosen Title');
+    });
+
     it('collects configured transcript metrics in one combined analysis', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);

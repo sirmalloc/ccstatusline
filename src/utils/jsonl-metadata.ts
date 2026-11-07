@@ -13,9 +13,11 @@ export interface ResolvedThinkingEffort {
     known: boolean;
 }
 
-const MODEL_STDOUT_PREFIX = '<local-command-stdout>Set model to ';
+/** Shared start of both stdout prefixes; transcript scans use it to skip unrelated records. */
+export const THINKING_EFFORT_STDOUT_MARKER = '<local-command-stdout>Set ';
+const MODEL_STDOUT_PREFIX = `${THINKING_EFFORT_STDOUT_MARKER}model to `;
 const MODEL_STDOUT_EFFORT_REGEX = /^<local-command-stdout>Set model to[\s\S]*? with ([a-zA-Z0-9-]+) effort<\/local-command-stdout>$/i;
-const EFFORT_STDOUT_PREFIX = '<local-command-stdout>Set effort level to ';
+const EFFORT_STDOUT_PREFIX = `${THINKING_EFFORT_STDOUT_MARKER}effort level to `;
 const EFFORT_STDOUT_REGEX = /^<local-command-stdout>Set effort level to ([a-zA-Z0-9-]+)\b/i;
 const UNKNOWN_EFFORT_PATTERN = /^(?=.*[a-z0-9])[a-z0-9-]{2,20}$/;
 
