@@ -18,6 +18,7 @@ import {
     loadSettings,
     saveSettings
 } from './utils/config';
+import { prefetchCustomCommandsIfNeeded } from './utils/custom-command';
 import {
     GIT_REVIEW_REFRESH_FLAG,
     refreshGitReviewCacheFromCli
@@ -151,11 +152,20 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
             includeSessionName: hasSessionNameWidget
         })
         : Promise.resolve(null);
-    const [transcriptAnalysis, usageData, claudeStatusData, accountEmail] = await Promise.all([
+    const terminalWidth = getTerminalWidth({
+        sessionId: data.session_id,
+        ttlSeconds: settings.terminalWidthCacheTtlSeconds
+    });
+    const [transcriptAnalysis, usageData, claudeStatusData, accountEmail, customCommandResults] = await Promise.all([
         transcriptAnalysisPromise,
         prefetchUsageDataIfNeeded(lines, data),
         prefetchClaudeStatusIfNeeded(lines),
-        hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
+        hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined),
+        prefetchCustomCommandsIfNeeded(lines, {
+            data,
+            terminalWidth,
+            customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds
+        })
     ]);
     const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data, usageData));
 
@@ -193,14 +203,12 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
             : undefined,
         skillsMetrics,
         compactionData,
-        terminalWidth: getTerminalWidth({
-            sessionId: data.session_id,
-            ttlSeconds: settings.terminalWidthCacheTtlSeconds
-        }),
+        terminalWidth,
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
         customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds,
+        customCommandResults,
         gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 
