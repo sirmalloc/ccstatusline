@@ -1123,13 +1123,13 @@ describe('git-review-cache', () => {
             ...harness.deps,
             runGit: (command) => {
                 runGitCalls.push(command);
-                return command === 'symbolic-ref --short HEAD' ? 'feature/cache-a' : null;
+                return command === 'symbolic-ref HEAD' ? 'refs/heads/feature/cache-a' : null;
             }
         };
 
         expect(getCachedGitReviewData('/tmp/repo', { context: { data: { cwd: '/tmp/repo' } } }, deps)).toBeNull();
 
-        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD']);
+        expect(runGitCalls).toEqual(['symbolic-ref HEAD']);
         expect(harness.execCalls.filter(call => call.cmd === 'git')).toEqual([]);
         // Same cache file (and so the same lock the refresh child releases)
         // as the uncached lookup.
@@ -1152,7 +1152,31 @@ describe('git-review-cache', () => {
 
         getCachedGitReviewData('/tmp/repo', { context: {} }, deps);
 
-        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD', 'rev-parse --short HEAD']);
+        expect(runGitCalls).toEqual(['symbolic-ref HEAD', 'rev-parse --short HEAD']);
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
+    });
+
+    // The refresh child writes the cache file of the branch's own name, so the
+    // render must read that one, not the file of "heads/<branch>"
+    it('keys the cache through runGit by the branch\'s own name when a tag has the same name', () => {
+        const harness = createHarness();
+        harness.addTag('feature/cache-a');
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                // As git prints it when a tag shadows the branch
+                if (command === 'symbolic-ref HEAD')
+                    return 'refs/heads/feature/cache-a';
+                if (command === 'symbolic-ref --short HEAD')
+                    return 'heads/feature/cache-a';
+                return null;
+            }
+        };
+
+        getCachedGitReviewData('/tmp/repo', { context: { data: { cwd: '/tmp/repo' } } }, deps);
+
         expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
     });
 });

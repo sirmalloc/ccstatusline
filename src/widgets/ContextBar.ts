@@ -18,16 +18,17 @@ import {
 import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
+import { makeLineProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { makeSliderBar } from './shared/usage-display';
 
 const LABEL = 'Context: ';
 
-type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only';
+type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only' | 'line';
 
 function getDisplayMode(item: WidgetItem): DisplayMode {
     const mode = item.metadata?.display;
-    if (mode === 'progress' || mode === 'slider' || mode === 'slider-only') {
+    if (mode === 'progress' || mode === 'slider' || mode === 'slider-only' || mode === 'line') {
         return mode;
     }
     return 'progress-short';
@@ -54,6 +55,8 @@ export class ContextBarWidget implements Widget {
             modifiers.push('short bar');
         } else if (mode === 'slider-only') {
             modifiers.push('short bar only');
+        } else if (mode === 'line') {
+            modifiers.push('line bar');
         }
 
         return {
@@ -74,7 +77,9 @@ export class ContextBarWidget implements Widget {
                 ? 'slider'
                 : currentMode === 'slider'
                     ? 'slider-only'
-                    : 'progress-short';
+                    : currentMode === 'slider-only'
+                        ? 'line'
+                        : 'progress-short';
 
         return {
             ...item,
@@ -100,7 +105,8 @@ export class ContextBarWidget implements Widget {
                 return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
             }
             const barWidth = displayMode === 'progress' ? 32 : 16;
-            const previewDisplay = `${makeUsageProgressBar(25, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
+            const previewBar = displayMode === 'line' ? makeLineProgressBar(25) : makeUsageProgressBar(25, barWidth);
+            const previewDisplay = `${previewBar} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), previewDisplay);
         }
 
@@ -131,7 +137,8 @@ export class ContextBarWidget implements Widget {
         }
 
         const barWidth = displayMode === 'progress' ? 32 : 16;
-        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
+        const bar = displayMode === 'line' ? makeLineProgressBar(clampedPercent) : makeUsageProgressBar(clampedPercent, barWidth);
+        const display = `${bar} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
 
         return formatRawOrLabeledValue(item, this.getLabelPrefix(), display);
     }
