@@ -101,3 +101,4 @@ export { CacheMissesWidget } from './CacheMisses';
 export { LastCacheMissWidget } from './LastCacheMiss';
 export { CacheMissTokensWidget } from './CacheMissTokens';
 export { CacheIfColdWidget } from './CacheIfCold';
+export { RCloneQueueWidget } from './RCloneQueue';
