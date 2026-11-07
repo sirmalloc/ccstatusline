@@ -25,7 +25,7 @@ export interface GitFileStatusCounts {
     untracked: number;
 }
 
-interface GitRepoMetadata {
+export interface GitRepoMetadata {
     cachePath: string;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
@@ -53,11 +53,12 @@ const GIT_CACHE_SCHEMA_VERSION = 1 as const;
 // and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
-// In-process cache keeps cwd in the key; the persistent cache uses one file
-// per (repo, cwd) pair, stores cwd once at the file level and keys entries by
-// command. Per-cwd files matter because some outputs are cwd-scoped (e.g.
-// `ls-files --unmerged`) and because sessions in the same repo at different
-// cwds (root vs a subdirectory) would otherwise evict each other every render.
+// In-process cache keeps the tool and cwd in the key; the persistent cache
+// uses one file per (repo, cwd) pair, stores cwd once at the file level and
+// keys entries by command. Per-cwd files matter because some outputs are
+// cwd-scoped (e.g. `ls-files --unmerged`) and because sessions in the same repo
+// at different cwds (root vs a subdirectory) would otherwise evict each other
+// every render.
 const gitCommandCache = new Map<string, GitCacheEntry>();
 const filterOverrideCache = new Map<string, string[] | null>();
 
@@ -76,16 +77,16 @@ function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
 }
 
-function getCachePath(gitDir: string, cwd: string): string {
+export function getCommandCachePath(tool: 'git' | 'jj', repoDir: string, cwd: string): string {
     const repoHash = createHash('sha256')
-        .update(`${gitDir}\0${cwd}`)
+        .update(`${repoDir}\0${cwd}`)
         .digest('hex')
         .slice(0, 16);
 
-    return path.join(getCacheDir(), 'git-cache', `git-${repoHash}.json`);
+    return path.join(getCacheDir(), `${tool}-cache`, `${tool}-${repoHash}.json`);
 }
 
-function getMtimeMs(filePath: string): number | null {
+export function getMtimeMs(filePath: string): number | null {
     try {
         return fs.statSync(filePath).mtimeMs;
     } catch {
@@ -93,7 +94,7 @@ function getMtimeMs(filePath: string): number | null {
     }
 }
 
-function normalizeDirectory(candidate: string): string | null {
+export function normalizeDirectory(candidate: string): string | null {
     try {
         const resolved = path.resolve(candidate);
         const stats = fs.statSync(resolved);
@@ -291,7 +292,7 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     }
 
     return {
-        cachePath: getCachePath(gitDir, cwd),
+        cachePath: getCommandCachePath('git', gitDir, cwd),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
         indexMtimeMs: getMtimeMs(path.join(gitDir, 'index'))
     };
@@ -343,7 +344,7 @@ function isDefinitelyOutsideGitRepository(cwd: string): boolean {
     }
 }
 
-function getGitCacheTtlMs(context: RenderContext): number {
+export function getGitCacheTtlMs(context: RenderContext): number {
     const ttlSeconds = context.gitCacheTtlSeconds;
     if (typeof ttlSeconds !== 'number' || !Number.isFinite(ttlSeconds)) {
         return DEFAULT_GIT_CACHE_TTL_SECONDS * 1000;
@@ -520,11 +521,9 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
 
 function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand: string | undefined, encoding: 'utf8' | 'latin1'): string | null {
     const cwd = resolveGitCwd(context);
-    const commandToken = cacheCommand ?? args.join('\0');
     // Byte-preserving output must never reuse an older, lossy UTF-8 entry.
+    const commandToken = cacheCommand ?? args.join('\0');
     const cacheToken = encoding === 'utf8' ? commandToken : `${encoding}\0${commandToken}`;
-    const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
-    const persistentCacheKey = cacheToken;
     const metadata = getGitRepoMetadata(cwd);
     if (!metadata && cwd && isDefinitelyOutsideGitRepository(cwd)) {
         // Outside any repository git would only exit 128; nothing to cache
@@ -532,7 +531,43 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
         return null;
     }
 
-    const ttlMs = getGitCacheTtlMs(context);
+    return runCachedCommand({
+        tool: 'git',
+        exec: () => execGit(args, cwd, encoding),
+        cacheToken,
+        cwd,
+        metadata,
+        ttlMs: getGitCacheTtlMs(context),
+        trim: encoding === 'utf8'
+    });
+}
+
+export interface CachedCommandOptions {
+    tool: 'git' | 'jj';
+    // Runs the command and returns its stdout; throws when it fails. Each tool
+    // brings its own executable resolution, hardening and timeout.
+    exec: () => string;
+    cacheToken: string;
+    cwd: string | undefined;
+    metadata: GitRepoMetadata | null;
+    ttlMs: number;
+    allowEmpty?: boolean;
+    // Strip trailing whitespace from the output (default). Byte-preserving
+    // callers keep it, since a trailing byte may be part of the data.
+    trim?: boolean;
+    // For commands that can themselves change the repo state the metadata
+    // tracks (a jj working-copy snapshot), re-read it after the command so the
+    // entry is keyed to the state its output describes.
+    refreshMetadata?: () => GitRepoMetadata | null;
+}
+
+// Runs a VCS command through the in-process and persistent caches shared by
+// the git and jj helpers. Failures are cached as null so a missing binary or a
+// non-repo directory does not respawn the command on every widget.
+export function runCachedCommand(options: CachedCommandOptions): string | null {
+    const { tool, exec, cacheToken, cwd, metadata, ttlMs, allowEmpty = false, trim = true, refreshMetadata } = options;
+    const memoryCacheKey = `${tool === 'git' ? '' : `${tool}|`}${cacheToken}|${cwd ?? ''}`;
+    const persistentCacheKey = cacheToken;
     const now = Date.now();
 
     // Check cache first
@@ -548,10 +583,14 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
     }
 
     let result: string | null;
+    let entryMetadata = metadata;
     try {
-        const rawOutput = execGit(args, cwd, encoding);
-        const output = encoding === 'utf8' ? rawOutput.trimEnd() : rawOutput;
-        result = output.length > 0 ? output : null;
+        const rawOutput = exec();
+        const output = trim ? rawOutput.trimEnd() : rawOutput;
+        result = (allowEmpty || output.length > 0) ? output : null;
+        if (refreshMetadata) {
+            entryMetadata = refreshMetadata();
+        }
     } catch {
         result = null;
     }
@@ -559,9 +598,9 @@ function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand:
     // Stamped after the run, so a command slower than the TTL (status in a
     // large repository, or one cut off by the timeout) still gets the full TTL
     // of reuse rather than expiring the moment it returns.
-    const entry = createCacheEntry(result, metadata, Date.now());
+    const entry = createCacheEntry(result, entryMetadata, Date.now());
     gitCommandCache.set(memoryCacheKey, entry);
-    writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
+    writePersistentCacheEntry(entryMetadata, persistentCacheKey, cwd, entry);
     return result;
 }
 
