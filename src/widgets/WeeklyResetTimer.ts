@@ -10,10 +10,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    formatPercent,
-    resolveNumberFormat
-} from '../utils/number-format';
+import { resolveNumberFormat } from '../utils/number-format';
 import {
     formatUsageDuration,
     formatUsageResetAt,
@@ -31,7 +28,6 @@ import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
-import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     TIMEZONE_EDITOR_ACTION,
@@ -40,10 +36,10 @@ import {
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
+    formatUsageBar,
     getUsageDisplayMode,
     getUsageLocale,
     getUsageLocaleModifier,
-    getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
     getUsageTimezoneModifier,
@@ -54,7 +50,6 @@ import {
     isUsageProgressMode,
     isUsageSliderMode,
     isUsageWeekdayEnabled,
-    makeSliderBar,
     toggleUsageCompact,
     toggleUsageDateMode,
     toggleUsageHourFormat,
@@ -91,6 +86,8 @@ function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
         modifiers.push('short bar');
     } else if (displayMode === 'slider-only') {
         modifiers.push('short bar only');
+    } else if (displayMode === 'line') {
+        modifiers.push('line bar');
     }
 
     if (isUsageInverted(item)) {
@@ -184,7 +181,6 @@ export class WeeklyResetTimerWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
         const dateMode = isUsageDateMode(item);
@@ -194,18 +190,9 @@ export class WeeklyResetTimerWidget implements Widget {
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
 
-            if (isUsageProgressMode(displayMode)) {
-                const barWidth = getUsageProgressBarWidth(displayMode);
-                const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(previewPercent, format)}`);
-            }
-
-            if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(previewPercent);
-                const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${formatPercent(previewPercent, format)}`
-                    : slider;
-                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
+            const bar = formatUsageBar(item, previewPercent, format);
+            if (bar !== null) {
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
             }
 
             if (dateMode) {
@@ -242,20 +229,9 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(item), USAGE_TIMER_LOADING_MESSAGE);
         }
 
-        if (isUsageProgressMode(displayMode)) {
-            const barWidth = getUsageProgressBarWidth(displayMode);
-            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const progressBar = makeTimerProgressBar(percent, barWidth);
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(percent, format)}`);
-        }
-
-        if (isUsageSliderMode(displayMode)) {
-            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const slider = makeSliderBar(percent);
-            const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${formatPercent(percent, format)}`
-                : slider;
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
+        const bar = formatUsageBar(item, inverted ? window.remainingPercent : window.elapsedPercent, format);
+        if (bar !== null) {
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), bar);
         }
 
         if (dateMode) {

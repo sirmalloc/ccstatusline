@@ -30,7 +30,11 @@ describe('buildIdeFileUrl', () => {
         expect(buildIdeFileUrl('\\\\server\\share\\my repo', 'cursor')).toBe('cursor://file//server/share/my%20repo');
     });
 
-    it.each(['vscode', 'cursor'] as const)('preserves POSIX backslashes and normalizes Windows separators for %s', (mode) => {
+    it('builds Zed links that Zed opens through its zed://file handler', () => {
+        expect(buildIdeFileUrl('/Users/example/project', 'zed')).toBe('zed://file/Users/example/project');
+    });
+
+    it.each(['vscode', 'cursor', 'zed'] as const)('preserves POSIX backslashes and normalizes Windows separators for %s', (mode) => {
         expect(buildIdeFileUrl('/tmp/a\\b\\c', mode)).toBe(`${mode}://file/tmp/a%5Cb%5Cc`);
         expect(buildIdeFileUrl('C:\\Work\\my repo', mode)).toBe(`${mode}://file/C:/Work/my%20repo`);
         expect(buildIdeFileUrl('\\\\server\\share\\my repo', mode)).toBe(`${mode}://file//server/share/my%20repo`);

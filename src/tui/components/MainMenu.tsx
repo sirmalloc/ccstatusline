@@ -112,11 +112,10 @@ export function buildMainMenuItems(
                 'Set global padding, separators, and color overrides that apply to all widgets'
         },
         {
+            // Open before an install too: only its refresh interval needs one
             label: '🔧 Configure Status Line',
-            sublabel: isClaudeInstalled ? undefined : '(install first)',
-            disabled: !isClaudeInstalled,
             value: 'configureStatusLine',
-            description: 'Configure Claude Code status line settings like refresh interval'
+            description: 'Set ccstatusline\'s cache TTLs, and Claude Code\'s refresh interval once ccstatusline is installed'
         },
         '-',
         {
@@ -219,6 +218,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
 
+            {/* initialSelection is the highlighted row's index. Saving swaps Save &
+                Exit and Exit without saving for Exit, which moves the entries
+                below, and the highlight must stay on its entry, not its row. */}
             <List
                 items={menuItems}
                 marginTop={1}
@@ -231,6 +233,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 }}
                 initialSelection={initialSelection}
                 onSelectionChange={(_, index) => onSelectionChange?.(index)}
+                keepHighlightOnItemsChange={true}
             />
         </Box>
     );
