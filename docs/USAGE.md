@@ -92,6 +92,10 @@ The exact live compaction threshold is not included in the status payload. This 
 
 Status lines use the full terminal width minus 5 columns of padding: longer lines are truncated there, and flex separators right-align against it. Outside fullscreen rendering, Claude Code shows notifications such as the context-low warning on the same row, and on narrow terminals they may cut the status line short.
 
+### Wrap to Fit
+
+Turn on **Wrap to Fit** under **Terminal Options** (or set `"wrapToFit": true` in `settings.json`) to move widgets onto extra rows when a line is wider than the terminal, instead of truncating it. Nothing is hidden, and lines that already fit render as before. Each row takes as many widgets as fit; merged widgets stay together, and a separator at the start of a new row is dropped. With Powerline auto-alignment on, every widget gets the same width (the widest one), so the wrapped rows form a grid. Widgets excluded from auto-alignment keep their own width. Wrapping applies to the status line in Claude Code, not the TUI preview.
+
 Settings files from earlier versions may still carry `flexMode` and `compactThreshold`, from the removed **Full width minus 40** and **Full width until compact** modes. They are ignored, and the next save from the TUI removes them.
 
 Flex separators expand against the detected width in both regular and Powerline rendering. If width detection is unavailable, they render like normal separators until a terminal width is available.

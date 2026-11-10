@@ -78,6 +78,10 @@ export const SettingsSchema = z.object({
     terminalWidthCacheTtlSeconds: z.number().min(0).max(300).default(5),
     customCommandCacheTtlSeconds: z.number().min(0).max(60).default(0),
     minimalistMode: z.boolean().default(false),
+    // When a line is wider than the terminal, move widgets onto extra rows
+    // instead of truncating it. With powerline auto-align, every widget gets
+    // the same width so the rows form a grid.
+    wrapToFit: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,
         separators: ['\uE0B0'],

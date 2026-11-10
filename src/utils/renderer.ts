@@ -98,7 +98,7 @@ function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefin
 // around the status line.
 const RESERVED_COLUMNS = 5;
 
-function resolveEffectiveTerminalWidth(detectedWidth: number | null): number | null {
+export function resolveEffectiveTerminalWidth(detectedWidth: number | null): number | null {
     if (!detectedWidth) {
         return null;
     }

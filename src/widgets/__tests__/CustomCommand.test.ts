@@ -139,6 +139,7 @@ describe('CustomCommandWidget', () => {
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 0,
         minimalistMode: false,
+        wrapToFit: false,
         powerline: {
             enabled: false,
             separators: [],

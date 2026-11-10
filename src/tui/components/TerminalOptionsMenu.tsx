@@ -19,7 +19,7 @@ import {
     type ListEntry
 } from './List';
 
-type TerminalOptionsValue = 'colorLevel';
+type TerminalOptionsValue = 'colorLevel' | 'wrapToFit';
 
 export function getNextColorLevel(level: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
     return ((level + 1) % 4) as 0 | 1 | 2 | 3;
@@ -36,7 +36,8 @@ export function shouldWarnOnColorLevelChange(
 }
 
 export function buildTerminalOptionsItems(
-    colorLevel: 0 | 1 | 2 | 3
+    colorLevel: 0 | 1 | 2 | 3,
+    wrapToFit = false
 ): ListEntry<TerminalOptionsValue>[] {
     return [
         {
@@ -49,6 +50,17 @@ export function buildTerminalOptionsItems(
                 '• 256 Color: Extended color palette (256 colors)',
                 '• Basic: Standard 16-color terminal palette',
                 '• No Color: Disables all color output'
+            ].join('\n')
+        },
+        {
+            label: '↩ Wrap to Fit',
+            sublabel: wrapToFit ? '(on)' : '(off)',
+            value: 'wrapToFit',
+            description: [
+                'When a line is wider than the terminal, move widgets onto extra rows',
+                'instead of cutting the line off.',
+                '• With Powerline auto-align on, every widget gets the same width,',
+                '  so the rows form a grid'
             ].join('\n')
         }
     ];
@@ -71,6 +83,14 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
     const handleSelect = (value: TerminalOptionsValue | 'back') => {
         if (value === 'back') {
             onBack();
+            return;
+        }
+
+        if (value === 'wrapToFit') {
+            onUpdate({
+                ...settings,
+                wrapToFit: !settings.wrapToFit
+            });
             return;
         }
 
@@ -145,7 +165,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
                     <Text color='white'>Configure terminal-specific settings for optimal display</Text>
                     <List
                         marginTop={1}
-                        items={buildTerminalOptionsItems(settings.colorLevel)}
+                        items={buildTerminalOptionsItems(settings.colorLevel, settings.wrapToFit)}
                         onSelect={handleSelect}
                         showBackButton={true}
                     />
