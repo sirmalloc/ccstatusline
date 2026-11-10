@@ -48,9 +48,9 @@ const TOGGLE_COMPACT_ACTION = 'toggle-compact';
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
 // Whole minutes (rounded up) instead of minutes and seconds, for layouts that
-// only need a glance and should not change every second.
+// only need a glance and should not change every second. It is the third step
+// of the short time key (`4m 52s` -> `4m52s` -> `5m`) and wins over compact.
 const MINUTES_METADATA_KEY = 'minutes';
-const TOGGLE_MINUTES_ACTION = 'toggle-minutes';
 
 // While a turn is in flight the cache is being refreshed, so it can render as
 // Fresh with the full TTL instead of the separate HOT state.
@@ -259,6 +259,19 @@ function toggleFlag(item: WidgetItem, key: string): WidgetItem {
     return { ...item, metadata: { ...item.metadata, [key]: 'true' } };
 }
 
+// Short time cycles full -> compact -> minutes -> full. The compact step keeps
+// toggleMetadataFlag's on/off values so it matches the reset timers' toggle.
+function cycleTimeFormat(item: WidgetItem): WidgetItem {
+    if (isMetadataFlagEnabled(item, MINUTES_METADATA_KEY)) {
+        return removeMetadataKeys(item, [MINUTES_METADATA_KEY]);
+    }
+    const toggled = toggleMetadataFlag(item, COMPACT_METADATA_KEY);
+    if (isMetadataFlagEnabled(toggled, COMPACT_METADATA_KEY)) {
+        return toggled;
+    }
+    return { ...toggled, metadata: { ...toggled.metadata, [MINUTES_METADATA_KEY]: 'true' } };
+}
+
 function formatTtlLabel(ttlSeconds: number): string {
     return ttlSeconds % 3600 === 0 ? `${ttlSeconds / 3600}h` : `${Math.round(ttlSeconds / 60)}m`;
 }
@@ -353,11 +366,10 @@ export class CacheTimerWidget implements Widget {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
         }
 
-        if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
-            modifiers.push('compact');
-        }
         if (isMetadataFlagEnabled(item, MINUTES_METADATA_KEY)) {
             modifiers.push('minutes');
+        } else if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
+            modifiers.push('compact');
         }
         if (isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
             modifiers.push('no HOT');
@@ -378,11 +390,7 @@ export class CacheTimerWidget implements Widget {
         }
 
         if (action === TOGGLE_COMPACT_ACTION) {
-            return toggleMetadataFlag(item, COMPACT_METADATA_KEY);
-        }
-
-        if (action === TOGGLE_MINUTES_ACTION) {
-            return toggleFlag(item, MINUTES_METADATA_KEY);
+            return cycleTimeFormat(item);
         }
 
         if (action === TOGGLE_WORKING_FRESH_ACTION) {
@@ -438,7 +446,6 @@ export class CacheTimerWidget implements Widget {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
             { key: 's', label: '(s)hort time', action: TOGGLE_COMPACT_ACTION },
-            { key: 'o', label: 'minutes (o)nly', action: TOGGLE_MINUTES_ACTION },
             { key: 'w', label: '(w)orking shows fresh', action: TOGGLE_WORKING_FRESH_ACTION },
             getSymbolKeybind()
         ];

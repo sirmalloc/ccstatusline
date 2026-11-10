@@ -294,7 +294,6 @@ describe('CacheTimer widget', () => {
         expect(widget.getCustomKeybinds()).toEqual([
             { key: 't', label: '(t)tl', action: 'toggle-ttl' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
-            { key: 'o', label: 'minutes (o)nly', action: 'toggle-minutes' },
             { key: 'w', label: '(w)orking shows fresh', action: 'toggle-working-fresh' },
             { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
         ]);
@@ -405,15 +404,33 @@ describe('CacheTimer widget', () => {
         });
     });
 
-    it.each([
-        ['toggle-minutes', 'minutes', '(minutes)'],
-        ['toggle-working-fresh', 'workingFresh', '(no HOT)']
-    ])('%s toggles its flag, annotates the editor, and removes the key when off', (action, key, modifierText) => {
+    it('cycles short time through compact, minutes and back to full', () => {
         const widget = new CacheTimerWidget();
-        const on = widget.handleEditorAction(action, item()) ?? item();
-        expect(on.metadata?.[key]).toBe('true');
-        expect(widget.getEditorDisplay(on).modifierText).toBe(modifierText);
-        expect(widget.handleEditorAction(action, on)?.metadata?.[key]).toBeUndefined();
+        const context = transcriptContext([assistant(10)]);
+        const compact = widget.handleEditorAction('toggle-compact', item()) ?? item();
+        const minutes = widget.handleEditorAction('toggle-compact', compact) ?? item();
+        const full = widget.handleEditorAction('toggle-compact', minutes) ?? item();
+
+        expect(widget.render(compact, context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 4m\d+s$/);
+        expect(widget.getEditorDisplay(minutes).modifierText).toBe('(minutes)');
+        expect(widget.render(minutes, context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 5m');
+        expect(full.metadata?.minutes).toBeUndefined();
+        expect(widget.render(full, context, DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 4m \d+s$/);
+    });
+
+    it('prefers minutes over compact when both are set by hand', () => {
+        const widget = new CacheTimerWidget();
+        const both = item({ metadata: { compact: 'true', minutes: 'true' } });
+        expect(widget.render(both, transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toBe('Cache: 🟢 5m');
+        expect(widget.getEditorDisplay(both).modifierText).toBe('(minutes)');
+    });
+
+    it('toggle-working-fresh adds its flag, annotates the editor, and removes the key when off', () => {
+        const widget = new CacheTimerWidget();
+        const on = widget.handleEditorAction('toggle-working-fresh', item()) ?? item();
+        expect(on.metadata?.workingFresh).toBe('true');
+        expect(widget.getEditorDisplay(on).modifierText).toBe('(no HOT)');
+        expect(widget.handleEditorAction('toggle-working-fresh', on)?.metadata?.workingFresh).toBeUndefined();
     });
 
     describe('working shows fresh', () => {
