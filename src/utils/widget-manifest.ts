@@ -84,6 +84,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'sandbox-status', create: () => new widgets.SandboxStatusWidget() },
     { type: 'session-name', create: () => new widgets.SessionNameWidget() },
     { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
+    { type: 'docker-containers', create: () => new widgets.DockerContainersWidget() },
     { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
     { type: 'block-forecast', create: () => new widgets.BlockForecastWidget() },
     { type: 'block-limit-timer', create: () => new widgets.BlockLimitTimerWidget() },
