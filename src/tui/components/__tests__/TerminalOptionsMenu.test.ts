@@ -29,12 +29,17 @@ describe('TerminalOptionsMenu helpers', () => {
     it('builds terminal options list items with the current color level label', () => {
         const items = buildTerminalOptionsItems(2);
 
-        expect(items).toHaveLength(1);
+        expect(items).toHaveLength(2);
         expect(items[0]).toMatchObject({
             label: '▓ Color Level',
             sublabel: '(256 Color (default))',
             value: 'colorLevel'
         });
         expect(items[0]?.description).toContain('Truecolor');
+    });
+
+    it('shows whether wrap to fit is on', () => {
+        expect(buildTerminalOptionsItems(2)[1]).toMatchObject({ value: 'wrapToFit', sublabel: '(off)' });
+        expect(buildTerminalOptionsItems(2, true)[1]).toMatchObject({ value: 'wrapToFit', sublabel: '(on)' });
     });
 });
