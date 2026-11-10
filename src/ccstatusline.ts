@@ -48,6 +48,7 @@ import { sanitizeTerminalText } from './utils/terminal-sanitize';
 import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
+import { wrapLinesToFit } from './utils/wrap';
 
 // Captured before --config is parsed out of process.argv, so the dev reload
 // supervisor can relaunch with exactly the arguments it was started with
@@ -206,25 +207,41 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
 
     // Always pre-render all widgets once (for efficiency)
     const preRenderedLines = preRenderAllWidgets(lines, settings, context);
-    const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+    const wrapped = wrapLinesToFit(lines, preRenderedLines, settings, context);
+    const outputLines = wrapped ? wrapped.lines.map(row => row.widgets) : lines;
+    const outputPreRenderedLines = wrapped ? wrapped.lines.map(row => row.preRendered) : preRenderedLines;
+    const preCalculatedMaxWidths = wrapped ? wrapped.maxWidths : calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
     // Render each line using pre-rendered content
     let globalSeparatorIndex = 0;
     let globalPowerlineThemeIndex = 0;
     let globalPowerlineStartCapIndex = 0;
+    let lineThemeIndex = 0;
     let configBadgePrepended = false;
-    for (let i = 0; i < lines.length; i++) {
-        const lineItems = lines[i];
+    for (let i = 0; i < outputLines.length; i++) {
+        const lineItems = outputLines[i];
         if (lineItems && lineItems.length > 0) {
-            const preRenderedWidgets = preRenderedLines[i] ?? [];
+            const preRenderedWidgets = outputPreRenderedLines[i] ?? [];
+
+            // A wrapped row keeps the theme colors its widgets had on the
+            // configured line, even when colors restart on each line.
+            const continuesLine = wrapped?.lines[i]?.continuesLine ?? false;
+            if (!continuesLine) {
+                lineThemeIndex = 0;
+            }
+            const keepLineTheme = continuesLine && settings.powerline.enabled && !settings.powerline.continueThemeAcrossLines;
+            const lineSettings = keepLineTheme
+                ? { ...settings, powerline: { ...settings.powerline, continueThemeAcrossLines: true } }
+                : settings;
+
             const lineContext = {
                 ...context,
                 lineIndex: i,
                 globalSeparatorIndex,
-                globalPowerlineThemeIndex,
+                globalPowerlineThemeIndex: keepLineTheme ? lineThemeIndex : globalPowerlineThemeIndex,
                 globalPowerlineStartCapIndex
             };
-            let line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
+            let line = renderStatusLine(lineItems, lineSettings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
@@ -252,6 +269,7 @@ async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unk
                 if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
                     globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
                 }
+                lineThemeIndex = advanceGlobalPowerlineThemeIndex(lineThemeIndex, preRenderedWidgets);
             }
         }
     }
