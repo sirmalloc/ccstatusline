@@ -17,10 +17,14 @@ export interface ModelPriceRatios {
 // would otherwise match a "fable 5.1" id before its own, more specific, row
 // is reached.
 const MODEL_PRICE_TABLE: { needles: string[]; prices: ModelPriceRatios }[] = [
+    { needles: ['fable52', 'mythos52'], prices: { input: 8, output: 40, cacheWrite: 16, cacheRead: 0.2 } },
     { needles: ['fable51', 'mythos51'], prices: { input: 10, output: 50, cacheWrite: 20, cacheRead: 0.25 } },
     { needles: ['fable5'], prices: { input: 10, output: 50, cacheWrite: 20, cacheRead: 1 } },
+    { needles: ['opus55'], prices: { input: 4, output: 20, cacheWrite: 8, cacheRead: 0.2 } },
     { needles: ['opus5'], prices: { input: 5, output: 25, cacheWrite: 10, cacheRead: 0.5 } },
+    { needles: ['sonnet55'], prices: { input: 2, output: 10, cacheWrite: 4, cacheRead: 0.1 } },
     { needles: ['sonnet5'], prices: { input: 2, output: 10, cacheWrite: 4, cacheRead: 0.2 } },
+    { needles: ['haiku55'], prices: { input: 0.1, output: 0.5, cacheWrite: 0.2, cacheRead: 0.01 } },
     { needles: ['opus48', 'opus47', 'opus46', 'opus45'], prices: { input: 5, output: 25, cacheWrite: 10, cacheRead: 0.5 } },
     { needles: ['sonnet46', 'sonnet45'], prices: { input: 3, output: 15, cacheWrite: 6, cacheRead: 0.3 } },
     { needles: ['haiku45'], prices: { input: 1, output: 5, cacheWrite: 2, cacheRead: 0.1 } }
