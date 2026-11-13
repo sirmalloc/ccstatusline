@@ -41,6 +41,10 @@ import {
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
 import {
+    flushStdout,
+    readStdin
+} from './utils/stdin';
+import {
     getPackageVersion,
     getTerminalWidth
 } from './utils/terminal';
@@ -78,34 +82,7 @@ function isDispatchableHookPayload(data: unknown): boolean {
         && sessionId.length > 0;
 }
 
-async function readStdin(): Promise<string | null> {
-    // Check if stdin is a TTY (terminal) - if it is, there's no piped data
-    if (process.stdin.isTTY) {
-        return null;
-    }
 
-    const chunks: string[] = [];
-
-    try {
-        // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined') {
-            // Bun environment
-            const decoder = new TextDecoder();
-            for await (const chunk of Bun.stdin.stream()) {
-                chunks.push(decoder.decode(chunk));
-            }
-        } else {
-            // Node.js environment
-            process.stdin.setEncoding('utf8');
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk as string);
-            }
-        }
-        return chunks.join('');
-    } catch {
-        return null;
-    }
-}
 
 async function renderMultipleLines(data: StatusJSON, rawData: Record<string, unknown>) {
     const settings = await loadSettings();
@@ -306,6 +283,7 @@ function parseConfigArg(): string | undefined {
 async function handleHook(): Promise<void> {
     const input = await readStdin();
     handleHookInput(input);
+    await flushStdout();
 }
 
 function handleGitReviewRefresh(): boolean {
@@ -363,6 +341,7 @@ async function main() {
                 // does, instead of falling through to status validation/rendering.
                 if (isDispatchableHookPayload(parsed)) {
                     handleHookInput(input);
+    await flushStdout();
                     return;
                 }
 
@@ -376,6 +355,8 @@ async function main() {
                 }
 
                 await renderMultipleLines(result.data, rawData);
+                await flushStdout();
+                process.exit(0);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
