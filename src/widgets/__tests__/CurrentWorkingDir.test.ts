@@ -104,7 +104,7 @@ describe('CurrentWorkingDirWidget', () => {
             settings,
             context,
             preRendered,
-            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? []
         );
     };
 

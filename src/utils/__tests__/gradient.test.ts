@@ -273,7 +273,7 @@ describe('renderStatusLine with a gradient override', () => {
         const settings = createSettings(settingsOverrides);
         const context: RenderContext = { isPreview: false, terminalWidth };
         const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
-        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? [];
         return renderStatusLine(widgets, settings, context, preRenderedLines[0] ?? [], preCalculatedMaxWidths);
     }
 
@@ -281,7 +281,7 @@ describe('renderStatusLine with a gradient override', () => {
         const settings = createSettings(settingsOverrides);
         const context: RenderContext = { isPreview: false, terminalWidth };
         const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
-        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? [];
         return renderStatusLineWithInfo(widgets, settings, context, preRenderedLines[0] ?? [], preCalculatedMaxWidths);
     }
 
