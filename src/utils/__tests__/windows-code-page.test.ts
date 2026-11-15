@@ -25,7 +25,7 @@ describe('ensureWindowsUtf8CodePage', () => {
     it('runs chcp from its place on PATH, never the current directory', () => {
         const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => `C:\\Windows\\System32\\${name}`);
         try {
-            ensureWindowsUtf8CodePage('win32');
+            ensureWindowsUtf8CodePage('win32', true);
 
             expect(resolve).toHaveBeenCalledWith('chcp.com');
             expect(mockExecFileSync.mock.calls[0]?.slice(0, 2)).toEqual(['C:\\Windows\\System32\\chcp.com', ['65001']]);
@@ -35,9 +35,21 @@ describe('ensureWindowsUtf8CodePage', () => {
     });
 
     it('does nothing outside Windows', () => {
-        ensureWindowsUtf8CodePage('darwin');
+        ensureWindowsUtf8CodePage('darwin', true);
 
         expect(mockExecFileSync.mock.calls).toHaveLength(0);
+    });
+
+    it('skips chcp when stdout is piped, as under Claude Code', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable');
+        try {
+            ensureWindowsUtf8CodePage('win32', false);
+
+            expect(resolve).not.toHaveBeenCalled();
+            expect(mockExecFileSync.mock.calls).toHaveLength(0);
+        } finally {
+            resolve.mockRestore();
+        }
     });
 
     it('carries on when chcp isn\'t found or fails', () => {
@@ -46,7 +58,7 @@ describe('ensureWindowsUtf8CodePage', () => {
         });
         try {
             expect(() => {
-                ensureWindowsUtf8CodePage('win32');
+                ensureWindowsUtf8CodePage('win32', true);
             }).not.toThrow();
             expect(mockExecFileSync.mock.calls).toHaveLength(0);
         } finally {
