@@ -295,13 +295,13 @@ describe('powerline merged widgets', () => {
             preRender(line2, { 0: 'WIDE5', 1: 'D' })
         ], settings);
 
-        expect(maxWidths).toEqual([5, 1]);
+        expect(maxWidths).toEqual([[2, 1], [5, 1]]);
 
-        const line = render(line1, { 0: 'A', 1: 'B', 2: 'C' }, { autoAlign: true }, maxWidths);
+        const line = render(line1, { 0: 'A', 1: 'B', 2: 'C' }, { autoAlign: true }, maxWidths[0] ?? []);
 
         expect(line).toBe(
             `${A_FG_CODE}A${COLOR_RESET}`
-            + `${B_FG_CODE}B   ${COLOR_RESET}`
+            + `${B_FG_CODE}B${COLOR_RESET}`
             + '>'
             + `${A_FG_CODE}C${COLOR_RESET}`
         );
@@ -311,7 +311,7 @@ describe('powerline merged widgets', () => {
         const widgets = [text('a', { color: A_FG, merge: true }), text('empty', { merge: true }), text('b', { color: B_FG })];
         const contents = { 0: 'A', 2: 'B' };
 
-        expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings())).toEqual([2]);
+        expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings())).toEqual([[2]]);
         expect(render(widgets, contents)).toBe(`${A_FG_CODE}A${COLOR_RESET}${B_FG_CODE}B${COLOR_RESET}`);
     });
 
@@ -341,7 +341,7 @@ describe('powerline merged widgets', () => {
         const context: RenderContext = { isPreview: false, terminalWidth: 0 };
         const preRendered = preRender(widgets, { 0: 'A' });
 
-        expect(calculateMaxWidthsFromPreRendered([preRendered], settings)).toEqual([3]);
+        expect(calculateMaxWidthsFromPreRendered([preRendered], settings)).toEqual([[3]]);
         expect(renderStatusLine(widgets, settings, context, preRendered, [])).toBe(`${A_FG_CODE} A ${COLOR_RESET}`);
     });
 });

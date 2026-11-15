@@ -83,7 +83,7 @@ function renderLines(settings: Settings): string[] {
 
     return settings.lines.map((line, lineIndex) => {
         const preRenderedWidgets = preRenderedLines[lineIndex] ?? [];
-        const rendered = renderStatusLine(line, settings, { ...context, lineIndex, globalPowerlineThemeIndex }, preRenderedWidgets, maxWidths);
+        const rendered = renderStatusLine(line, settings, { ...context, lineIndex, globalPowerlineThemeIndex }, preRenderedWidgets, maxWidths[lineIndex] ?? []);
         globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
         return rendered;
     });

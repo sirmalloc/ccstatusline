@@ -499,7 +499,7 @@ describe('ThinkingEffortWidget', () => {
             const context: RenderContext = { isPreview: false, terminalWidth: 0, data: { effort: { level: 'xhigh' } } };
             const preRenderedLines = preRenderAllWidgets([[item]], fullSettings, context);
             const maxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, fullSettings);
-            return renderStatusLine([item], fullSettings, context, preRenderedLines[0] ?? [], maxWidths);
+            return renderStatusLine([item], fullSettings, context, preRenderedLines[0] ?? [], maxWidths[0] ?? []);
         }
 
         it('draws the label in the Powerline theme\'s text color', () => {

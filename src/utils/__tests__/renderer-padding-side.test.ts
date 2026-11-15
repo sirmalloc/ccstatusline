@@ -162,36 +162,36 @@ describe('defaultPaddingSide', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..' });
             // 'AB' (2) + 2 leading + 2 trailing = 6
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([6]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[6]]);
         });
 
         it('counts padding only once when side is "left"', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..', defaultPaddingSide: 'left' });
             // 'AB' (2) + 2 leading + 0 trailing = 4
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[4]]);
         });
 
         it('counts padding only once when side is "right"', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..', defaultPaddingSide: 'right' });
             // 'AB' (2) + 0 leading + 2 trailing = 4
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[4]]);
         });
 
         it('drops the padding between no-padding merged widgets, as rendering does', () => {
             const lines = [[pre('A', { merge: 'no-padding' }), pre('B')]];
             const settings = createSettings();
             // '.' + 'A' + 'B' + '.' = 4: the merged pair renders as '.AB.'
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[4]]);
             expect(render([text('a', { merge: 'no-padding' }), text('b')], { 0: 'A', 1: 'B' }, settings)).toBe('.AB.');
         });
 
         it.each([
             // The ideographic space is one UTF-16 unit but two columns wide
-            { name: 'a wide', padding: '\u3000', expected: [6] },
+            { name: 'a wide', padding: '\u3000', expected: [[6]] },
             // U+1D400 is two UTF-16 units but one column wide
-            { name: 'an astral', padding: '\u{1D400}', expected: [4] }
+            { name: 'an astral', padding: '\u{1D400}', expected: [[4]] }
         ])('counts $name padding glyph by the columns it takes', ({ padding, expected }) => {
             const lines = [[pre('AB')]];
 
@@ -209,12 +209,13 @@ describe('defaultPaddingSide', () => {
             const maxWidths = calculateMaxWidthsFromPreRendered(preRendered, settings);
             const separatorColumns = lines.map((line, lineIndex) => {
                 const lineContext: RenderContext = { ...context, lineIndex };
-                const output = stripSgrCodes(renderStatusLine(line, settings, lineContext, preRendered[lineIndex] ?? [], maxWidths));
+                const output = stripSgrCodes(renderStatusLine(line, settings, lineContext, preRendered[lineIndex] ?? [], maxWidths[lineIndex] ?? []));
                 return getVisibleWidth(output.slice(0, output.indexOf('|')));
             });
 
-            // Two padding glyphs of two columns each around 'CCCCC'
-            expect(separatorColumns).toEqual([9, 9]);
+            // Per-line widths: line 0 keeps its own narrow first column (A +
+            // two 2-column padding glyphs = 5), line 1 aligns around 'CCCCC' (9)
+            expect(separatorColumns).toEqual([5, 9]);
         });
     });
 

@@ -74,7 +74,7 @@ function renderLine(
         settings,
         renderContext,
         preRendered,
-        calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
+        calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? []
     );
 }
 

@@ -52,7 +52,7 @@ function renderLine(
     };
 
     const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
-    const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+    const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? [];
     const preRenderedWidgets = preRenderedLines[0] ?? [];
 
     return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
