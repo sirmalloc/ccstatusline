@@ -19,6 +19,17 @@ export interface ForkStatus {
     upstream: RemoteInfo | null;
 }
 
+// Git reads these as a path on disk, not as host:path: a slash before the first
+// colon ("/srv/git/a:b/repo.git") and, on Windows only, a drive letter
+// ("C:/repos/origin.git").
+function isLocalPath(remote: string): boolean {
+    const colon = remote.indexOf(':');
+    const slash = remote.indexOf('/');
+
+    return (slash !== -1 && slash < colon)
+        || (process.platform === 'win32' && /^[A-Za-z]:/.test(remote));
+}
+
 /**
  * Extract owner and repo from a git remote URL.
  * Supports SSH, HTTPS, git://, and ssh:// formats.
@@ -38,7 +49,7 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
     }
 
     // SSH format: git@host:owner/repo.git or user@host:owner/repo.git
-    const sshMatch = !trimmed.includes('://')
+    const sshMatch = !trimmed.includes('://') && !isLocalPath(trimmed)
         ? /^(?:[^@]+@)?([^:]+):(.+?)(?:\.git)?\/?$/.exec(trimmed)
         : null;
     if (sshMatch?.[1] && sshMatch[2]) {
