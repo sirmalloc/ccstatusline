@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -200,6 +201,48 @@ describe('git-remote utils', () => {
 
             it('returns null for unsupported protocol', () => {
                 expect(parseRemoteUrl('ftp://github.com/owner/repo.git')).toBeNull();
+            });
+
+            it('returns null for a local path with a colon after its first slash', () => {
+                expect(parseRemoteUrl('/srv/git/a:b/repo.git')).toBeNull();
+                expect(parseRemoteUrl('./mirrors/a:b/repo.git')).toBeNull();
+            });
+
+            describe('drive letters', () => {
+                const ORIGINAL_PLATFORM = process.platform;
+                const setPlatform = (value: NodeJS.Platform): void => {
+                    Object.defineProperty(process, 'platform', { value, configurable: true, writable: true, enumerable: true });
+                };
+
+                afterEach(() => {
+                    setPlatform(ORIGINAL_PLATFORM);
+                });
+
+                it('returns null for a drive path on Windows', () => {
+                    setPlatform('win32');
+
+                    expect(parseRemoteUrl('C:/Users/me/repos/origin.git')).toBeNull();
+                    expect(parseRemoteUrl('d:/git/team/project')).toBeNull();
+                });
+
+                // Git only reads a drive letter as a path on Windows
+                it('keeps a one-letter SSH host elsewhere', () => {
+                    setPlatform('linux');
+
+                    expect(parseRemoteUrl('c:owner/repo.git')).toEqual({
+                        host: 'c',
+                        owner: 'owner',
+                        repo: 'repo'
+                    });
+                });
+            });
+
+            it('still parses an SSH remote with an absolute path', () => {
+                expect(parseRemoteUrl('git@host.example:/srv/git/owner/repo.git')).toEqual({
+                    host: 'host.example',
+                    owner: 'srv/git/owner',
+                    repo: 'repo'
+                });
             });
 
             it('ignores repeated slashes around and inside the path', () => {
