@@ -331,13 +331,13 @@ describe('git utils', () => {
             const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
             mockExecFileSync.mockReturnValueOnce('old-value\n');
 
-            expect(runGit('symbolic-ref --short HEAD', context)).toBe('old-value');
+            expect(runGit('status --porcelain -z', context)).toBe('old-value');
 
             clearGitCache();
             nowSpy.mockReturnValue(7000);
             mockExecFileSync.mockReturnValueOnce('new-value\n');
 
-            expect(runGit('symbolic-ref --short HEAD', context)).toBe('new-value');
+            expect(runGit('status --porcelain -z', context)).toBe('new-value');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
 
@@ -525,6 +525,154 @@ describe('git utils', () => {
             clearGitCache();
             expect(runGit('ls-files --unmerged', rootContext)).toBe('root-conflicts');
             expect(runGit('ls-files --unmerged', subdirContext)).toBe('subdir-conflicts');
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+    });
+
+    // Which files git really touches is covered with real git in
+    // git-cache-exec.test.ts. These are the cases that need a clock or a failure.
+    describe('runGit output that does not read the work tree', () => {
+        const PAST_TTL = 7_000;
+        const PAST_LIMIT = 301_001;
+
+        function setUp(ttlSeconds = 5) {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            const home = useTempHome();
+            const repo = createGitRepo();
+            const context: RenderContext = { data: { cwd: repo.root }, gitCacheTtlSeconds: ttlSeconds };
+            // Like a new render: nothing is left in memory
+            const at = (time: number) => {
+                clearGitCache();
+                nowSpy.mockReturnValue(time);
+            };
+            return { ...repo, home, context, at };
+        }
+
+        it('keeps a repository location past the TTL and HEAD or index changes, up to the limit', () => {
+            const { context, at, headPath, indexPath } = setUp();
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+
+            at(PAST_TTL);
+            touch(headPath, Date.now() + 10_000);
+            touch(indexPath, Date.now() + 10_000);
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            at(PAST_LIMIT);
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        it('does not keep a failed repository location past the TTL', () => {
+            const { context, at } = setUp();
+            mockExecFileSync.mockImplementation(() => { throw new Error('dubious ownership'); });
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBeNull();
+
+            at(PAST_TTL);
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+        });
+
+        it('keeps an empty conflict list past the TTL, up to the limit', () => {
+            const { context, at } = setUp();
+            mockExecFileSync.mockReturnValueOnce('');
+            expect(getGitConflictCount(context)).toBe(0);
+
+            at(PAST_TTL);
+            expect(getGitConflictCount(context)).toBe(0);
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            at(PAST_LIMIT);
+            mockExecFileSync.mockReturnValueOnce('100644 hash 1\tfile\0');
+            expect(getGitConflictCount(context)).toBe(1);
+        });
+
+        it('refreshes a failed conflict lookup when the TTL ends', () => {
+            const { context, at } = setUp();
+            mockExecFileSync.mockImplementation(() => { throw new Error('spawnSync git ETIMEDOUT'); });
+            expect(getGitConflictCount(context)).toBe(0);
+
+            at(PAST_TTL);
+            mockExecFileSync.mockReturnValueOnce('100644 hash 1\tfile\0');
+            expect(getGitConflictCount(context)).toBe(1);
+        });
+
+        it('falls back to the TTL when HEAD is a reftable placeholder', () => {
+            const { context, at, headPath } = setUp();
+            fs.writeFileSync(headPath, 'ref: refs/heads/.invalid\n', 'utf-8');
+            mockExecFileSync.mockReturnValueOnce('refs/heads/old\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/old');
+
+            at(PAST_TTL);
+            mockExecFileSync.mockReturnValueOnce('refs/heads/new\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/new');
+        });
+
+        it('falls back to the TTL for an entry written before producer overrides were checked', () => {
+            const { context, at, home } = setUp();
+            mockExecFileSync.mockReturnValueOnce('refs/heads/old\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/old');
+
+            const cachePath = getOnlyGitCachePath(home);
+            const cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as { entries: Record<string, Record<string, unknown>> };
+            const entry = cache.entries['symbolic-ref HEAD'];
+            if (!entry) {
+                throw new Error('Missing cached branch');
+            }
+            entry.headRefStamp = entry.stableHeadRefStamp;
+            delete entry.stableHeadRefStamp;
+            fs.writeFileSync(cachePath, JSON.stringify(cache), 'utf-8');
+
+            at(PAST_TTL);
+            mockExecFileSync.mockReturnValueOnce('refs/heads/new\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/new');
+        });
+
+        it.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE'])('keeps the TTL for output written with %s set', (name) => {
+            const { context, at } = setUp();
+            const original = process.env[name];
+            process.env[name] = '/elsewhere';
+            try {
+                mockExecFileSync.mockReturnValueOnce('true\n');
+                mockExecFileSync.mockReturnValueOnce('refs/heads/old\n');
+                expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+                expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/old');
+
+                at(PAST_TTL);
+                mockExecFileSync.mockReturnValueOnce('false\n');
+                mockExecFileSync.mockReturnValueOnce('refs/heads/new\n');
+                expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('false');
+                expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/new');
+            } finally {
+                if (original === undefined) {
+                    Reflect.deleteProperty(process.env, name);
+                } else {
+                    process.env[name] = original;
+                }
+            }
+
+            at(PAST_TTL * 2);
+            mockExecFileSync.mockReturnValue('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+            mockExecFileSync.mockReturnValue('refs/heads/default\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/default');
+        });
+
+        it('leaves a TTL of zero depending on HEAD and index mtimes alone', () => {
+            const { context, at, indexPath } = setUp(0);
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+
+            at(PAST_LIMIT);
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            at(PAST_LIMIT + 1);
+            touch(indexPath, Date.now() + 10_000);
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
     });
