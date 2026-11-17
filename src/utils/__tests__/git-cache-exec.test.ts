@@ -127,7 +127,7 @@ describe.skipIf(process.platform === 'win32')('git cache against real git', () =
         fs.rmSync(path.join(root, '.cache'), { recursive: true, force: true });
     });
 
-    it('runs only the work tree command again when the TTL ends', () => {
+    it('runs both diff commands again when the TTL ends', () => {
         const dir = makeRepo();
         fs.appendFileSync(path.join(dir, 'f'), 'unstaged\n');
         fs.writeFileSync(path.join(dir, 'g'), 'staged\n');
@@ -148,7 +148,7 @@ describe.skipIf(process.platform === 'win32')('git cache against real git', () =
         });
 
         const expired = render(dir);
-        expect(expired.commands).toEqual(['diff --shortstat']);
+        expect(expired.commands).toEqual(['diff --shortstat', 'diff --cached --shortstat']);
         expect({ ...expired, commands: [] }).toEqual({ ...cold, commands: [] });
     }, TEST_TIMEOUT_MS);
 
@@ -161,23 +161,36 @@ describe.skipIf(process.platform === 'win32')('git cache against real git', () =
         expect(render(dir).unstaged).toBe(ONE_LINE_ADDED);
     }, TEST_TIMEOUT_MS);
 
+    it('refreshes staged line counts after an unstaged attributes change', () => {
+        const dir = makeRepo();
+        fs.appendFileSync(path.join(dir, 'f'), 'three\n');
+        plainGit(dir, 'add', 'f');
+        expect(render(dir, ['staged']).staged).toBe(ONE_LINE_ADDED);
+
+        fs.writeFileSync(path.join(dir, '.gitattributes'), 'f -diff\n');
+
+        expect(render(dir, ['staged']).staged).toBe(' 1 file changed, 0 insertions(+), 0 deletions(-)');
+    }, TEST_TIMEOUT_MS);
+
     it('sees a soft reset, which moves the branch but neither HEAD nor the index', () => {
         const dir = makeRepo();
-        expect(render(dir).staged).toBeNull();
+        const before = render(dir, ['sha']);
+        expect(before.sha).toBe(plainGit(dir, 'rev-parse', '--short', 'HEAD').trim());
 
         plainGit(dir, 'reset', '-q', '--soft', 'HEAD~1');
 
-        expect(render(dir).staged).toBe(ONE_LINE_ADDED);
+        expect(render(dir, ['sha']).sha).toBe(plainGit(dir, 'rev-parse', '--short', 'HEAD').trim());
     }, TEST_TIMEOUT_MS);
 
     it('sees a soft reset of a branch whose ref is packed', () => {
         const dir = makeRepo();
         plainGit(dir, 'pack-refs', '--all');
-        expect(render(dir).staged).toBeNull();
+        const before = render(dir, ['sha']);
+        expect(before.sha).toBe(plainGit(dir, 'rev-parse', '--short', 'HEAD').trim());
 
         plainGit(dir, 'reset', '-q', '--soft', 'HEAD~1');
 
-        expect(render(dir).staged).toBe(ONE_LINE_ADDED);
+        expect(render(dir, ['sha']).sha).toBe(plainGit(dir, 'rev-parse', '--short', 'HEAD').trim());
     }, TEST_TIMEOUT_MS);
 
     it('sees a new branch, a staged change and a commit', () => {
@@ -199,12 +212,15 @@ describe.skipIf(process.platform === 'win32')('git cache against real git', () =
         const dir = makeRepo();
         const worktree = path.join(root, `worktree-${repoCount}`);
         plainGit(dir, 'worktree', 'add', '-q', '-b', 'linked', worktree);
-        expect(render(worktree)).toMatchObject({ branch: 'refs/heads/linked', staged: null });
-        expect(render(worktree).commands).toEqual(['diff --shortstat']);
+        expect(render(worktree, ['branch', 'sha'])).toMatchObject({
+            branch: 'refs/heads/linked',
+            sha: plainGit(worktree, 'rev-parse', '--short', 'HEAD').trim()
+        });
+        expect(render(worktree, ['branch', 'sha']).commands).toEqual([]);
 
         plainGit(worktree, 'reset', '-q', '--soft', 'HEAD~1');
 
-        expect(render(worktree).staged).toBe(ONE_LINE_ADDED);
+        expect(render(worktree, ['sha']).sha).toBe(plainGit(worktree, 'rev-parse', '--short', 'HEAD').trim());
     }, TEST_TIMEOUT_MS);
 
     it('follows a detached HEAD as it moves', () => {
@@ -227,12 +243,15 @@ describe.skipIf(process.platform === 'win32')('git cache against real git', () =
             // git before 2.45 cannot create one
             return;
         }
-        expect(render(dir)).toMatchObject({ branch: 'refs/heads/main', staged: null });
+        expect(render(dir, ['branch', 'sha'])).toMatchObject({
+            branch: 'refs/heads/main',
+            sha: plainGit(dir, 'rev-parse', '--short', 'HEAD').trim()
+        });
 
         plainGit(dir, 'switch', '-q', '-c', 'feature');
         expect(render(dir).branch).toBe('refs/heads/feature');
 
         plainGit(dir, 'reset', '-q', '--soft', 'HEAD~1');
-        expect(render(dir).staged).toBe(ONE_LINE_ADDED);
+        expect(render(dir, ['sha']).sha).toBe(plainGit(dir, 'rev-parse', '--short', 'HEAD').trim());
     }, TEST_TIMEOUT_MS);
 });

@@ -575,28 +575,28 @@ describe('git utils', () => {
             expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
         });
 
-        it('keeps an empty staged diff past the TTL, up to the limit', () => {
+        it('keeps an empty conflict list past the TTL, up to the limit', () => {
             const { context, at } = setUp();
             mockExecFileSync.mockReturnValueOnce('');
-            expect(runGit('diff --cached --shortstat', context)).toBeNull();
+            expect(getGitConflictCount(context)).toBe(0);
 
             at(PAST_TTL);
-            expect(runGit('diff --cached --shortstat', context)).toBeNull();
+            expect(getGitConflictCount(context)).toBe(0);
             expect(mockExecFileSync.mock.calls).toHaveLength(1);
 
             at(PAST_LIMIT);
-            mockExecFileSync.mockReturnValueOnce(' 1 file changed, 1 insertion(+)\n');
-            expect(runGit('diff --cached --shortstat', context)).toBe(' 1 file changed, 1 insertion(+)');
+            mockExecFileSync.mockReturnValueOnce('100644 hash 1\tfile\0');
+            expect(getGitConflictCount(context)).toBe(1);
         });
 
-        it('does not take a failed staged diff for an empty one', () => {
+        it('refreshes a failed conflict lookup when the TTL ends', () => {
             const { context, at } = setUp();
             mockExecFileSync.mockImplementation(() => { throw new Error('spawnSync git ETIMEDOUT'); });
-            expect(runGit('diff --cached --shortstat', context)).toBeNull();
+            expect(getGitConflictCount(context)).toBe(0);
 
             at(PAST_TTL);
-            mockExecFileSync.mockReturnValueOnce(' 1 file changed, 1 insertion(+)\n');
-            expect(runGit('diff --cached --shortstat', context)).toBe(' 1 file changed, 1 insertion(+)');
+            mockExecFileSync.mockReturnValueOnce('100644 hash 1\tfile\0');
+            expect(getGitConflictCount(context)).toBe(1);
         });
 
         it('falls back to the TTL when HEAD is a reftable placeholder', () => {
@@ -610,14 +610,19 @@ describe('git utils', () => {
             expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/new');
         });
 
-        it('falls back to the TTL for an entry written before refs were checked', () => {
+        it('falls back to the TTL for an entry written before producer overrides were checked', () => {
             const { context, at, home } = setUp();
             mockExecFileSync.mockReturnValueOnce('refs/heads/old\n');
             expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/old');
 
             const cachePath = getOnlyGitCachePath(home);
             const cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as { entries: Record<string, Record<string, unknown>> };
-            delete cache.entries['symbolic-ref HEAD']?.headRefStamp;
+            const entry = cache.entries['symbolic-ref HEAD'];
+            if (!entry) {
+                throw new Error('Missing cached branch');
+            }
+            entry.headRefStamp = entry.stableHeadRefStamp;
+            delete entry.stableHeadRefStamp;
             fs.writeFileSync(cachePath, JSON.stringify(cache), 'utf-8');
 
             at(PAST_TTL);
@@ -625,7 +630,7 @@ describe('git utils', () => {
             expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/new');
         });
 
-        it.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE'])('falls back to the TTL when %s points git elsewhere', (name) => {
+        it.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE'])('keeps the TTL for output written with %s set', (name) => {
             const { context, at } = setUp();
             const original = process.env[name];
             process.env[name] = '/elsewhere';
@@ -647,6 +652,12 @@ describe('git utils', () => {
                     process.env[name] = original;
                 }
             }
+
+            at(PAST_TTL * 2);
+            mockExecFileSync.mockReturnValue('true\n');
+            expect(runGit('rev-parse --is-inside-work-tree', context)).toBe('true');
+            mockExecFileSync.mockReturnValue('refs/heads/default\n');
+            expect(runGit('symbolic-ref HEAD', context)).toBe('refs/heads/default');
         });
 
         it('leaves a TTL of zero depending on HEAD and index mtimes alone', () => {

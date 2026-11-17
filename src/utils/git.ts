@@ -29,7 +29,7 @@ interface GitRepoMetadata {
     cachePath: string;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
-    headRefStamp: string | null;
+    stableHeadRefStamp?: string | null;
 }
 
 interface GitCacheEntry {
@@ -37,8 +37,8 @@ interface GitCacheEntry {
     createdAt: number;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
-    // Only on commands that succeeded, in entries written since it was added
-    headRefStamp?: string | null;
+    // Set only for successful commands run without Git location overrides.
+    stableHeadRefStamp?: string | null;
 }
 
 interface PersistentGitCache {
@@ -75,7 +75,6 @@ const HEAD_AND_INDEX_COMMANDS = new Set([
     'symbolic-ref HEAD',
     'symbolic-ref --short HEAD',
     'rev-parse --short HEAD',
-    'diff --cached --shortstat',
     'ls-files --unmerged -z'
 ]);
 
@@ -345,7 +344,9 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
         cachePath: getCachePath(gitDir, cwd),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
         indexMtimeMs: getMtimeMs(path.join(gitDir, 'index')),
-        headRefStamp: getHeadRefStamp(gitDir)
+        stableHeadRefStamp: GIT_LOCATION_VARIABLES.some(name => process.env[name] !== undefined)
+            ? undefined
+            : getHeadRefStamp(gitDir)
     };
 }
 
@@ -425,9 +426,9 @@ function isCacheEntryFresh(
 ): boolean {
     const ageMs = now - entry.createdAt;
     // A TTL of 0 already means no age-based expiry, so it keeps its own rules
-    const mayOutliveTtl = metadata !== null
-        && ttlMs > 0
-        && !GIT_LOCATION_VARIABLES.some(name => process.env[name] !== undefined);
+    const mayOutliveTtl = ttlMs > 0
+        && metadata?.stableHeadRefStamp !== undefined
+        && entry.stableHeadRefStamp !== undefined;
 
     // A null output is a failure here, as these always print something
     if (mayOutliveTtl && entry.output !== null && REPOSITORY_LOCATION_COMMANDS.has(command)) {
@@ -441,8 +442,8 @@ function isCacheEntryFresh(
     }
 
     const isStable = mayOutliveTtl
-        && metadata.headRefStamp !== null
-        && entry.headRefStamp === metadata.headRefStamp
+        && metadata.stableHeadRefStamp !== null
+        && entry.stableHeadRefStamp === metadata.stableHeadRefStamp
         && HEAD_AND_INDEX_COMMANDS.has(command);
     return ttlMs === 0 || ageMs <= (isStable ? STABLE_OUTPUT_MAX_AGE_MS : ttlMs);
 }
@@ -559,9 +560,7 @@ function createCacheEntry(output: string | null, metadata: GitRepoMetadata | nul
         createdAt: now,
         headMtimeMs: metadata?.headMtimeMs ?? null,
         indexMtimeMs: metadata?.indexMtimeMs ?? null,
-        // No answer is kept past the TTL after a failure: empty output from a
-        // successful `diff --cached` and a timeout both have a null output
-        ...(succeeded ? { headRefStamp: metadata?.headRefStamp ?? null } : {})
+        stableHeadRefStamp: succeeded ? metadata?.stableHeadRefStamp : undefined
     };
 }
 
