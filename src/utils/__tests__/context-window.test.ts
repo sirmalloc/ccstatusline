@@ -73,4 +73,55 @@ describe('getContextWindowMetrics', () => {
             totalTokens: 6000
         });
     });
+
+    it('treats an all-zero reading as unreported context, keeping the token totals', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 1000000,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                current_usage: {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                },
+                used_percentage: 0,
+                remaining_percentage: 100
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 1000000,
+            usedTokens: null,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            cachedTokens: 0,
+            totalTokens: 0
+        });
+    });
+
+    it('treats a zero numeric current_usage as unreported context', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 200000,
+                current_usage: 0
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 200000,
+            usedTokens: null,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens: null,
+            totalOutputTokens: null,
+            cachedTokens: null,
+            totalTokens: 0
+        });
+    });
 });

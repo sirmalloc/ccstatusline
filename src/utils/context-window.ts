@@ -55,6 +55,13 @@ export function contextLengthFromUsageTokens(tokens: UsageTokens): number {
     return tokens.input + tokens.creation + tokens.read;
 }
 
+// Any chat that has made a turn has context (the system prompt alone is
+// thousands of tokens), so a zero reading means usage was not reported yet,
+// as for a resumed chat before its next API call.
+function reportedOrNull(value: number | null): number | null {
+    return value !== null && value > 0 ? value : null;
+}
+
 function clampPercentage(value: number): number {
     return Math.max(0, Math.min(100, value));
 }
@@ -97,16 +104,19 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
         cachedTokens = creation + read;
     }
 
-    const rawUsedPercentage = toFiniteNonNegativeNumber(contextWindow.used_percentage);
-    const rawRemainingPercentage = toFiniteNonNegativeNumber(contextWindow.remaining_percentage);
+    const rawUsedPercentage = reportedOrNull(toFiniteNonNegativeNumber(contextWindow.used_percentage));
+    const reportedRemainingPercentage = toFiniteNonNegativeNumber(contextWindow.remaining_percentage);
+    const rawRemainingPercentage = reportedRemainingPercentage !== null && reportedRemainingPercentage < 100
+        ? reportedRemainingPercentage
+        : null;
     const usedTokensFromPercentage = rawUsedPercentage !== null && windowSize !== null
         ? (rawUsedPercentage / 100) * windowSize
         : null;
 
-    const usedTokens = currentUsageTotalTokens ?? usedTokensFromPercentage;
+    const usedTokens = reportedOrNull(currentUsageTotalTokens) ?? usedTokensFromPercentage;
     // Output tokens aren't in the context until the next turn reads them back
     // as input, so count only input tokens, as the context length does.
-    const percentageTokens = contextLengthTokens ?? usedTokens;
+    const percentageTokens = reportedOrNull(contextLengthTokens) ?? usedTokens;
 
     const usedPercentage = rawUsedPercentage !== null
         ? clampPercentage(rawUsedPercentage)
