@@ -73,4 +73,109 @@ describe('getContextWindowMetrics', () => {
             totalTokens: 6000
         });
     });
+
+    it('treats an all-zero reading as unreported context, keeping the token totals', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 1000000,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                current_usage: {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                },
+                used_percentage: 0,
+                remaining_percentage: 100
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 1000000,
+            usedTokens: null,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            cachedTokens: 0,
+            totalTokens: 0
+        });
+    });
+
+    it('treats a zero numeric current_usage as unreported context', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 200000,
+                current_usage: 0
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 200000,
+            usedTokens: null,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens: null,
+            totalOutputTokens: null,
+            cachedTokens: null,
+            totalTokens: 0
+        });
+    });
+
+    it('uses the token count over a used_percentage rounded down to 0', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 1000000,
+                current_usage: {
+                    input_tokens: 4000,
+                    output_tokens: 100,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                },
+                used_percentage: 0,
+                remaining_percentage: 100
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 1000000,
+            usedTokens: 4100,
+            contextLengthTokens: 4000,
+            usedPercentage: 0.4,
+            remainingPercentage: 99.6,
+            totalInputTokens: null,
+            totalOutputTokens: null,
+            cachedTokens: 0,
+            totalTokens: 4100
+        });
+    });
+
+    it('does not count output tokens as context when the input side is zero', () => {
+        const metrics = getContextWindowMetrics({
+            context_window: {
+                context_window_size: 1000000,
+                current_usage: {
+                    input_tokens: 0,
+                    output_tokens: 500,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                }
+            }
+        });
+
+        expect(metrics).toEqual({
+            windowSize: 1000000,
+            usedTokens: 500,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens: null,
+            totalOutputTokens: null,
+            cachedTokens: 0,
+            totalTokens: 500
+        });
+    });
 });
