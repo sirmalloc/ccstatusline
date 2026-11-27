@@ -116,7 +116,7 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
     const usedTokens = reportedOrNull(currentUsageTotalTokens) ?? usedTokensFromPercentage;
     // Output tokens aren't in the context until the next turn reads them back
     // as input, so count only input tokens, as the context length does.
-    const percentageTokens = reportedOrNull(contextLengthTokens) ?? usedTokens;
+    const percentageTokens = reportedOrNull(contextLengthTokens) ?? usedTokensFromPercentage;
 
     const usedPercentage = rawUsedPercentage !== null
         ? clampPercentage(rawUsedPercentage)
